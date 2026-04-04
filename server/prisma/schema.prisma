@@ -1,0 +1,484 @@
+// ============================================================================
+// KAOS Cafe HRIS — Prisma Schema
+// Multi-branch Human Resource Information System
+// Stack: PostgreSQL + Prisma ORM
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+  ON_LEAVE
+}
+
+enum ShiftStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  HALF_DAY
+}
+
+enum SyncStatus {
+  PENDING // recorded offline, not yet synced
+  SYNCED  // successfully synced to server
+  FAILED  // sync attempted but failed
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveType {
+  VACATION
+  SICK
+  EMERGENCY
+  MATERNITY
+  PATERNITY
+  UNPAID
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum PayslipStatus {
+  DRAFT
+  FINALIZED
+}
+
+enum DeductionType {
+  LATE           // auto-computed from attendance
+  CASH_ADVANCE
+  SALARY_LOAN
+  SSS
+  PHILHEALTH
+  PAGIBIG
+  BIR_TAX        // withholding tax
+  OTHER
+}
+
+enum EarningType {
+  OVERTIME
+  BONUS
+  ALLOWANCE
+  HOLIDAY_PAY
+  OTHER
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+// ============================================================================
+// AUTH & USERS
+// ============================================================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // bcrypt-hashed
+  role      Role     @default(EMPLOYEE)
+  isActive  Boolean  @default(true)
+  lastLogin DateTime?
+
+  employee  Employee?
+
+  auditLogs AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ============================================================================
+// BRANCH MANAGEMENT
+// ============================================================================
+
+model Branch {
+  id        String  @id @default(uuid())
+  name      String  @unique
+  address   String
+  city      String
+  phone     String?
+  isActive  Boolean @default(true)
+
+  employees         Employee[]
+  shifts             Shift[]
+  attendanceRecords  Attendance[]
+  payrollRuns        PayrollRun[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("branches")
+}
+
+// ============================================================================
+// EMPLOYEE MANAGEMENT
+// ============================================================================
+
+model Employee {
+  id               String           @id @default(uuid())
+  employeeId       String           @unique // human-readable ID (e.g., KAOS-0001)
+  userId           String           @unique
+  branchId         String
+
+  // Personal info
+  firstName        String
+  lastName         String
+  middleName       String?
+  dateOfBirth      DateTime?
+  gender           String?
+  civilStatus      String?
+  nationality      String?          @default("Filipino")
+  profilePhoto     String?          // URL to profile image
+
+  // Contact
+  phone            String?
+  address          String?
+  city             String?
+  province         String?
+  zipCode          String?
+
+  // Emergency contact
+  emergencyName    String?
+  emergencyPhone   String?
+  emergencyRelation String?
+
+  // Employment details
+  position         String
+  department       String?
+  employmentStatus EmploymentStatus @default(ACTIVE)
+  dateHired        DateTime
+  dateTerminated   DateTime?
+  basicSalary      Decimal          @db.Decimal(12, 2) // monthly basic salary
+
+  // Government IDs — used for payroll deductions
+  sssNumber        String?
+  philhealthNumber String?
+  pagibigNumber    String?
+  tinNumber        String?          // BIR Tax Identification Number
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch           Branch           @relation(fields: [branchId], references: [id])
+
+  shiftAssignments ShiftAssignment[]
+  attendanceRecords Attendance[]
+  leaveRequests    LeaveRequest[]
+  leaveBalances    LeaveBalance[]
+  payslips         Payslip[]
+
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([branchId])
+  @@index([employmentStatus])
+  @@map("employees")
+}
+
+// ============================================================================
+// SHIFT SCHEDULING
+// ============================================================================
+
+model Shift {
+  id        String      @id @default(uuid())
+  branchId  String
+  name      String      // e.g., "Morning Shift", "Closing Shift"
+  date      DateTime    @db.Date
+  startTime DateTime    @db.Time()
+  endTime   DateTime    @db.Time()
+  status    ShiftStatus @default(DRAFT)
+
+  branch      Branch           @relation(fields: [branchId], references: [id])
+  assignments ShiftAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId, date])
+  @@map("shifts")
+}
+
+model ShiftAssignment {
+  id         String @id @default(uuid())
+  shiftId    String
+  employeeId String
+
+  shift    Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([shiftId, employeeId]) // prevent duplicate assignments
+  @@index([employeeId])
+  @@map("shift_assignments")
+}
+
+// ============================================================================
+// ATTENDANCE (selfie-based kiosk, supports offline sync)
+// ============================================================================
+
+model Attendance {
+  id         String           @id @default(uuid())
+  employeeId String
+  branchId   String
+  date       DateTime         @db.Date
+
+  clockIn    DateTime
+  clockOut   DateTime?
+  status     AttendanceStatus @default(PRESENT)
+
+  // Selfie verification
+  selfieIn   String?          // URL/path to check-in selfie
+  selfieOut  String?          // URL/path to check-out selfie
+
+  // Offline sync tracking
+  syncStatus   SyncStatus     @default(SYNCED)
+  deviceId     String?        // identifies the kiosk/tablet
+  localRecordId String?       // client-side ID for dedup during sync
+
+  // Computed after clock-out
+  hoursWorked    Decimal?     @db.Decimal(5, 2)
+  overtimeHours  Decimal?     @db.Decimal(5, 2)
+  lateMinutes    Int?         // minutes late vs. scheduled start
+  undertimeMinutes Int?       // minutes left early vs. scheduled end
+
+  remarks    String?
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, date]) // one attendance record per employee per day
+  @@index([branchId, date])
+  @@index([syncStatus])
+  @@map("attendance_records")
+}
+
+// ============================================================================
+// LEAVE MANAGEMENT
+// ============================================================================
+
+model LeaveRequest {
+  id          String      @id @default(uuid())
+  employeeId  String
+  leaveType   LeaveType
+  startDate   DateTime    @db.Date
+  endDate     DateTime    @db.Date
+  totalDays   Decimal     @db.Decimal(4, 1) // supports half-day (e.g., 0.5)
+  reason      String?
+  status      LeaveStatus @default(PENDING)
+
+  reviewedBy  String?     // userId of approver
+  reviewedAt  DateTime?
+  reviewNotes String?
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, status])
+  @@index([startDate, endDate])
+  @@map("leave_requests")
+}
+
+model LeaveBalance {
+  id          String    @id @default(uuid())
+  employeeId  String
+  leaveType   LeaveType
+  year        Int       // calendar year this balance applies to
+  totalDays   Decimal   @db.Decimal(4, 1) // allocated days
+  usedDays    Decimal   @db.Decimal(4, 1) @default(0)
+  remainingDays Decimal @db.Decimal(4, 1) // computed: totalDays - usedDays
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, leaveType, year])
+  @@map("leave_balances")
+}
+
+// ============================================================================
+// PAYROLL PROCESSING (bi-monthly)
+// ============================================================================
+
+model PayrollRun {
+  id          String        @id @default(uuid())
+  branchId    String
+  periodStart DateTime      @db.Date // e.g., 1st or 16th of month
+  periodEnd   DateTime      @db.Date // e.g., 15th or last day of month
+  status      PayrollStatus @default(DRAFT)
+  processedBy String?       // userId who ran payroll
+  processedAt DateTime?
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  payslips Payslip[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, periodStart, periodEnd])
+  @@index([branchId])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id            String        @id @default(uuid())
+  payrollRunId  String
+  employeeId    String
+
+  // Earnings
+  basicPay      Decimal       @db.Decimal(12, 2) // prorated basic for the period
+  overtimePay   Decimal       @db.Decimal(12, 2) @default(0)
+  bonuses       Decimal       @db.Decimal(12, 2) @default(0)
+  allowances    Decimal       @db.Decimal(12, 2) @default(0)
+  holidayPay    Decimal       @db.Decimal(12, 2) @default(0)
+  grossPay      Decimal       @db.Decimal(12, 2)
+
+  // Government deductions
+  sssContribution       Decimal @db.Decimal(12, 2) @default(0)
+  philhealthContribution Decimal @db.Decimal(12, 2) @default(0)
+  pagibigContribution   Decimal @db.Decimal(12, 2) @default(0)
+  withholdingTax        Decimal @db.Decimal(12, 2) @default(0)
+
+  // Other deductions
+  lateDeductions    Decimal   @db.Decimal(12, 2) @default(0)
+  cashAdvance       Decimal   @db.Decimal(12, 2) @default(0)
+  salaryLoan        Decimal   @db.Decimal(12, 2) @default(0)
+  otherDeductions   Decimal   @db.Decimal(12, 2) @default(0)
+
+  totalDeductions   Decimal   @db.Decimal(12, 2)
+  netPay            Decimal   @db.Decimal(12, 2)
+
+  status            PayslipStatus @default(DRAFT)
+  pdfUrl            String?       // generated payslip PDF path
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+
+  // Itemized breakdown stored separately for flexibility
+  deductions PayslipDeduction[]
+  earnings   PayslipEarning[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([payrollRunId, employeeId]) // one payslip per employee per run
+  @@index([employeeId])
+  @@map("payslips")
+}
+
+model PayslipDeduction {
+  id        String        @id @default(uuid())
+  payslipId String
+  type      DeductionType
+  label     String        // display name, e.g., "SSS Contribution"
+  amount    Decimal       @db.Decimal(12, 2)
+
+  payslip Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  @@index([payslipId])
+  @@map("payslip_deductions")
+}
+
+model PayslipEarning {
+  id        String      @id @default(uuid())
+  payslipId String
+  type      EarningType
+  label     String      // display name, e.g., "Overtime (8 hrs)"
+  amount    Decimal     @db.Decimal(12, 2)
+
+  payslip Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  @@index([payslipId])
+  @@map("payslip_earnings")
+}
+
+// ============================================================================
+// SYSTEM SETTINGS & COMPANY CONFIG
+// ============================================================================
+
+model SystemSetting {
+  id    String @id @default(uuid())
+  key   String @unique // e.g., "overtime_rate_multiplier", "sss_table_version"
+  value String          // JSON-encoded value for flexibility
+  group String?         // grouping: "payroll", "attendance", "company", etc.
+
+  updatedAt DateTime @updatedAt
+
+  @@index([group])
+  @@map("system_settings")
+}
+
+model GovernmentTable {
+  id         String   @id @default(uuid())
+  type       String   // "SSS", "PHILHEALTH", "PAGIBIG", "BIR"
+  rangeFrom  Decimal  @db.Decimal(12, 2) // salary bracket lower bound
+  rangeTo    Decimal  @db.Decimal(12, 2) // salary bracket upper bound
+  employeeShare Decimal @db.Decimal(12, 2)
+  employerShare Decimal @db.Decimal(12, 2)
+  effectiveDate DateTime @db.Date // when this rate schedule takes effect
+
+  @@index([type, effectiveDate])
+  @@map("government_tables")
+}
+
+// ============================================================================
+// AUDIT LOGS
+// ============================================================================
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String?     // null for system-generated actions
+  action     AuditAction
+  tableName  String      // which table was affected
+  recordId   String      // PK of the affected record
+  oldValues  Json?       // snapshot before change
+  newValues  Json?       // snapshot after change
+  ipAddress  String?
+  userAgent  String?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([tableName, recordId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
