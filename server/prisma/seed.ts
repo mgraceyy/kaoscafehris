@@ -58,7 +58,24 @@ async function main() {
     },
   });
 
-  // --- Employee profiles for manager + staff ---------------------------
+  // --- Employee profiles for admin + manager + staff ---------------------------
+  await prisma.employee.upsert({
+    where: { userId: admin.id },
+    update: {},
+    create: {
+      employeeId: "KAOS-0000",
+      userId: admin.id,
+      branchId: branch.id,
+      firstName: "Grace",
+      lastName: "Santos",
+      position: "Owner",
+      department: "Management",
+      employmentStatus: EmploymentStatus.ACTIVE,
+      dateHired: new Date("2023-01-01"),
+      basicSalary: 50000,
+    },
+  });
+
   await prisma.employee.upsert({
     where: { userId: managerUser.id },
     update: {},

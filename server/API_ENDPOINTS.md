@@ -11,10 +11,10 @@ Role guards: `ADMIN` = Admin/Owner, `MANAGER` = Branch Manager, `EMPLOYEE` = Emp
 ### `POST /api/auth/login` — **Public**
 Authenticate user and return JWT token.
 ```
-Request body:
+Request body (use employeeId or email):
 {
-  "email": "admin@kaoscafe.com",
-  "password": "secret123"
+  "employeeId": "KAOS-0000",
+  "password": "Admin@1234"
 }
 
 Response 200:
@@ -22,19 +22,26 @@ Response 200:
   "token": "eyJhbGciOi...",
   "user": {
     "id": "uuid",
-    "email": "admin@kaoscafe.com",
+    "email": "admin@kaoscafe.local",
     "role": "ADMIN",
+    "isActive": true,
     "employee": {
       "id": "uuid",
-      "employeeId": "KAOS-0001",
+      "employeeId": "KAOS-0000",
       "firstName": "Grace",
       "lastName": "Santos",
+      "position": "Owner",
       "branchId": "uuid",
-      "profilePhoto": "/uploads/photos/grace.jpg"
+      "profilePhoto": null
     }
   }
 }
 ```
+
+**Test Accounts:**
+- Admin (can manage schedules, shifts, templates): `KAOS-0000` / `Admin@1234`
+- Manager (can view schedules): `KAOS-0001` / `Manager@1234`
+- Employee (limited access): `KAOS-0002` / `Employee@1234`
 
 ### `POST /api/auth/logout`
 Clear auth cookie / invalidate session.
@@ -49,16 +56,17 @@ Get currently authenticated user profile.
 Response 200:
 {
   "id": "uuid",
-  "email": "admin@kaoscafe.com",
+  "email": "admin@kaoscafe.local",
   "role": "ADMIN",
+  "isActive": true,
   "employee": {
     "id": "uuid",
-    "employeeId": "KAOS-0001",
+    "employeeId": "KAOS-0000",
     "firstName": "Grace",
     "lastName": "Santos",
-    "branchId": "uuid",
     "position": "Owner",
-    "profilePhoto": "/uploads/photos/grace.jpg"
+    "branchId": "uuid",
+    "profilePhoto": null
   }
 }
 ```
