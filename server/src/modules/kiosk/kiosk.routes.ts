@@ -1,0 +1,190 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+import { randomUUID } from "node:crypto";
+import { Router, type Request, type Response, type NextFunction } from "express";
+import multer from "multer";
+import { z } from "zod";
+import prisma from "../../config/db.js";
+import { AppError } from "../../middleware/error-handler.js";
+import { getSetting } from "../../lib/settings-cache.js";
+import * as attendanceService from "../attendance/attendance.service.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const selfieDir = path.join(__dirname, "..", "..", "..", "uploads", "selfies");
+fs.mkdirSync(selfieDir, { recursive: true });
+
+const selfieUpload = multer({
+  storage: multer.diskStorage({
+    destination: selfieDir,
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname) || ".jpg";
+      cb(null, `${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  },
+});
+
+const router = Router();
+
+function isIpAllowed(clientIp: string, allowedList: string): boolean {
+  if (!allowedList.trim()) return true;
+  const entries = allowedList.split(",").map((s) => s.trim()).filter(Boolean);
+  const normalized = clientIp.replace(/^::ffff:/, "");
+  for (const entry of entries) {
+    if (entry === normalized) return true;
+    if (entry.includes("/")) {
+      const [network, bits] = entry.split("/");
+      const mask = ~((1 << (32 - Number(bits))) - 1) >>> 0;
+      const ipNum = ipToInt(normalized);
+      const netNum = ipToInt(network);
+      if (ipNum !== null && netNum !== null && (ipNum & mask) === (netNum & mask)) return true;
+    }
+  }
+  return false;
+}
+
+function ipToInt(ip: string): number | null {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => isNaN(p) || p < 0 || p > 255)) return null;
+  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+}
+
+async function requireKioskIp(req: Request, res: Response, next: NextFunction) {
+  try {
+    const allowedIps = await getSetting<string>("kiosk.allowed_ips", "");
+    const clientIp =
+      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+      req.socket.remoteAddress || "";
+    if (!isIpAllowed(clientIp, allowedIps)) throw new AppError(403, "Kiosk access is not allowed from this network");
+    next();
+  } catch (err) { next(err); }
+}
+
+async function requireKioskPin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const configuredPin = await getSetting<string>("kiosk.pin", "");
+    if (!configuredPin) return next();
+    const provided = (req.headers["x-kiosk-pin"] as string) || req.body?.kioskPin;
+    if (!provided || provided !== configuredPin) throw new AppError(401, "Invalid kiosk PIN");
+    next();
+  } catch (err) { next(err); }
+}
+
+router.use(requireKioskIp);
+router.get("/ping", (_req, res) => res.json({ ok: true }));
+router.use(requireKioskPin);
+
+/** Upload selfie from kiosk camera — returns the URL. */
+router.post("/upload-selfie", selfieUpload.single("selfie"), (req, res, next) => {
+  try {
+    if (!req.file) throw new AppError(400, "No file uploaded");
+    res.json({ url: `/uploads/selfies/${req.file.filename}` });
+  } catch (err) { next(err); }
+});
+
+/** Look up employee + today's shift + today's attendance + last clock-in. */
+router.get("/status/:employeeId", async (req, res, next) => {
+  try {
+    const emp = await prisma.employee.findUnique({
+      where: { employeeId: req.params.employeeId },
+      select: {
+        id: true, employeeId: true, firstName: true, lastName: true,
+        position: true, profilePhoto: true,
+        branch: { select: { id: true, name: true } },
+      },
+    });
+    if (!emp) throw new AppError(404, "Employee not found");
+
+    const nowUtc = new Date();
+    const dateKey = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate()));
+
+    // Today's shift
+    const assignment = await prisma.shiftAssignment.findFirst({
+      where: { employeeId: emp.id, shift: { date: dateKey } },
+      include: { shift: true },
+      orderBy: { shift: { startTime: "asc" } },
+    });
+
+    // Today's attendance
+    const attendance = await prisma.attendance.findUnique({
+      where: { employeeId_date: { employeeId: emp.id, date: dateKey } },
+    });
+
+    // Last clock-in (previous day)
+    const lastAttendance = await prisma.attendance.findFirst({
+      where: { employeeId: emp.id, date: { lt: dateKey } },
+      orderBy: { date: "desc" },
+    });
+
+    const formatTime = (d: Date) =>
+      d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+    res.json({
+      data: {
+        employee: {
+          id: emp.id, employeeId: emp.employeeId,
+          firstName: emp.firstName, lastName: emp.lastName,
+          position: emp.position, profilePhoto: emp.profilePhoto,
+          branch: emp.branch,
+        },
+        shift: assignment?.shift
+          ? {
+              id: assignment.shift.id,
+              name: assignment.shift.name,
+              startTime: formatTime(assignment.shift.startTime),
+              endTime: formatTime(assignment.shift.endTime),
+              date: assignment.shift.date.toISOString().slice(0, 10),
+            }
+          : null,
+        attendance: attendance
+          ? { id: attendance.id, clockIn: attendance.clockIn, clockOut: attendance.clockOut, status: attendance.status }
+          : null,
+        lastClockIn: lastAttendance
+          ? {
+              date: lastAttendance.date.toISOString().slice(0, 10),
+              clockIn: lastAttendance.clockIn,
+            }
+          : null,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+const kioskClockInSchema = z.object({
+  employeeId: z.string().trim().min(1),
+  selfieIn: z.string().optional(),
+  kioskPin: z.string().optional(),
+});
+
+const kioskClockOutSchema = z.object({
+  selfieOut: z.string().optional(),
+  kioskPin: z.string().optional(),
+});
+
+router.post("/clock-in", async (req, res, next) => {
+  try {
+    const body = kioskClockInSchema.parse(req.body);
+    const emp = await prisma.employee.findUnique({
+      where: { employeeId: body.employeeId },
+      select: { id: true },
+    });
+    if (!emp) throw new AppError(404, "Employee not found");
+    const record = await attendanceService.clockIn({ employeeId: emp.id, selfieIn: body.selfieIn });
+    res.status(201).json({ data: record });
+  } catch (err) { next(err); }
+});
+
+router.post("/clock-out/:attendanceId", async (req, res, next) => {
+  try {
+    const body = kioskClockOutSchema.parse(req.body);
+    const record = await attendanceService.clockOut(req.params.attendanceId, { selfieOut: body.selfieOut });
+    res.json({ data: record });
+  } catch (err) { next(err); }
+});
+
+export default router;

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/api/health)",
+      "Read(//tmp/**)",
+      "Bash(cd /tmp)",
+      "Bash(curl -s -o payslip.pdf -w 'HTTP %{http_code} · %{size_download} bytes · %{content_type}\\\\n' -H 'Authorization: Bearer __TRACKED_VAR__' http://localhost:3000/api/payroll/payslips/__TRACKED_VAR__/pdf)",
+      "Bash(curl -s -o run.pdf -w 'HTTP %{http_code} · %{size_download} bytes · %{content_type}\\\\n' -H 'Authorization: Bearer __TRACKED_VAR__' http://localhost:3000/api/payroll/runs/__TRACKED_VAR__/pdf)",
+      "Bash(curl -s -o run.xlsx -w 'HTTP %{http_code} · %{size_download} bytes · %{content_type}\\\\n' -H 'Authorization: Bearer __TRACKED_VAR__' http://localhost:3000/api/payroll/runs/__TRACKED_VAR__/xlsx)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/api/auth/me)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null http://localhost:3000/api/auth/me)",
+      "Bash(curl -s -X POST http://localhost:3000/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"employee@kaoscafe.local\",\"password\":\"Employee@1234\"}')",
+      "Bash(cmd /c \"cd D:\\\\FILES\\\\PROJECTS\\\\HRIS\\\\client && dir node_modules\\\\lucide-react /b 2>&1\")"
+    ]
+  }
+}

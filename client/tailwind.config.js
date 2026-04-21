@@ -34,6 +34,15 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        kaos: {
+          blush:   "#F7EBEB",
+          rose:    "#A28587",
+          red:     "#B10B0B",
+          crimson: "#811C12",
+          maroon:  "#280906",
+          dark:    "#110200",
+          black:   "#040404",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

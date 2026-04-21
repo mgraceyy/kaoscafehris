@@ -1,24 +1,21 @@
 import { Router } from "express";
+import multer from "multer";
 import { authenticate, authorize } from "../../middleware/auth.js";
+import { validate } from "../../middleware/validate.js";
+import { createEmployeeSchema, updateEmployeeSchema } from "./employee.schema.js";
+import * as employeeController from "./employee.controller.js";
 
 const router = Router();
+const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 } });
 
-router.use(authenticate);
+router.use(authenticate, authorize("ADMIN"));
 
-// GET    /api/employees                    — list employees (filterable, paginated)
-// GET    /api/employees/:id                — get full employee profile
-// POST   /api/employees                    — create employee + user account
-// PUT    /api/employees/:id                — update employee profile
-// DELETE /api/employees/:id                — deactivate employee
-// POST   /api/employees/import             — bulk import via CSV
-// GET    /api/employees/import/template    — download CSV template
-
-router.get("/import/template", authorize("ADMIN", "MANAGER"), /* employeeController.downloadTemplate */);
-router.post("/import", authorize("ADMIN"), /* employeeController.importCsv */);
-router.get("/", authorize("ADMIN", "MANAGER"), /* employeeController.list */);
-router.get("/:id", authorize("ADMIN", "MANAGER"), /* employeeController.getById */);
-router.post("/", authorize("ADMIN"), /* employeeController.create */);
-router.put("/:id", authorize("ADMIN", "MANAGER"), /* employeeController.update */);
-router.delete("/:id", authorize("ADMIN"), /* employeeController.deactivate */);
+router.get("/", employeeController.list);
+router.get("/import/template", employeeController.csvTemplate);
+router.get("/:id", employeeController.getById);
+router.post("/", validate(createEmployeeSchema), employeeController.create);
+router.post("/import", csvUpload.single("file"), employeeController.importCsv);
+router.put("/:id", validate(updateEmployeeSchema), employeeController.update);
+router.delete("/:id", employeeController.deactivate);
 
 export default router;

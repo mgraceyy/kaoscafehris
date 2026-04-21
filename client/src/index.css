@@ -4,24 +4,49 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* KAOS Cafe palette */
+    /* #F7EBEB light blush  */
+    /* #A28587 muted rose   */
+    /* #B10B0B bright red   */
+    /* #811C12 crimson      */
+    /* #280906 dark maroon  */
+    /* #110200 near-black   */
+    /* #040404 black        */
+
+    --background: 0 43% 95%;          /* #F7EBEB */
+    --foreground: 0 97% 2%;           /* #040404 */
+
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --card-foreground: 0 97% 2%;      /* #040404 */
+
+    --primary: 0 74% 32%;             /* #8C1515 — KAOS brand maroon */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 74% 32%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 0 20% 90%;               /* soft blush for muted surfaces */
+    --muted-foreground: 0 10% 40%;
+
+    --accent: 0 74% 32%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 20% 88%;
+    --input: 0 20% 88%;
+    --ring: 0 74% 32%;
     --radius: 0.5rem;
+
+    /* Raw hex tokens for direct use */
+    --kaos-blush:   #F7EBEB;
+    --kaos-rose:    #A28587;
+    --kaos-red:     #B10B0B;
+    --kaos-crimson: #811C12;
+    --kaos-maroon:  #280906;
+    --kaos-dark:    #110200;
+    --kaos-black:   #040404;
   }
 }
 

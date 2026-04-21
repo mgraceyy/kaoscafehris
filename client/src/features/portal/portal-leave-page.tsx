@@ -1,0 +1,305 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarDays, Loader2, X } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
+import { extractErrorMessage } from "@/lib/api";
+import { useAuthStore } from "@/features/auth/auth.store";
+import {
+  createRequest,
+  listRequests,
+  type LeaveRequest,
+  type LeaveStatus,
+  type LeaveType,
+} from "@/features/leave/leave.api";
+
+const BRAND = "#8C1515";
+
+const TYPE_LABEL: Record<LeaveType, string> = {
+  VACATION: "Vacation Leave",
+  SICK: "Sick Leave",
+  EMERGENCY: "Emergency Leave",
+  MATERNITY: "Maternity Leave",
+  PATERNITY: "Paternity Leave",
+  UNPAID: "Unpaid Leave",
+};
+
+const MONTH_NAMES = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+function fmtDate(iso: string) {
+  const d = new Date(iso + "T00:00:00");
+  return `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+function StatusBadge({ status }: { status: LeaveStatus }) {
+  const map = {
+    PENDING:   { bg: "#FEF3C7", color: "#D97706", label: "Pending" },
+    APPROVED:  { bg: "#D1FAE5", color: "#065F46", label: "Complete" },
+    REJECTED:  { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
+    CANCELLED: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
+  };
+  const s = map[status];
+  return (
+    <span
+      className="rounded-full px-2.5 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: s.bg, color: s.color }}
+    >
+      {s.label}
+    </span>
+  );
+}
+
+function LeaveCard({ request }: { request: LeaveRequest }) {
+  return (
+    <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl"
+            style={{ backgroundColor: "#FAF0F0" }}
+          >
+            <CalendarDays className="h-5 w-5" style={{ color: BRAND }} />
+          </div>
+          <p className="font-semibold text-gray-800">{TYPE_LABEL[request.leaveType]}</p>
+        </div>
+        <StatusBadge status={request.status} />
+      </div>
+
+      <div className="flex items-center gap-2 mb-1.5">
+        <CalendarDays className="h-4 w-4 text-gray-400 shrink-0" />
+        <p className="text-sm text-gray-700">
+          {fmtDate(request.startDate.slice(0, 10))} – {fmtDate(request.endDate.slice(0, 10))}
+        </p>
+      </div>
+
+      {request.reason && (
+        <p className="text-sm text-gray-600 mb-2 ml-6">{request.reason}</p>
+      )}
+
+      <p className="text-xs text-gray-400 ml-6">
+        Submitted {fmtDate(request.createdAt.slice(0, 10))}
+      </p>
+    </div>
+  );
+}
+
+// ─── New Leave Request Form ──────────────────────────────────────────────────
+
+function NewLeaveRequestForm({
+  employeeId,
+  onClose,
+}: {
+  employeeId: string;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const [leaveType, setLeaveType] = useState<LeaveType>("VACATION");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [reason, setReason] = useState("");
+
+  const mut = useMutation({
+    mutationFn: () => {
+      if (!startDate || !endDate) throw new Error("Please fill in all required fields");
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const totalDays = Math.max(
+        1,
+        Math.round((end.getTime() - start.getTime()) / 86400000) + 1
+      );
+      return createRequest({ employeeId, leaveType, startDate, endDate, totalDays, reason: reason || undefined });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["leave-requests"] });
+      toast("Leave request submitted", "success");
+      onClose();
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-14 pb-5" style={{ backgroundColor: BRAND }}>
+        <h2 className="text-xl font-bold text-white">New Leave Request</h2>
+        <button
+          onClick={onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5" style={{ backgroundColor: "#FAF0F0" }}>
+        {/* Date Applied */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-gray-700">
+            Date Applied <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <input
+              type="date"
+              value={new Date().toISOString().slice(0, 10)}
+              readOnly
+              className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 pr-10"
+            />
+            <CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" style={{ color: BRAND }} />
+          </div>
+        </div>
+
+        {/* Leave Date */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-gray-700">
+            Leave Date <span className="text-red-500">*</span>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <p className="text-xs text-gray-500">Start Date</p>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700"
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-gray-500">End Date</p>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Leave Type */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-gray-700">
+            Leave Type <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <select
+              value={leaveType}
+              onChange={(e) => setLeaveType(e.target.value as LeaveType)}
+              className="w-full appearance-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 pr-10"
+            >
+              {Object.entries(TYPE_LABEL).map(([v, label]) => (
+                <option key={v} value={v}>{label}</option>
+              ))}
+            </select>
+            <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Reason */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-gray-700">
+            Reason <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Enter reason for leave"
+            rows={5}
+            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 resize-none"
+          />
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="px-5 pb-8 pt-3 bg-white border-t border-gray-100 space-y-3">
+        <button
+          onClick={() => mut.mutate()}
+          disabled={mut.isPending}
+          className="w-full rounded-full py-3.5 text-sm font-semibold text-white transition-colors"
+          style={{ backgroundColor: BRAND }}
+        >
+          {mut.isPending ? (
+            <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+          ) : (
+            "Submit"
+          )}
+        </button>
+        <button
+          onClick={onClose}
+          disabled={mut.isPending}
+          className="w-full rounded-full py-3.5 text-sm font-semibold text-gray-700 border border-gray-200"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
+
+export default function PortalLeavePage() {
+  const user = useAuthStore((s) => s.user);
+  const [showForm, setShowForm] = useState(false);
+
+  const query = useQuery({
+    queryKey: ["leave-requests", { employeeId: user?.employee?.id }],
+    queryFn: () =>
+      listRequests(user?.employee ? { employeeId: user.employee!.id } : {}),
+    enabled: !!user?.employee,
+  });
+
+  return (
+    <div className="relative">
+      {/* Header */}
+      <div className="rounded-b-[28px] px-6 pt-14 pb-6" style={{ backgroundColor: BRAND }}>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-white">Leave Request</h1>
+          <img src="/kaos-logo.svg" alt="KAOS" className="h-10 w-auto brightness-0 invert opacity-60" />
+        </div>
+      </div>
+
+      <div className="px-4 pt-5 pb-24 space-y-4">
+        <h2 className="text-[15px] font-semibold text-gray-800">Recent Leave Requests</h2>
+
+        {query.isLoading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+          </div>
+        ) : query.data?.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-400">
+            No leave requests yet.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {(query.data ?? []).map((r) => (
+              <LeaveCard key={r.id} request={r} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Sticky bottom button */}
+      <div className="fixed bottom-16 left-0 right-0 px-4 pb-3 pt-1">
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full rounded-full py-4 text-sm font-semibold text-white shadow-lg transition-colors"
+          style={{ backgroundColor: BRAND }}
+        >
+          New Leave Request
+        </button>
+      </div>
+
+      {showForm && user?.employee && (
+        <NewLeaveRequestForm
+          employeeId={user.employee.id}
+          onClose={() => setShowForm(false)}
+        />
+      )}
+    </div>
+  );
+}
