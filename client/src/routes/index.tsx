@@ -35,8 +35,8 @@ export default function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
-      {/* Kiosk — standalone, no sidebar, no auth required */}
-      <Route path="/kiosk" element={<KioskPage />} />
+      {/* DTR — standalone, no sidebar, no auth required */}
+      <Route path="/dtr" element={<KioskPage />} />
 
       {/* ── Employee Portal (mobile-first, bottom nav) ── */}
       <Route

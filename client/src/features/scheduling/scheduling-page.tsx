@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, format, getDay, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X, Settings } from "lucide-react";
@@ -63,6 +63,13 @@ export default function SchedulingPage() {
     queryKey: ["branches", { active: true }],
     queryFn: () => listBranches({ isActive: true }),
   });
+
+  // Auto-select when there's only one branch
+  useEffect(() => {
+    if (branchesQuery.data?.length === 1 && !branchId) {
+      setBranchId(branchesQuery.data[0].id);
+    }
+  }, [branchesQuery.data, branchId]);
 
   const calWeekStart = startOfWeek(calendarWeek, { weekStartsOn: 1 });
   const calMonthStart = startOfMonth(calendarMonth);
