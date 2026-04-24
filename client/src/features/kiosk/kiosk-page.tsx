@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, CalendarDays, CheckCircle2, Clock, LogOut, RefreshCw, XCircle } from "lucide-react";
+import { AlertCircle, Building2, CheckCircle2, Clock, LogOut, RefreshCw, User, XCircle } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import {
   getKioskStatus, kioskClockIn, kioskClockOut, pingKiosk, uploadKioskSelfie,
   type KioskAttendance, type KioskEmployee, type KioskShift, type KioskStatusData,
 } from "./kiosk.api";
 
-const PIN_KEY = "kiosk_pin";
-const BRAND = "#8C1515";
+const PIN_KEY    = "kiosk_pin";
+const BRAND      = "#811c12";
+const DARK       = "#280906";
+const BLUSH      = "#f7ebeb";
+const ROSE       = "#a28587";
+const NEAR_BLACK = "#110200";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -26,6 +30,40 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
+function useLiveClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+// ─── Shared header ────────────────────────────────────────────────────────────
+
+function KioskHeader({ name }: { name: string }) {
+  const now = useLiveClock();
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+  return (
+    <div style={{ background: `linear-gradient(160deg, ${DARK} 0%, ${BRAND} 100%)`, padding: "22px 20px", flexShrink: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 13 }}>{greeting()},</div>
+          <div style={{ color: "#fff", fontSize: 22, fontWeight: 800, letterSpacing: -0.3, marginTop: 1 }}>{name}</div>
+          <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 5 }}>
+            <Clock size={12} color="rgba(255,255,255,0.5)" />
+            <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+              {timeStr} · {dateStr}
+            </span>
+          </div>
+        </div>
+        <img src="/kaos-logo.svg" alt="KAOS" style={{ height: 40, width: "auto", filter: "brightness(0) invert(1)", opacity: 0.9 }} />
+      </div>
+    </div>
+  );
+}
 
 // ─── Screen 1: ID Entry ──────────────────────────────────────────────────────
 
@@ -37,39 +75,47 @@ function IdEntryScreen({
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-8 gap-6"
-      style={{ backgroundImage: "url('/login-bg.jpg')", backgroundSize: "cover", backgroundPosition: "center" }}>
-      <div className="absolute inset-0 bg-black/30" />
-      <img src="/kaos-logo.svg" alt="KAOS" className="relative z-10 h-20 w-auto brightness-0 invert" />
-      <h1 className="relative z-10 text-2xl font-bold text-white tracking-wide">KAOS Attendance</h1>
+    <div style={{ height: "100%", position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'Inter',sans-serif", overflow: "hidden", minHeight: "100vh" }}>
+      <div style={{ position: "absolute", inset: 0, backgroundImage: "url('/login-bg.jpg')", backgroundSize: "cover", backgroundPosition: "center" }} />
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.3)" }} />
 
-      <div className="relative z-10 w-full max-w-xs space-y-3 mt-2">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Enter ID Number"
-          value={value}
-          onChange={(e) => setValue(e.target.value.toUpperCase())}
-          onKeyDown={(e) => e.key === "Enter" && value.trim() && onLookup(value.trim())}
-          className="w-full rounded-full bg-white px-5 py-3 text-sm text-gray-700 placeholder-gray-400 outline-none focus:ring-2 focus:ring-white/40 shadow"
-        />
-        <button
-          onClick={() => value.trim() && onLookup(value.trim())}
-          disabled={loading || !value.trim()}
-          className="w-full rounded-full py-3 text-sm font-bold text-white disabled:opacity-50"
-          style={{ backgroundColor: "#2D0606" }}
-        >
-          {loading ? "Looking up…" : "Login"}
-        </button>
-        {error && (
-          <div className="flex items-center justify-center gap-1.5 text-xs text-white/80 pt-1">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-            {error}
-          </div>
-        )}
+      <div style={{ position: "relative", zIndex: 2, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", padding: "0 36px", gap: 0 }}>
+        <img src="/kaos-logo.svg" alt="KAOS" style={{ height: 68, width: "auto", filter: "brightness(0) invert(1)" }} />
+        <div style={{ color: "#fff", fontSize: 24, fontWeight: 800, marginTop: 10, letterSpacing: 0.2, textAlign: "center" }}>KAOS Café Daily Time Record</div>
+
+        <div style={{ width: "100%", marginTop: 32, display: "flex", flexDirection: "column", gap: 12 }}>
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Enter ID Number"
+            value={value}
+            onChange={(e) => setValue(e.target.value.toUpperCase())}
+            onKeyDown={(e) => e.key === "Enter" && value.trim() && onLookup(value.trim())}
+            style={{
+              width: "100%", padding: "15px 20px", borderRadius: 40,
+              border: "none", background: "rgba(255,255,255,0.92)",
+              color: "#333", fontSize: 14, outline: "none", letterSpacing: 0.5,
+            }}
+          />
+          <button
+            onClick={() => value.trim() && onLookup(value.trim())}
+            disabled={loading || !value.trim()}
+            style={{
+              width: "100%", padding: "15px 20px", borderRadius: 40,
+              border: "none", background: DARK,
+              color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer",
+              opacity: loading || !value.trim() ? 0.5 : 1,
+            }}
+          >
+            {loading ? "Looking up…" : "Login"}
+          </button>
+        </div>
+
+        <div style={{ marginTop: 20, minHeight: 22, display: "flex", alignItems: "center", gap: 6, opacity: error ? 1 : 0, transition: "opacity .25s" }}>
+          <AlertCircle size={13} color="rgba(255,255,255,0.75)" />
+          <span style={{ fontSize: 12.5, color: "rgba(255,255,255,0.75)" }}>{error || "ID does not exist"}</span>
+        </div>
       </div>
-
-      <span className="relative z-10 absolute bottom-6 text-xs text-white/40">v. 0.0.0 - alpha</span>
     </div>
   );
 }
@@ -82,44 +128,41 @@ function ShiftCard({
   const isClockedIn = !!attendance && !attendance.clockOut;
   const isDone = !!attendance?.clockOut;
 
-  const badgeStyle = isDone
-    ? { backgroundColor: "#D4EDDA", color: "#1A7F40" }
+  const badge = isDone
+    ? { bg: "#dcfce7", color: "#15803d", label: "Timed Out" }
     : isClockedIn
-    ? { backgroundColor: "#FFF3CD", color: "#856404" }
-    : { backgroundColor: "#E2E2E2", color: "#555" };
-
-  const badgeLabel = isDone ? "Timed Out" : isClockedIn ? "Timed In" : "Not Yet Timed In";
+    ? { bg: "#fef3c7", color: "#92400e", label: "Timed In" }
+    : { bg: "#fdf0e0", color: "#a06010", label: "Not Yet Timed In" };
 
   return (
-    <div className="rounded-2xl bg-white shadow-sm p-5 space-y-3">
-      <div className="flex items-start justify-between">
-        <h2 className="font-bold text-gray-900 text-base">Today's Shift</h2>
-        <span className="rounded-full px-3 py-0.5 text-xs font-medium" style={badgeStyle}>
-          {badgeLabel}
+    <div style={{ background: "#fff", borderRadius: 16, padding: "16px 18px", boxShadow: "0 2px 10px rgba(140,21,21,0.07)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: NEAR_BLACK }}>Today's Shift</span>
+        <span style={{ fontSize: 10.5, fontWeight: 700, background: badge.bg, color: badge.color, borderRadius: 20, padding: "4px 12px", letterSpacing: 0.3 }}>
+          {badge.label}
         </span>
       </div>
       {shift ? (
         <>
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <Clock className="h-4 w-4 text-gray-400 shrink-0" />
-            <span className="font-medium">{shift.startTime} – {shift.endTime}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <Clock size={14} color={ROSE} />
+            <span style={{ fontSize: 13.5, color: "#222", fontWeight: 600 }}>{shift.startTime} – {shift.endTime}</span>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <CalendarDays className="h-4 w-4 text-gray-400 shrink-0" />
-            <span>{shift.name}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <Building2 size={14} color={ROSE} />
+            <span style={{ fontSize: 13, color: "#555" }}>{shift.name}</span>
           </div>
         </>
       ) : (
-        <p className="text-sm text-gray-500">No shift scheduled for today.</p>
+        <p style={{ fontSize: 13, color: "#999", marginBottom: 10 }}>No shift scheduled for today.</p>
       )}
-      <hr className="border-gray-100" />
-      <p className="text-xs text-gray-400">
+      <div style={{ borderTop: "1px solid #f0e6e6", paddingTop: 10, fontSize: 12, color: "#aaa" }}>
         {lastClockIn
           ? `Last clock-in: ${fmtDate(lastClockIn.date)} at ${fmtTime(lastClockIn.clockIn)}`
           : isClockedIn
           ? `Clocked in at ${fmtTime(attendance!.clockIn)}`
           : "No previous clock-in on record"}
-      </p>
+      </div>
     </div>
   );
 }
@@ -128,22 +171,40 @@ function CameraView({
   videoRef, onCapture, isClockedIn,
 }: { videoRef: React.RefObject<HTMLVideoElement | null>; onCapture: () => void; isClockedIn: boolean }) {
   return (
-    <div className="space-y-3">
-      <h2 className="font-bold text-gray-900 text-base">Photo Attendance</h2>
-      <div className="rounded-2xl bg-white shadow-sm p-4 space-y-3">
-        <p className="text-center text-xs text-gray-400">Center your face in the frame</p>
-        <div className="relative overflow-hidden rounded-xl bg-gray-900" style={{ aspectRatio: "4/3" }}>
-          <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: NEAR_BLACK, marginBottom: 10 }}>Photo Attendance</div>
+
+      <div style={{ borderRadius: 18, overflow: "hidden", position: "relative", background: NEAR_BLACK, aspectRatio: "3/4" }}>
+        <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        {/* Face guide oval */}
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+          <div style={{
+            width: 160, height: 200,
+            border: "2px solid rgba(255,255,255,0.35)",
+            borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
+            boxShadow: "0 0 0 9999px rgba(0,0,0,0.25)",
+          }} />
         </div>
-        <button
-          onClick={onCapture}
-          className="flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold text-white shadow"
-          style={{ backgroundColor: isClockedIn ? "#EF4444" : "#22C55E" }}
-        >
-          <Clock className="h-4 w-4" />
-          {isClockedIn ? "Time Out" : "Time In"}
-        </button>
+        <div style={{ position: "absolute", bottom: 12, left: 0, right: 0, textAlign: "center" }}>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", background: "rgba(0,0,0,0.35)", borderRadius: 20, padding: "4px 14px" }}>
+            Center your face in the frame
+          </span>
+        </div>
       </div>
+
+      <button
+        onClick={onCapture}
+        style={{
+          width: "100%", marginTop: 12, padding: "16px", borderRadius: 14,
+          background: isClockedIn ? "#b91c1c" : "#2d7a3a", border: "none",
+          color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          boxShadow: isClockedIn ? "0 4px 14px rgba(185,28,28,0.3)" : "0 4px 14px rgba(45,122,58,0.3)",
+        }}
+      >
+        <Clock size={18} color="#fff" />
+        {isClockedIn ? "Time Out" : "Time In"}
+      </button>
     </div>
   );
 }
@@ -161,40 +222,37 @@ function MainScreen({
   const isDone = !!attendance?.clockOut;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#FAF0F0" }}>
-      {/* Header */}
-      <div className="px-5 pt-8 pb-6 flex items-start justify-between" style={{ backgroundColor: BRAND }}>
-        <div>
-          <p className="text-white/80 text-sm">{greeting()},</p>
-          <p className="text-white font-bold text-xl">{employee.firstName} {employee.lastName[0]}. {employee.lastName.slice(0)}</p>
-        </div>
-        <img src="/kaos-logo.svg" alt="KAOS" className="h-9 w-auto brightness-0 invert opacity-80 mt-1" />
-      </div>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: BLUSH, fontFamily: "'Inter', sans-serif" }}>
+      <KioskHeader name={`${employee.firstName} ${employee.lastName}`} />
 
-      {/* Body */}
-      <div className="flex-1 px-4 py-5 space-y-4">
-        <ShiftCard shift={shift} attendance={attendance} lastClockIn={lastClockIn} />
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 12px" }}>
+        <div style={{ marginBottom: 14 }}>
+          <ShiftCard shift={shift} attendance={attendance} lastClockIn={lastClockIn} />
+        </div>
 
         {!isDone ? (
-          <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={isClockedIn} />
+          <div style={{ marginBottom: 14 }}>
+            <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={isClockedIn} />
+          </div>
         ) : (
-          <div className="rounded-2xl bg-white shadow-sm p-5 text-center space-y-1">
-            <CheckCircle2 className="mx-auto h-10 w-10 text-green-500" />
-            <p className="font-semibold text-gray-800">Shift complete</p>
-            <p className="text-xs text-gray-400">
+          <div style={{ background: "#fff", borderRadius: 16, padding: "20px", textAlign: "center", marginBottom: 14, boxShadow: "0 2px 10px rgba(140,21,21,0.07)" }}>
+            <CheckCircle2 size={40} color="#15803d" style={{ margin: "0 auto 8px" }} />
+            <p style={{ fontWeight: 600, color: NEAR_BLACK }}>Shift complete</p>
+            <p style={{ fontSize: 12, color: "#aaa", marginTop: 4 }}>
               In {fmtTime(attendance!.clockIn)} · Out {fmtTime(attendance!.clockOut!)}
             </p>
           </div>
         )}
 
-        <button
-          onClick={onLogout}
-          className="flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold text-white shadow mt-2"
-          style={{ backgroundColor: BRAND }}
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </button>
+        <div style={{ textAlign: "center", paddingBottom: 8 }}>
+          <button
+            onClick={onLogout}
+            style={{ background: "none", border: "none", color: ROSE, fontSize: 12.5, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 500 }}
+          >
+            <LogOut size={13} color={ROSE} />
+            Not you? Switch employee
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -214,91 +272,96 @@ function ConfirmScreen({
 }) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+  const actionBadge = isClockedIn
+    ? { bg: "#fee2e2", color: "#991b1b", label: "Time Out" }
+    : { bg: "#dcfce7", color: "#166534", label: "Time In" };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#FAF0F0" }}>
-      {/* Header */}
-      <div className="px-5 pt-8 pb-6 flex items-start justify-between" style={{ backgroundColor: BRAND }}>
-        <div>
-          <p className="text-white/80 text-sm">{greeting()},</p>
-          <p className="text-white font-bold text-xl">{employee.firstName} {employee.lastName}</p>
-        </div>
-        <img src="/kaos-logo.svg" alt="KAOS" className="h-9 w-auto brightness-0 invert opacity-80 mt-1" />
-      </div>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: BLUSH, fontFamily: "'Inter', sans-serif" }}>
+      <KioskHeader name={`${employee.firstName} ${employee.lastName}`} />
 
-      {/* Card */}
-      <div className="flex-1 px-4 py-5">
-        <div className="rounded-2xl bg-white shadow-sm p-5 space-y-4">
-          <div className="text-center">
-            <h2 className="font-bold text-gray-900 text-base">Confirm Your Photo</h2>
-            <p className="text-xs text-gray-400">Review before submitting</p>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+        <div style={{ background: "#fff", borderRadius: 18, padding: "20px", boxShadow: "0 2px 12px rgba(140,21,21,0.08)" }}>
+
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: NEAR_BLACK }}>Confirm Your Photo</div>
+            <div style={{ fontSize: 12, color: "#aaa", marginTop: 3 }}>Review carefully before submitting</div>
           </div>
 
-          <div className="overflow-hidden rounded-xl" style={{ aspectRatio: "4/3" }}>
-            <img src={photoUrl} alt="Selfie" className="h-full w-full object-cover" />
+          <div style={{ borderRadius: 14, overflow: "hidden", aspectRatio: "4/3", marginBottom: 16 }}>
+            <img src={photoUrl} alt="Selfie" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center justify-center gap-6">
+          <div style={{ display: "flex", gap: 12, marginBottom: 18 }}>
             <button
               onClick={onRetake}
               disabled={loading}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 disabled:opacity-50"
+              style={{
+                flex: 1, padding: "13px", borderRadius: 12, border: "1.5px solid #ddd",
+                background: "#fff", color: "#555", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                opacity: loading ? 0.5 : 1,
+              }}
             >
-              <RefreshCw className="h-5 w-5" />
+              <RefreshCw size={15} color="#888" /> Retake
             </button>
             <button
               onClick={onConfirm}
               disabled={loading}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500 text-white hover:bg-green-600 disabled:opacity-50"
+              style={{
+                flex: 1.4, padding: "13px", borderRadius: 12, border: "none",
+                background: "#2d7a3a", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                boxShadow: "0 3px 10px rgba(45,122,58,0.25)",
+                opacity: loading ? 0.7 : 1,
+              }}
             >
               {loading ? (
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
               ) : (
-                <CheckCircle2 className="h-5 w-5" />
+                <CheckCircle2 size={15} color="#fff" />
               )}
+              {loading ? "Saving…" : isClockedIn ? "Confirm Time Out" : "Confirm Time In"}
             </button>
           </div>
 
-          {/* Employee details */}
-          <div className="border-t pt-4 space-y-2">
-            <p className="text-lg text-gray-900">
-              <span className="font-bold">{employee.lastName},</span> {employee.firstName}
-            </p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <div style={{ borderTop: "1px solid #f0e6e6", paddingTop: 14 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: NEAR_BLACK, marginBottom: 10 }}>
+              <span style={{ fontWeight: 900 }}>{employee.lastName},</span> {employee.firstName}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px" }}>
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Action</p>
-                <span
-                  className="inline-block mt-0.5 rounded-full px-2 py-0.5 text-xs font-medium"
-                  style={isClockedIn
-                    ? { backgroundColor: "#FEE2E2", color: "#991B1B" }
-                    : { backgroundColor: "#DCFCE7", color: "#166534" }}
-                >
-                  {isClockedIn ? "Time Out" : "Time In"}
+                <div style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginBottom: 3 }}>Action</div>
+                <span style={{ display: "inline-block", background: actionBadge.bg, color: actionBadge.color, fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "3px 12px" }}>
+                  {actionBadge.label}
                 </span>
               </div>
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Branch</p>
-                <p className="font-medium text-gray-800 mt-0.5">{employee.branch.name}</p>
+                <div style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginBottom: 3 }}>Branch</div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: NEAR_BLACK }}>{employee.branch.name}</span>
               </div>
-              <div className="col-span-2">
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Time</p>
-                <p className="font-medium text-gray-800 mt-0.5">{timeStr}</p>
+              <div>
+                <div style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginBottom: 3 }}>Time</div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: NEAR_BLACK, fontVariantNumeric: "tabular-nums" }}>{timeStr}</span>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginBottom: 3 }}>Date</div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: NEAR_BLACK }}>{dateStr}</span>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="px-4 pb-6">
-        <button
-          className="flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold text-white shadow"
-          style={{ backgroundColor: BRAND }}
-          onClick={onRetake}
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </button>
+        <div style={{ textAlign: "center", marginTop: 14 }}>
+          <button
+            onClick={onRetake}
+            style={{ background: "none", border: "none", color: ROSE, fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}
+          >
+            <LogOut size={12} color={ROSE} /> Cancel & switch employee
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -306,42 +369,93 @@ function ConfirmScreen({
 
 // ─── Screen 4: Success ───────────────────────────────────────────────────────
 
-function SuccessScreen({ isClockedIn, recordedTime, onReturnNow }: { isClockedIn: boolean; recordedTime: string; onReturnNow: () => void }) {
+function SuccessScreen({
+  actionWasClockIn, recordedTime, statusData, onReturnNow,
+}: {
+  actionWasClockIn: boolean;
+  recordedTime: string;
+  statusData: KioskStatusData;
+  onReturnNow: () => void;
+}) {
   const [seconds, setSeconds] = useState(5);
+  const now = useLiveClock();
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
-  // Tick the countdown
   useEffect(() => {
     const id = setInterval(() => setSeconds((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Redirect when countdown hits zero — separate effect, never called during render
   useEffect(() => {
     if (seconds === 0) onReturnNow();
   }, [seconds, onReturnNow]);
 
+  const { employee, shift } = statusData;
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-8 bg-white gap-5">
-      <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
-        <CheckCircle2 className="h-5 w-5" />
-        Time Recorded
+    <div style={{
+      minHeight: "100vh", display: "flex", flexDirection: "column",
+      background: `linear-gradient(160deg, ${DARK} 0%, ${BRAND} 55%, #a01818 100%)`,
+      fontFamily: "'Inter', sans-serif", overflow: "hidden",
+    }}>
+      <div style={{ padding: "28px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <img src="/kaos-logo.svg" alt="KAOS" style={{ height: 44, width: "auto", filter: "brightness(0) invert(1)" }} />
+        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", fontVariantNumeric: "tabular-nums" }}>{timeStr} · {dateStr}</span>
       </div>
 
-      <div className="text-5xl font-bold tabular-nums" style={{ color: BRAND }}>
-        {recordedTime}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 28px", gap: 6 }}>
+        <div style={{ width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8, border: "2px solid rgba(255,255,255,0.25)" }}>
+          <CheckCircle2 size={40} color="#fff" />
+        </div>
+
+        <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 600 }}>Time Recorded</div>
+        <div style={{ color: "#fff", fontSize: 44, fontWeight: 900, letterSpacing: -1, fontVariantNumeric: "tabular-nums" }}>{recordedTime}</div>
+        <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13 }}>
+          {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+        </div>
+
+        <div style={{ marginTop: 20, background: "rgba(255,255,255,0.1)", borderRadius: 16, padding: "16px 22px", width: "100%", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.15)" }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginBottom: 10 }}>Shift Summary</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {shift && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Clock size={14} color="rgba(255,255,255,0.5)" />
+                <span style={{ fontSize: 13.5, color: "#fff", fontWeight: 600 }}>{shift.startTime} – {shift.endTime}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Building2 size={14} color="rgba(255,255,255,0.5)" />
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>{employee.branch.name}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <User size={14} color="rgba(255,255,255,0.5)" />
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>{employee.firstName} {employee.lastName}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, marginTop: 12, textAlign: "center" }}>
+          {actionWasClockIn ? `Have a great shift, ${employee.firstName}! ☕` : `Have a great rest, ${employee.firstName}!`}
+        </div>
       </div>
 
-      <p className="text-gray-500 text-sm">{isClockedIn ? "Have a great shift!" : "Have a great rest!"}</p>
-
-      <hr className="w-full border-gray-100" />
-
-      <p className="text-sm text-gray-400 text-center">
-        Returning to login screen in <span className="font-bold text-gray-700">{seconds}</span> seconds
-      </p>
-
-      <button onClick={onReturnNow} className="text-sm font-semibold underline text-gray-700 hover:text-gray-900">
-        Return to Login Now
-      </button>
+      <div style={{ padding: "0 28px 40px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
+          Returning to login in{" "}
+          <span style={{ fontWeight: 800, color: "rgba(255,255,255,0.8)", fontVariantNumeric: "tabular-nums" }}>{seconds}</span>
+          {" "}seconds
+        </div>
+        <div style={{ width: "100%", height: 3, background: "rgba(255,255,255,0.12)", borderRadius: 4, overflow: "hidden" }}>
+          <div style={{ height: "100%", background: "rgba(255,255,255,0.5)", borderRadius: 4, width: `${(seconds / 5) * 100}%`, transition: "width 1s linear" }} />
+        </div>
+        <button
+          onClick={onReturnNow}
+          style={{ background: "none", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 10, padding: "9px 22px", color: "rgba(255,255,255,0.7)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}
+        >
+          Return to Login Now
+        </button>
+      </div>
     </div>
   );
 }
@@ -414,7 +528,6 @@ export default function KioskPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Start camera
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
@@ -425,7 +538,6 @@ export default function KioskPage() {
     }
   }, []);
 
-  // Stop camera
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -481,10 +593,7 @@ export default function KioskPage() {
     setConfirmLoading(true);
     try {
       let selfieUrl: string | undefined;
-      if (photoBlob) {
-        selfieUrl = await uploadKioskSelfie(photoBlob, pin);
-      }
-
+      if (photoBlob) selfieUrl = await uploadKioskSelfie(photoBlob, pin);
       const isClockedIn = !!statusData.attendance && !statusData.attendance.clockOut;
       if (isClockedIn && statusData.attendance) {
         await kioskClockOut(statusData.attendance.id, selfieUrl, pin);
@@ -492,11 +601,10 @@ export default function KioskPage() {
         await kioskClockIn(statusData.employee.employeeId, selfieUrl, pin);
       }
       setRecordedTime(
-        new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })
+        new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
       );
       setScreen("success");
     } catch {
-      // On error go back to main
       setScreen("main");
     } finally {
       setConfirmLoading(false);
@@ -519,7 +627,7 @@ export default function KioskPage() {
 
   if (screen === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: BRAND }}>
+      <div style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", background: `linear-gradient(160deg, ${DARK} 0%, ${BRAND} 100%)` }}>
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
       </div>
     );
@@ -530,14 +638,7 @@ export default function KioskPage() {
     return <IdEntryScreen onLookup={handleLookup} loading={lookupLoading} error={lookupError} />;
   }
   if (screen === "main" && statusData) {
-    return (
-      <MainScreen
-        statusData={statusData}
-        videoRef={videoRef}
-        onCapture={handleCapture}
-        onLogout={handleLogout}
-      />
-    );
+    return <MainScreen statusData={statusData} videoRef={videoRef} onCapture={handleCapture} onLogout={handleLogout} />;
   }
   if (screen === "confirm" && statusData && photoUrl) {
     const isClockedIn = !!statusData.attendance && !statusData.attendance.clockOut;
@@ -552,8 +653,15 @@ export default function KioskPage() {
       />
     );
   }
-  if (screen === "success") {
-    return <SuccessScreen isClockedIn={actionWasClockIn} recordedTime={recordedTime} onReturnNow={handleReturnNow} />;
+  if (screen === "success" && statusData) {
+    return (
+      <SuccessScreen
+        actionWasClockIn={actionWasClockIn}
+        recordedTime={recordedTime}
+        statusData={statusData}
+        onReturnNow={handleReturnNow}
+      />
+    );
   }
 
   return null;
