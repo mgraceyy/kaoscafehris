@@ -80,7 +80,7 @@ export async function importCsv(req: Request, res: Response, next: NextFunction)
     if (isXlsx) {
       // Convert the first visible sheet to CSV so the existing import logic stays unchanged.
       const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(req.file.buffer as unknown as Buffer);
+      await wb.xlsx.load(req.file.buffer as any);
       const ws = wb.worksheets.find((s) => s.state !== "veryHidden" && s.state !== "hidden");
       if (!ws) throw new Error("No readable sheet found in the uploaded file");
 
@@ -121,7 +121,7 @@ export async function previewImportCsv(req: Request, res: Response, next: NextFu
 
     if (isXlsx) {
       const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(req.file.buffer as unknown as Buffer);
+      await wb.xlsx.load(req.file.buffer as any);
       const ws = wb.worksheets.find((s) => s.state !== "veryHidden" && s.state !== "hidden");
       if (!ws) throw new Error("No readable sheet found in the uploaded file");
 
