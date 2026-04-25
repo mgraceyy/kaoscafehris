@@ -6,46 +6,13 @@ const prisma = new PrismaClient();
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "12", 10);
 
 async function main() {
-  console.log("Cleaning database...");
+  console.log("Running seed (idempotent)...");
 
-  // Delete in reverse FK dependency order
-  await prisma.auditLog.deleteMany();
-  await prisma.payslipDeduction.deleteMany();
-  await prisma.payslipEarning.deleteMany();
-  await prisma.payslip.deleteMany();
-  await prisma.payrollRun.deleteMany();
-  await prisma.attendance.deleteMany();
-  await prisma.overtimeRequest.deleteMany();
-  await prisma.leaveBalance.deleteMany();
-  await prisma.leaveRequest.deleteMany();
-  await prisma.shiftAssignment.deleteMany();
-  await prisma.shift.deleteMany();
-  await prisma.shiftType.deleteMany();
-  await prisma.deduction.deleteMany();
-  await prisma.publicHoliday.deleteMany();
-  await prisma.systemSetting.deleteMany();
-  await prisma.employee.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.branch.deleteMany();
-  await prisma.governmentTable.deleteMany();
-
-  console.log("Clean. Seeding admin account...");
-
-  // --- Admin user -----------------------------------------------------------
-  const adminPassword = await bcrypt.hash("kaosadmin", BCRYPT_ROUNDS);
-
-  const admin = await prisma.user.create({
-    data: {
-      email: "admin@kaos.com",
-      password: adminPassword,
-      role: Role.ADMIN,
-      isActive: true,
-    },
-  });
-
-  // A branch is required for the employee profile FK
-  const branch = await prisma.branch.create({
-    data: {
+  // --- Branch ---------------------------------------------------------------
+  const branch = await prisma.branch.upsert({
+    where: { name: "KAOS Cafe — Main" },
+    update: {},
+    create: {
       name: "KAOS Cafe — Main",
       address: "TBD",
       city: "TBD",
@@ -53,8 +20,24 @@ async function main() {
     },
   });
 
-  await prisma.employee.create({
-    data: {
+  // --- Admin user -----------------------------------------------------------
+  const adminPassword = await bcrypt.hash("kaosadmin", BCRYPT_ROUNDS);
+
+  const admin = await prisma.user.upsert({
+    where: { email: "admin@kaos.com" },
+    update: {},
+    create: {
+      email: "admin@kaos.com",
+      password: adminPassword,
+      role: Role.ADMIN,
+      isActive: true,
+    },
+  });
+
+  await prisma.employee.upsert({
+    where: { employeeId: "KAOS-0000" },
+    update: {},
+    create: {
       employeeId: "KAOS-0000",
       userId: admin.id,
       branchId: branch.id,
@@ -67,7 +50,7 @@ async function main() {
     },
   });
 
-  // --- Government contribution tables (Philippines 2024) -------------------
+  // --- Government contribution tables (only seed if empty) ------------------
   const effectiveDate = new Date("2024-01-01T00:00:00.000Z");
 
   const sssRows = [
@@ -119,14 +102,16 @@ async function main() {
   ];
 
   for (const { type, rows } of tableSeeds) {
-    await prisma.governmentTable.createMany({
-      data: rows.map((r) => ({ ...r, type, effectiveDate })),
-    });
-    console.log(`  Seeded ${rows.length} ${type} rows`);
+    const existing = await prisma.governmentTable.count({ where: { type } });
+    if (existing === 0) {
+      await prisma.governmentTable.createMany({
+        data: rows.map((r) => ({ ...r, type, effectiveDate })),
+      });
+      console.log(`  Seeded ${rows.length} ${type} rows`);
+    }
   }
 
-  console.log("\nSeed complete.");
-  console.log("  Admin — admin@kaos.com / kaosadmin");
+  console.log("Seed complete. Admin — admin@kaos.com / kaosadmin");
 }
 
 main()
