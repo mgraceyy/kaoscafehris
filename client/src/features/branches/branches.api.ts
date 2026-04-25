@@ -6,6 +6,8 @@ export interface Branch {
   address: string;
   city: string;
   phone: string | null;
+  branchManager: string | null;
+  operatingHours: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -17,6 +19,8 @@ export interface BranchInput {
   address: string;
   city: string;
   phone?: string;
+  branchManager?: string;
+  operatingHours?: string;
   isActive?: boolean;
 }
 

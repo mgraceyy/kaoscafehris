@@ -13,6 +13,7 @@ import auditLogRoutes from "./modules/audit-logs/audit-log.routes.js";
 import overtimeRoutes from "./modules/overtime/overtime.routes.js";
 import kioskRoutes from "./modules/kiosk/kiosk.routes.js";
 import holidayRoutes from "./modules/holidays/holiday.routes.js";
+import deductionRoutes from "./modules/deductions/deductions.routes.js";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use("/audit-logs", auditLogRoutes);
 router.use("/overtime", overtimeRoutes);
 router.use("/kiosk", kioskRoutes);
 router.use("/holidays", holidayRoutes);
+router.use("/deductions", deductionRoutes);
 
 export default router;

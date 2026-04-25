@@ -21,6 +21,7 @@ import AuditLogsPage from "@/features/audit-logs/audit-logs-page";
 import OvertimePage from "@/features/overtime/overtime-page";
 import KioskPage from "@/features/kiosk/kiosk-page";
 import HolidaysPage from "@/features/holidays/holidays-page";
+import DeductionsPage from "@/features/deductions/deductions-page";
 
 // Portal (employee mobile app)
 import PortalHomePage from "@/features/portal/portal-home-page";
@@ -173,6 +174,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute allowed={["ADMIN"]}>
               <HolidaysPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/deductions"
+          element={
+            <ProtectedRoute allowed={["ADMIN"]}>
+              <DeductionsPage />
             </ProtectedRoute>
           }
         />

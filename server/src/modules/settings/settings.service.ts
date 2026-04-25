@@ -16,19 +16,40 @@ export const DEFAULT_SETTINGS: ReadonlyArray<{
   value: unknown;
   group: string;
 }> = [
+  // Company
   { key: "company.name", value: "KAOS Cafe", group: "company" },
+  { key: "company.timezone", value: "Asia/Manila (UTC+8)", group: "company" },
+  { key: "company.currency", value: "PHP", group: "company" },
+  { key: "company.default_work_hours", value: "8:00 AM – 5:00 PM", group: "company" },
+  { key: "company.payroll_frequency", value: "Bi-Monthly", group: "company" },
   { key: "company.address", value: "", group: "company" },
   { key: "company.city", value: "", group: "company" },
   { key: "company.phone", value: "", group: "company" },
   { key: "company.email", value: "", group: "company" },
   { key: "company.tin", value: "", group: "company" },
+  // Attendance
+  { key: "attendance.late_threshold", value: 15, group: "attendance" },
+  { key: "attendance.grace_period", value: 5, group: "attendance" },
+  { key: "attendance.overtime_threshold", value: 8, group: "attendance" },
+  { key: "attendance.require_selfie", value: "Yes", group: "attendance" },
+  { key: "attendance.absent_if_no_clockin", value: 4, group: "attendance" },
+  { key: "attendance.late_grace_minutes", value: 5, group: "attendance" },
+  { key: "attendance.half_day_threshold_hours", value: 4, group: "attendance" },
+  // Payroll
+  { key: "payroll.regular_ot_rate", value: 1.25, group: "payroll" },
+  { key: "payroll.rest_day_ot_rate", value: 1.30, group: "payroll" },
+  { key: "payroll.night_diff_rate", value: 1.10, group: "payroll" },
+  { key: "payroll.holiday_pay_rate", value: 2.00, group: "payroll" },
+  { key: "payroll.cutoff_day", value: "15th & Last Day", group: "payroll" },
+  { key: "payroll.tax_computation", value: "Annualized", group: "payroll" },
   { key: "payroll.working_days_per_month", value: 22, group: "payroll" },
   { key: "payroll.working_hours_per_day", value: 8, group: "payroll" },
   { key: "payroll.overtime_multiplier", value: 1.25, group: "payroll" },
-  { key: "attendance.late_grace_minutes", value: 5, group: "attendance" },
-  { key: "attendance.half_day_threshold_hours", value: 4, group: "attendance" },
-  { key: "kiosk.allowed_ips", value: "", group: "kiosk" },
+  // Kiosk
   { key: "kiosk.pin", value: "", group: "kiosk" },
+  { key: "kiosk.auto_logout", value: 5, group: "kiosk" },
+  { key: "kiosk.camera_resolution", value: "720p (HD)", group: "kiosk" },
+  { key: "kiosk.allowed_ips", value: "", group: "kiosk" },
 ];
 
 function encode(value: unknown): string {

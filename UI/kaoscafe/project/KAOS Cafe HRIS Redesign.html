@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>KAOS Café HRIS — Redesign</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a1a; font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Load shared shell first -->
+<script type="text/babel" src="components/AdminShell.jsx"></script>
+<!-- Load admin screens (depends on AdminShell globals) -->
+<script type="text/babel" src="components/AdminDashboard.jsx"></script>
+<script type="text/babel" src="components/AdminScreens.jsx"></script>
+<script type="text/babel" src="components/AdminReports.jsx"></script>
+<script type="text/babel" src="components/AdminSettingsBranches.jsx"></script>
+<script type="text/babel" src="components/AdminSchedule.jsx"></script>
+<script type="text/babel" src="components/AdminEmployees.jsx"></script>
+<script type="text/babel" src="components/AdminPayroll.jsx"></script>
+<!-- Load portal screens -->
+<script type="text/babel" src="components/PortalScreens.jsx"></script>
+
+<script type="text/babel">
+
+const FIXES_LEGEND = [
+  { num:1, text:"Stat card icons now use on-brand maroon tones — no more generic blue/green/yellow/red" },
+  { num:2, text:"Chart colors updated to brand palette: maroon, muted rose, and warm amber" },
+  { num:3, text:"Sidebar active state strengthened with left border accent + deeper background" },
+  { num:4, text:"Tables now show dense, realistic data with pagination & hover states" },
+  { num:5, text:"Leave Request cards each have unique, distinct content — no duplicate placeholder data" },
+  { num:6, text:'"Export Report" demoted to outline/secondary button — no longer visually dominant' },
+  { num:7, text:'Portal "Payslips" card copy fixed: was "Check your upcoming shifts" → "View your payslips"' },
+];
+
+function FixBadge({ num }) {
+  return (
+    <span style={{
+      display:"inline-flex", alignItems:"center", justifyContent:"center",
+      width:18, height:18, borderRadius:"50%", background:"#811c12",
+      color:"#fff", fontSize:9, fontWeight:800, flexShrink:0, marginLeft:4,
+      verticalAlign:"middle"
+    }}>{num}</span>
+  );
+}
+
+function Legend() {
+  return (
+    <div style={{ position:"fixed", bottom:16, left:"50%", transform:"translateX(-50%)", zIndex:1000,
+      background:"rgba(26,6,6,0.93)", backdropFilter:"blur(8px)", borderRadius:14,
+      padding:"12px 18px", maxWidth:700, width:"calc(100vw - 32px)",
+      display:"flex", flexWrap:"wrap", gap:"6px 14px"
+    }}>
+      {FIXES_LEGEND.map(f => (
+        <div key={f.num} style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:"rgba(255,255,255,0.75)" }}>
+          <FixBadge num={f.num} />
+          <span>{f.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <>
+      <DesignCanvas title="KAOS Café HRIS — Redesign">
+
+        {/* ── ROW 0: Login screens ─────────────────────────────── */}
+        <DCSection id="logins" title="Login Screens — Client-approved">
+
+          <DCArtboard id="admin-login" label="Admin Login" width={480} height={680}>
+            <div style={{ width:"100%", height:"100%", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
+              <div style={{ position:"absolute", inset:0, backgroundImage:"url('assets/login-bg.png')", backgroundSize:"cover", backgroundPosition:"center" }}/>
+              {/* Logo */}
+              <div style={{ position:"relative", zIndex:2, display:"flex", flexDirection:"column", alignItems:"center", gap:0, width:"100%", padding:"0 60px" }}>
+                <img src="assets/kaos-logo.png" alt="KAOS" style={{ height:68, width:"auto", filter:"brightness(0) invert(1)" }} />
+                <div style={{ color:"#fff", fontSize:22, fontWeight:800, marginTop:10, letterSpacing:.3 }}>KAOS Café</div>
+                <div style={{ width:"100%", marginTop:28, display:"flex", flexDirection:"column", gap:12 }}>
+                  <input readOnly placeholder="Enter ID Number" style={{ width:"100%", padding:"14px 20px", borderRadius:40, border:"none", background:"rgba(255,255,255,0.92)", color:"#999", fontSize:14, outline:"none" }}/>
+                  <input readOnly placeholder="Enter Password" style={{ width:"100%", padding:"14px 20px", borderRadius:40, border:"none", background:"rgba(255,255,255,0.92)", color:"#999", fontSize:14, outline:"none" }}/>
+                </div>
+                <div style={{ marginTop:20, display:"flex", alignItems:"center", gap:6 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="1.9" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                  <span style={{ fontSize:12.5, color:"rgba(255,255,255,0.75)" }}>ID does not exist</span>
+                </div>
+              </div>
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="portal-login" label="Portal Login" width={390} height={780}>
+            <div style={{ width:"100%", height:"100%", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
+              <div style={{ position:"absolute", inset:0, backgroundImage:"url('assets/login-bg.png')", backgroundSize:"cover", backgroundPosition:"center" }}/>
+              <div style={{ position:"relative", zIndex:2, display:"flex", flexDirection:"column", alignItems:"center", gap:0, width:"100%", padding:"0 36px" }}>
+                <img src="assets/kaos-logo.png" alt="KAOS" style={{ height:68, width:"auto", filter:"brightness(0) invert(1)" }} />
+                <div style={{ color:"#fff", fontSize:24, fontWeight:800, marginTop:10, letterSpacing:.2 }}>KAOS Café</div>
+                <div style={{ width:"100%", marginTop:32, display:"flex", flexDirection:"column", gap:12 }}>
+                  <input readOnly placeholder="Enter ID Number" style={{ width:"100%", padding:"15px 20px", borderRadius:40, border:"none", background:"rgba(255,255,255,0.92)", color:"#999", fontSize:14, outline:"none" }}/>
+                  <input readOnly placeholder="Enter Password" style={{ width:"100%", padding:"15px 20px", borderRadius:40, border:"none", background:"rgba(255,255,255,0.92)", color:"#999", fontSize:14, outline:"none" }}/>
+                </div>
+                <div style={{ marginTop:20, display:"flex", alignItems:"center", gap:6 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="1.9" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                  <span style={{ fontSize:12.5, color:"rgba(255,255,255,0.75)" }}>ID does not exist</span>
+                </div>
+              </div>
+            </div>
+          </DCArtboard>
+
+        </DCSection>
+
+        {/* ── ROW 1: Admin screens ──────────────────────────────── */}
+        <DCSection id="admin" title="Admin Panel — Redesigned">
+
+          <DCArtboard id="dash" label="Dashboard ① ② ③ ⑥" width={1280} height={780}>
+            <AdminDashboard />
+          </DCArtboard>
+
+          <DCArtboard id="att" label="Attendance ③ ④" width={1280} height={780}>
+            <AdminAttendance />
+          </DCArtboard>
+
+          <DCArtboard id="leave" label="Leave Management ④ ⑤" width={1280} height={780}>
+            <AdminLeave />
+          </DCArtboard>
+
+          <DCArtboard id="reports" label="Reports" width={1280} height={820}>
+            <ReportsScreen />
+          </DCArtboard>
+
+          <DCArtboard id="settings" label="Settings — General & Gov Tables" width={1280} height={980}>
+            <AdminSettings />
+          </DCArtboard>
+
+          <DCArtboard id="settings-role" label="Settings — Role Configure Panel" width={1280} height={980}>
+            <div style={{ width:"100%", height:"100%", position:"relative", overflow:"hidden" }}>
+              <AdminSettings />
+              <RoleSlideOver role="Branch Manager" onClose={() => {}} />
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="branches" label="Branches" width={1280} height={680}>
+            <AdminBranches />
+          </DCArtboard>
+
+          <DCArtboard id="branch-config" label="Branch Configure" width={1280} height={820}>
+            <AdminBranchConfigure />
+          </DCArtboard>
+
+          <DCArtboard id="employees" label="Employees" width={1280} height={820}>
+            <AdminEmployees />
+          </DCArtboard>
+
+          <DCArtboard id="employees-profile" label="Employees — Profile Panel" width={1280} height={820}>
+            <div style={{ width:"100%", height:"100%", position:"relative", overflow:"hidden" }}>
+              <AdminEmployees />
+              <EmployeeSlideOver emp={{
+                id:"EMP-002", name:"Mark Reyes", pos:"Shift Lead", role:"Manager",
+                branch:"Marfori", status:"ACTIVE", phone:"+63 917 234 5678",
+                email:"mark@kaoscafe.com", hired:"Mar 8, 2022", dob:"Jul 14, 1995"
+              }} onClose={()=>{}} />
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="employees-add" label="Employees — Add New" width={1280} height={820}>
+            <div style={{ width:"100%", height:"100%", position:"relative", overflow:"hidden" }}>
+              <AdminEmployees />
+              <AddEmployeeSlideOver onClose={()=>{}} />
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="employees-edit" label="Employees — Edit Employee" width={1280} height={820}>
+            <div style={{ width:"100%", height:"100%", position:"relative", overflow:"hidden" }}>
+              <AdminEmployees />
+              <AddEmployeeSlideOver onClose={()=>{}} isEdit={true} />
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="schedule-weekly" label="Schedule — Weekly View" width={1280} height={760}>
+            <AdminSchedule />
+          </DCArtboard>
+
+          <DCArtboard id="schedule-monthly" label="Schedule — Monthly View" width={1280} height={900}>
+            <AdminSchedule initialView="monthly" />
+          </DCArtboard>
+
+          <DCArtboard id="payroll" label="Payroll — Runs List" width={1280} height={780}>
+            <AdminPayroll />
+          </DCArtboard>
+
+          <DCArtboard id="payroll-run" label="Payroll — Run Detail" width={1280} height={860}>
+            <AdminPayrollRunDetail />
+          </DCArtboard>
+
+          <DCArtboard id="payslip-view" label="Payroll — Payslip View" width={1280} height={900}>
+            <AdminPayslipView />
+          </DCArtboard>
+
+          <DCArtboard id="payslip-edit" label="Payroll — Payslip Edit" width={1280} height={900}>
+            <AdminPayslipEdit />
+          </DCArtboard>
+
+        </DCSection>
+
+        {/* ── ROW 2: Employee Portal ────────────────────────────── */}
+        <DCSection id="portal" title="Employee Portal — Redesigned">
+
+          <DCArtboard id="pdash" label="Portal Dashboard ⑦" width={390} height={780}>
+            <div style={{ width:"100%", height:"100%", overflow:"hidden", borderRadius:12 }}>
+              <PortalDashboard />
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="pleave" label="Portal Leave Requests ⑤" width={390} height={780}>
+            <div style={{ width:"100%", height:"100%", overflow:"hidden", borderRadius:12 }}>
+              <PortalLeaveRequest />
+            </div>
+          </DCArtboard>
+
+        </DCSection>
+
+      </DesignCanvas>
+
+      <Legend />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

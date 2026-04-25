@@ -34,7 +34,7 @@ function dayLabel(dateIso: string) {
 const TILES = [
   { label: "View Schedule", desc: "Check your upcoming shifts", icon: CalendarDays, to: "/portal/schedule" },
   { label: "Attendance History", desc: "View your time logs", icon: Clock, to: "/portal/attendance" },
-  { label: "Payslips", desc: "Check your payslips", icon: FileText, to: "/portal/payslips" },
+  { label: "Payslips", desc: "View your payslips", icon: FileText, to: "/portal/payslips" },
   { label: "Profile", desc: "Manage your information", icon: User, to: "/portal/profile" },
 ];
 
@@ -63,31 +63,31 @@ export default function PortalHomePage() {
       {/* Maroon header */}
       <div
         className="rounded-b-[28px] px-6 pt-14 pb-8"
-        style={{ backgroundColor: BRAND }}
+        style={{ background: `linear-gradient(135deg, #6B0F0F 0%, ${BRAND} 50%, #9E1A1A 100%)` }}
       >
         <div className="flex items-start justify-between">
-          <div>
-            <p className="text-white/70 text-sm mb-0.5">Welcome back to your portal</p>
-            <h1 className="text-white text-[22px] font-light leading-snug">
+          <div className="animate-fade-up">
+            <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-1">Employee Portal</p>
+            <h1 className="font-heading text-white text-[26px] leading-snug italic">
               Good {getGreeting()},{" "}
-              <span className="font-bold">{firstName}</span>
+              <span className="not-italic font-normal">{firstName}</span>
             </h1>
           </div>
           <img
             src="/kaos-logo.svg"
             alt="KAOS"
-            className="h-10 w-auto brightness-0 invert opacity-60 mt-1"
+            className="h-10 w-auto brightness-0 invert opacity-40 mt-1"
           />
         </div>
       </div>
 
       <div className="px-4 py-5 space-y-6">
         {/* Today's Shift */}
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+        <div className="animate-fade-up stagger-2 bg-white rounded-2xl p-5 shadow-sm" style={{ borderLeft: `4px solid ${BRAND}` }}>
           <div className="flex items-center justify-between mb-3">
-            <span className="font-semibold text-gray-800">Today's Shift</span>
+            <span className="font-heading text-lg text-gray-800">Today's Shift</span>
             {todayShift && (
-              <span className="rounded-full bg-green-100 text-green-700 text-xs px-3 py-1 font-medium">
+              <span className="rounded-full bg-green-100 text-green-700 text-xs px-3 py-1 font-semibold">
                 Ongoing
               </span>
             )}
@@ -125,14 +125,15 @@ export default function PortalHomePage() {
         </div>
 
         {/* Quick Access */}
-        <div>
-          <h2 className="text-[15px] font-semibold text-gray-800 mb-3">Quick Access</h2>
+        <div className="animate-fade-up stagger-3">
+          <h2 className="font-heading text-lg text-gray-800 mb-3">Quick Access</h2>
           <div className="grid grid-cols-2 gap-3">
-            {TILES.map(({ label, desc, icon: Icon, to }) => (
+            {TILES.map(({ label, desc, icon: Icon, to }, idx) => (
               <button
                 key={to}
                 onClick={() => navigate(to)}
-                className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-left hover:bg-gray-50/60 active:scale-[0.98] transition-all"
+                className={`bg-white rounded-2xl p-4 shadow-sm text-left transition-all hover:shadow-md active:scale-[0.98] animate-fade-up stagger-${idx + 1}`}
+                style={{ borderTop: `3px solid ${BRAND}` }}
               >
                 <div
                   className="mb-3 inline-flex items-center justify-center rounded-xl p-2"
@@ -140,7 +141,7 @@ export default function PortalHomePage() {
                 >
                   <Icon className="h-5 w-5" style={{ color: BRAND }} />
                 </div>
-                <p className="font-bold text-gray-800 text-sm leading-snug">{label}</p>
+                <p className="font-semibold text-gray-800 text-sm leading-snug">{label}</p>
                 <p className="text-xs text-gray-400 mt-0.5 leading-snug">{desc}</p>
                 <div className="mt-3">
                   <ArrowRight className="h-4 w-4 text-gray-300" />

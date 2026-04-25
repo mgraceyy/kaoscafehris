@@ -1,3 +1,68 @@
+/* ── TT Fors self-hosted ─────────────────────────────────── */
+@font-face {
+  font-family: 'TT Fors';
+  src: url('/fonts/TT Fors Trial Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Fors';
+  src: url('/fonts/TT Fors Trial Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Fors';
+  src: url('/fonts/TT Fors Trial Light Italic.woff2') format('woff2');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Fors';
+  src: url('/fonts/TT Fors Trial Medium Italic.woff2') format('woff2');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Fors';
+  src: url('/fonts/TT Fors Trial DemiBold Italic.woff2') format('woff2');
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Fors';
+  src: url('/fonts/TT Fors Trial Bold Italic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Fors';
+  src: url('/fonts/TT Fors Trial ExtraBold Italic.woff2') format('woff2');
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Fors';
+  src: url('/fonts/TT Fors Trial Black Italic.woff2') format('woff2');
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,19 +70,11 @@
 @layer base {
   :root {
     /* KAOS Cafe palette */
-    /* #F7EBEB light blush  */
-    /* #A28587 muted rose   */
-    /* #B10B0B bright red   */
-    /* #811C12 crimson      */
-    /* #280906 dark maroon  */
-    /* #110200 near-black   */
-    /* #040404 black        */
-
     --background: 0 43% 95%;          /* #F7EBEB */
     --foreground: 0 97% 2%;           /* #040404 */
 
     --card: 0 0% 100%;
-    --card-foreground: 0 97% 2%;      /* #040404 */
+    --card-foreground: 0 97% 2%;
 
     --primary: 0 74% 32%;             /* #8C1515 — KAOS brand maroon */
     --primary-foreground: 0 0% 100%;
@@ -25,7 +82,7 @@
     --secondary: 0 74% 32%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 0 20% 90%;               /* soft blush for muted surfaces */
+    --muted: 0 20% 90%;
     --muted-foreground: 0 10% 40%;
 
     --accent: 0 74% 32%;
@@ -39,7 +96,7 @@
     --ring: 0 74% 32%;
     --radius: 0.5rem;
 
-    /* Raw hex tokens for direct use */
+    /* Raw hex tokens */
     --kaos-blush:   #F7EBEB;
     --kaos-rose:    #A28587;
     --kaos-red:     #B10B0B;
@@ -47,6 +104,11 @@
     --kaos-maroon:  #280906;
     --kaos-dark:    #110200;
     --kaos-black:   #040404;
+    --kaos-amber:   #C17A2A;
+
+    /* Typography */
+    --font-heading: 'TT Fors', system-ui, sans-serif;
+    --font-body: 'TT Fors', system-ui, sans-serif;
   }
 }
 
@@ -54,7 +116,124 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-body);
   }
+
+  h1, h2, h3 {
+    font-family: var(--font-heading);
+  }
+}
+
+/* ── Background texture ─────────────────────────────────── */
+/* Subtle noise overlay on the main bg */
+.bg-background {
+  background-color: #F7EBEB;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 5% 0%, rgba(140, 21, 21, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 95% 100%, rgba(193, 122, 42, 0.05) 0%, transparent 55%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E");
+}
+
+/* ── Entrance animations ─────────────────────────────────── */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease both;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Stagger delays for card grids */
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 180ms; }
+.stagger-5 { animation-delay: 240ms; }
+.stagger-6 { animation-delay: 300ms; }
+
+/* ── Sidebar nav indicator ───────────────────────────────── */
+.nav-item-active {
+  position: relative;
+}
+
+.nav-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: #8C1515;
+  border-radius: 0 3px 3px 0;
+}
+
+/* ── Font utility ────────────────────────────────────────── */
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* ── Card hover lift ─────────────────────────────────────── */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(140, 21, 21, 0.08);
+}
+
+/* ── Stat card accent bar ────────────────────────────────── */
+.stat-card-accent {
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card-accent::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent-color, #8C1515);
 }

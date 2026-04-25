@@ -50,6 +50,8 @@ export async function createBranch(input: CreateBranchInput) {
       address: input.address,
       city: input.city,
       phone: input.phone,
+      branchManager: input.branchManager,
+      operatingHours: input.operatingHours,
       isActive: input.isActive ?? true,
     },
     include: branchWithCounts,

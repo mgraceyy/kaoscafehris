@@ -123,11 +123,14 @@ export default function HolidaysPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 md:px-8">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Holiday Management</h1>
+      <div className="mb-6 flex items-center justify-between animate-fade-up">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Calendar</p>
+          <h1 className="font-heading text-3xl text-gray-900">Holidays</h1>
+        </div>
         <div className="flex items-center gap-3">
           <select
-            className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
           >
@@ -137,7 +140,7 @@ export default function HolidaysPage() {
           </select>
           <button
             onClick={() => { setEditing(null); setForm(DEFAULT_FORM); setShowForm(true); }}
-            className="flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium text-white shadow-sm"
+            className="flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
             style={{ backgroundColor: BRAND }}
           >
             <Plus className="h-4 w-4" />

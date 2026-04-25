@@ -1,29 +1,63 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Save, Shield, Trash2, X } from "lucide-react";
+import { Check, Loader2, Lock, Save, Shield, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { extractErrorMessage } from "@/lib/api";
 import {
   bulkUpdateSettings,
-  deleteGovTable,
-  listGovTables,
   listSettings,
-  upsertGovTable,
-  type GovTable,
-  type GovTableType,
   type Setting,
   type BulkUpdateItem,
 } from "./settings.api";
 
 const BRAND = "#8C1515";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Field config ─────────────────────────────────────────────────────────────
 
-function labelForKey(key: string): string {
-  const tail = key.includes(".") ? key.split(".").slice(1).join(".") : key;
-  return tail.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+type FieldType = "text" | "number" | "password" | "select";
+
+interface FieldConfig {
+  label: string;
+  type: FieldType;
+  options?: string[];
+  fullWidth?: boolean;
+  suffix?: string;
 }
+
+const FIELD_CONFIG: Record<string, FieldConfig> = {
+  "company.name": { label: "Company Name", type: "text", fullWidth: true },
+  "company.currency": {
+    label: "Currency",
+    type: "select",
+    options: ["PHP", "USD", "EUR", "GBP", "JPY"],
+  },
+  "company.default_work_hours": { label: "Default Work Hours", type: "text" },
+  "company.payroll_frequency": {
+    label: "Payroll Frequency",
+    type: "select",
+    options: ["Bi-Monthly", "Monthly", "Weekly", "Semi-Weekly"],
+  },
+  "attendance.late_threshold": { label: "Late Threshold (MINS)", type: "number" },
+  "attendance.require_selfie": {
+    label: "Require Selfie",
+    type: "select",
+    options: ["Yes", "No"],
+  },
+  "attendance.absent_if_no_clockin": { label: "Absent if No Clock-in After (HRS)", type: "number" },
+  "payroll.regular_ot_rate": { label: "Regular OT Rate", type: "text", suffix: "×" },
+  "payroll.night_diff_rate": { label: "Night Diff Rate", type: "text", suffix: "×" },
+  "payroll.holiday_pay_rate": { label: "Holiday Pay Rate", type: "text", suffix: "×" },
+  "payroll.cutoff_day": {
+    label: "Payroll Cut-off Day",
+    type: "select",
+    options: ["15th & Last Day", "1st & 15th", "Last Day", "1st of Month"],
+  },
+  "kiosk.pin": { label: "Kiosk PIN", type: "password" },
+  "kiosk.auto_logout": { label: "Auto-logout After (SECS)", type: "number" },
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function stringifyValue(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -42,10 +76,34 @@ function parseDraft(original: unknown, raw: string): unknown {
 }
 
 const GROUP_ICON: Record<string, React.ReactNode> = {
-  company: <span className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "#DCFCE7" }}>🏢</span>,
-  payroll: <span className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "#DCFCE7" }}>💵</span>,
-  attendance: <span className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "#FEF9C3" }}>⏰</span>,
-  kiosk: <span className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "#DBEAFE" }}>📱</span>,
+  company: (
+    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-50">
+      <svg className="h-5 w-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+      </svg>
+    </span>
+  ),
+  payroll: (
+    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-green-50">
+      <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
+    </span>
+  ),
+  attendance: (
+    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-50">
+      <svg className="h-5 w-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    </span>
+  ),
+  kiosk: (
+    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50">
+      <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      </svg>
+    </span>
+  ),
 };
 
 const GROUP_LABEL: Record<string, string> = {
@@ -59,77 +117,200 @@ const GROUP_DESC: Record<string, string> = {
   company: "Configure company-wide settings",
   payroll: "Configure payroll computation rules",
   attendance: "Configure attendance tracking behavior",
-  kiosk: "Configure the self-service kiosk access",
+  kiosk: "Configure the self-service attendance kiosk",
 };
 
-const GOV_TYPES: GovTableType[] = ["SSS", "PHILHEALTH", "PAGIBIG", "BIR"];
 
-// ─── Main page ───────────────────────────────────────────────────────────────
+// ─── Permission types & role data ─────────────────────────────────────────────
 
-type Tab = "general" | "government";
+type PermState = "on" | "off" | "locked";
+type PermKey = "view" | "create" | "edit" | "delete";
+
+interface ModulePerms {
+  view: PermState;
+  create: PermState;
+  edit: PermState;
+  delete: PermState;
+}
+
+interface PermModule {
+  name: string;
+  description: string;
+  perms: ModulePerms;
+}
+
+interface PermSection {
+  label: string;
+  modules: PermModule[];
+}
+
+type RoleKey = "admin" | "branch_manager" | "employee";
+
+const PERM_KEYS: PermKey[] = ["view", "create", "edit", "delete"];
+
+const ROLE_INFO: Record<RoleKey, { label: string; description: string; dialogDesc: string }> = {
+  admin: {
+    label: "Admin",
+    description: "Full system access",
+    dialogDesc: "Full system access — can manage all branches, payroll, employees, and system settings.",
+  },
+  branch_manager: {
+    label: "Branch Manager",
+    description: "Branch-level management",
+    dialogDesc:
+      "Branch-level access — own branch only\nCannot access other branches, payroll computation, or system settings.",
+  },
+  employee: {
+    label: "Employee",
+    description: "Self-service portal only",
+    dialogDesc: "Employee self-service — portal access only.\nCan view own schedule, request leaves, and check payslips.",
+  },
+};
+
+const ROLE_SECTIONS: Record<RoleKey, PermSection[]> = {
+  admin: [
+    {
+      label: "People & Branches",
+      modules: [
+        { name: "Employees", description: "Full access to all employee records", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Branches", description: "Full access to all branches", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+    {
+      label: "Operations",
+      modules: [
+        { name: "Schedule", description: "Full schedule management across all branches", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Attendance", description: "Full attendance management", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Leave", description: "Full leave management", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+    {
+      label: "Finance & Reporting",
+      modules: [
+        { name: "Payroll", description: "Full payroll management and computation", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Reports", description: "Full access to all reports", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+    {
+      label: "System",
+      modules: [
+        { name: "Settings", description: "Admin / Owner only", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+  ],
+  branch_manager: [
+    {
+      label: "People & Branches",
+      modules: [
+        { name: "Employees", description: "Cannot add, transfer, or remove employees", perms: { view: "on", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Branches", description: "Cannot create or delete branches", perms: { view: "on", create: "locked", edit: "on", delete: "locked" } },
+      ],
+    },
+    {
+      label: "Operations",
+      modules: [
+        { name: "Schedule", description: "Can create and manage shifts for their branch", perms: { view: "on", create: "on", edit: "on", delete: "on" } },
+        { name: "Attendance", description: "Can correct attendance entries, cannot delete", perms: { view: "on", create: "on", edit: "on", delete: "locked" } },
+        { name: "Leave", description: "Can approve or reject leave requests", perms: { view: "on", create: "on", edit: "on", delete: "locked" } },
+      ],
+    },
+    {
+      label: "Finance & Reporting",
+      modules: [
+        { name: "Payroll", description: "Payroll view only — cannot run or edit payroll", perms: { view: "on", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Reports", description: "Attendance, schedule, and leave reports only", perms: { view: "on", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+    {
+      label: "System",
+      modules: [
+        { name: "Settings", description: "Admin / Owner only", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+  ],
+  employee: [
+    {
+      label: "People & Branches",
+      modules: [
+        { name: "Employees", description: "No access to other employee records", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Branches", description: "No access", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+    {
+      label: "Operations",
+      modules: [
+        { name: "Schedule", description: "Can view own schedule only", perms: { view: "on", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Attendance", description: "Can view own attendance records", perms: { view: "on", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Leave", description: "Can file and track own leave requests", perms: { view: "on", create: "on", edit: "locked", delete: "locked" } },
+      ],
+    },
+    {
+      label: "Finance & Reporting",
+      modules: [
+        { name: "Payroll", description: "Can view own payslip only", perms: { view: "on", create: "locked", edit: "locked", delete: "locked" } },
+        { name: "Reports", description: "No access", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+    {
+      label: "System",
+      modules: [
+        { name: "Settings", description: "No access", perms: { view: "locked", create: "locked", edit: "locked", delete: "locked" } },
+      ],
+    },
+  ],
+};
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>("general");
-
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 md:px-8">
+    <div className="mx-auto max-w-5xl px-4 py-8 md:px-8">
       <h1 className="mb-6 text-2xl font-bold text-gray-800">Settings</h1>
-
-      <div className="mb-6 flex gap-1 rounded-full border border-gray-200 bg-white p-1 w-fit">
-        {(["general", "government"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
-            style={
-              tab === t
-                ? { backgroundColor: BRAND, color: "#fff" }
-                : { color: "#6B7280" }
-            }
-          >
-            {t === "general" ? "General" : "Government Tables"}
-          </button>
-        ))}
-      </div>
-
-      {tab === "general" ? <GeneralTab /> : <GovernmentTab />}
+      <GeneralTab />
     </div>
   );
 }
 
-// ─── General tab ─────────────────────────────────────────────────────────────
+// ─── General tab ──────────────────────────────────────────────────────────────
 
 function GeneralTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["settings"], queryFn: () => listSettings() });
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [configRole, setConfigRole] = useState<RoleKey | null>(null);
 
   useEffect(() => {
     if (!query.data) return;
-    setDrafts(Object.fromEntries((query.data as Setting[]).map((s) => [s.key, stringifyValue(s.value)])));
+    setDrafts(
+      Object.fromEntries((query.data as Setting[]).map((s) => [s.key, stringifyValue(s.value)]))
+    );
   }, [query.data]);
 
   const grouped = useMemo((): Map<string, Setting[]> => {
     const map = new Map<string, Setting[]>();
     for (const s of (query.data ?? []) as Setting[]) {
-      const key = s.group ?? "other";
-      map.set(key, [...(map.get(key) ?? []), s]);
+      if (!FIELD_CONFIG[s.key]) continue;
+      const g = s.group ?? "other";
+      map.set(g, [...(map.get(g) ?? []), s]);
     }
     return map;
   }, [query.data]);
 
   const saveMut = useMutation({
     mutationFn: (items: BulkUpdateItem[]) => bulkUpdateSettings(items),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["settings"] }); toast("Settings saved", "success"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      toast("Settings saved", "success");
+    },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
   function handleSave() {
     if (!query.data) return;
     const items: BulkUpdateItem[] = [];
-    for (const s of (query.data as Setting[])) {
+    for (const s of query.data as Setting[]) {
+      if (!FIELD_CONFIG[s.key]) continue;
       const raw = drafts[s.key] ?? "";
       const parsed = parseDraft(s.value, raw);
       if (JSON.stringify(s.value) !== JSON.stringify(parsed)) {
@@ -140,16 +321,96 @@ function GeneralTab() {
     saveMut.mutate(items);
   }
 
+  function renderField(s: Setting) {
+    const cfg = FIELD_CONFIG[s.key];
+    if (!cfg) return null;
+    const val = drafts[s.key] ?? "";
+    const base = "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none";
+
+    if (cfg.type === "select" && cfg.options) {
+      return (
+        <select
+          className={base + " bg-white"}
+          value={val}
+          onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))}
+        >
+          {cfg.options.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      );
+    }
+
+    if (cfg.suffix) {
+      return (
+        <div className="relative">
+          <input
+            type="text"
+            className={base + " pr-8"}
+            value={val}
+            onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))}
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">
+            {cfg.suffix}
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <input
+        type={cfg.type === "password" ? "password" : cfg.type === "number" ? "number" : "text"}
+        className={base}
+        value={val}
+        onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))}
+      />
+    );
+  }
+
+  function renderGroup(group: string) {
+    const items = grouped.get(group);
+    if (!items?.length) return null;
+
+    return (
+      <div className="rounded-2xl bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center gap-3">
+          {GROUP_ICON[group] ?? <span className="h-9 w-9 rounded-full bg-gray-100" />}
+          <div>
+            <h2 className="font-semibold text-gray-800">{GROUP_LABEL[group] ?? group}</h2>
+            <p className="text-xs text-gray-400">{GROUP_DESC[group] ?? ""}</p>
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {items.map((s) => {
+            const cfg = FIELD_CONFIG[s.key];
+            if (!cfg) return null;
+            return (
+              <div key={s.key} className={cfg.fullWidth ? "sm:col-span-2 space-y-1.5" : "space-y-1.5"}>
+                <label className="block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {cfg.label}
+                </label>
+                {renderField(s)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   if (query.isLoading) {
-    return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-gray-300" /></div>;
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-gray-300" />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-4">
-      {/* Roles & Permissions card (static UI) */}
       <div className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "#FFE4E6" }}>
+        <div className="mb-4 flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50">
             <Shield className="h-5 w-5 text-red-500" />
           </span>
           <div>
@@ -157,280 +418,223 @@ function GeneralTab() {
             <p className="text-xs text-gray-400">Manage user roles and access permissions</p>
           </div>
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-gray-100 p-3">
-          <div>
-            <p className="text-sm font-medium text-gray-700">Branch Manager</p>
-            <p className="text-xs text-gray-400">Branch-level management</p>
-          </div>
-          <button
-            className="rounded-full border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Configure
-          </button>
+        <div className="space-y-2">
+          {(["branch_manager", "employee"] as RoleKey[]).map((role) => (
+            <div
+              key={role}
+              className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3"
+            >
+              <div>
+                <p className="text-sm font-medium text-gray-700">{ROLE_INFO[role].label}</p>
+                <p className="text-xs text-gray-400">{ROLE_INFO[role].description}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfigRole(role)}
+                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Configure
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Dynamic settings groups */}
-      {Array.from(grouped.entries()).map(([group, items]) => (
-        <div key={group} className="rounded-2xl bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center gap-3">
-            {GROUP_ICON[group] ?? <span className="h-9 w-9 rounded-full bg-gray-100" />}
-            <div>
-              <h2 className="font-semibold text-gray-800">{GROUP_LABEL[group] ?? group}</h2>
-              <p className="text-xs text-gray-400">{GROUP_DESC[group] ?? ""}</p>
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {items.map((s) => (
-              <div key={s.key} className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700">{labelForKey(s.key)}</label>
-                <input
-                  type={typeof s.value === "number" ? "number" : "text"}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                  value={drafts[s.key] ?? ""}
-                  onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+      {renderGroup("company")}
+      {renderGroup("attendance")}
+      {renderGroup("payroll")}
+      {renderGroup("kiosk")}
 
-      <div className="flex justify-end pt-2">
+      <div className="flex justify-end">
         <button
           onClick={handleSave}
           disabled={saveMut.isPending}
-          className="flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-medium text-white shadow-sm"
+          className="flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
           style={{ backgroundColor: BRAND }}
         >
           {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Save Changes
         </button>
       </div>
+
+      {configRole && (
+        <RoleConfigDialog
+          role={configRole}
+          onClose={() => setConfigRole(null)}
+          onSave={() => {
+            toast("Role permissions saved", "success");
+            setConfigRole(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Government Tables tab ───────────────────────────────────────────────────
+// ─── Role Config Dialog ───────────────────────────────────────────────────────
 
-type GovFormState = {
-  type: GovTableType;
-  rangeFrom: string;
-  rangeTo: string;
-  employeeShare: string;
-  employerShare: string;
-  effectiveDate: string;
-};
+interface RoleConfigDialogProps {
+  role: RoleKey;
+  onClose: () => void;
+  onSave: () => void;
+}
 
-const DEFAULT_GOV: GovFormState = {
-  type: "SSS",
-  rangeFrom: "0",
-  rangeTo: "0",
-  employeeShare: "0",
-  employerShare: "0",
-  effectiveDate: new Date().toISOString().slice(0, 10),
-};
+function RoleConfigDialog({ role, onClose, onSave }: RoleConfigDialogProps) {
+  const [sections, setSections] = useState<PermSection[]>(() =>
+    ROLE_SECTIONS[role].map((sec) => ({
+      ...sec,
+      modules: sec.modules.map((m) => ({ ...m, perms: { ...m.perms } })),
+    }))
+  );
 
-function GovernmentTab() {
-  const { toast } = useToast();
-  const qc = useQueryClient();
-  const [filterType, setFilterType] = useState<"" | GovTableType>("");
-  const [showForm, setShowForm] = useState(false);
-  const [editEntry, setEditEntry] = useState<GovTable | null>(null);
-  const [form, setForm] = useState<GovFormState>(DEFAULT_GOV);
-  const [confirmDelete, setConfirmDelete] = useState<GovTable | null>(null);
-
-  const query = useQuery({
-    queryKey: ["gov-tables", filterType],
-    queryFn: () => listGovTables(filterType || undefined),
-  });
-
-  useEffect(() => {
-    if (editEntry) {
-      setForm({
-        type: editEntry.type,
-        rangeFrom: String(editEntry.rangeFrom),
-        rangeTo: String(editEntry.rangeTo),
-        employeeShare: String(editEntry.employeeShare),
-        employerShare: String(editEntry.employerShare),
-        effectiveDate: editEntry.effectiveDate,
-      });
-      setShowForm(true);
-    }
-  }, [editEntry]);
-
-  const saveMut = useMutation({
-    mutationFn: (v: GovFormState) =>
-      upsertGovTable({
-        id: editEntry?.id,
-        type: v.type,
-        rangeFrom: Number(v.rangeFrom),
-        rangeTo: Number(v.rangeTo),
-        employeeShare: Number(v.employeeShare),
-        employerShare: Number(v.employerShare),
-        effectiveDate: v.effectiveDate,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["gov-tables"] });
-      toast(editEntry ? "Entry updated" : "Entry added", "success");
-      resetForm();
-    },
-    onError: (err) => toast(extractErrorMessage(err), "error"),
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => deleteGovTable(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["gov-tables"] }); toast("Entry deleted", "success"); setConfirmDelete(null); },
-    onError: (err) => toast(extractErrorMessage(err), "error"),
-  });
-
-  function resetForm() {
-    setForm(DEFAULT_GOV);
-    setEditEntry(null);
-    setShowForm(false);
+  function toggle(si: number, mi: number, perm: PermKey) {
+    setSections((prev) =>
+      prev.map((sec, s) =>
+        s !== si
+          ? sec
+          : {
+              ...sec,
+              modules: sec.modules.map((mod, m) =>
+                m !== mi
+                  ? mod
+                  : { ...mod, perms: { ...mod.perms, [perm]: mod.perms[perm] === "on" ? "off" : "on" } }
+              ),
+            }
+      )
+    );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="mb-5 flex items-center justify-between">
+  return createPortal(
+    <div className="fixed inset-0 z-40 flex">
+      {/* Backdrop */}
+      <div className="flex-1 bg-black/30" onClick={onClose} />
+
+      {/* Slide panel */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
           <div>
-            <h2 className="font-semibold text-gray-800">Deductions Management</h2>
-            <p className="text-xs text-gray-400">Configure payroll deductions and contribution rates</p>
+            <h2 className="text-xl font-bold text-gray-900">
+              Configure Role: {ROLE_INFO[role].label}
+            </h2>
+            <p className="text-sm text-gray-500 mt-0.5 whitespace-pre-line">
+              {ROLE_INFO[role].dialogDesc}
+            </p>
           </div>
           <button
-            onClick={() => { setEditEntry(null); setForm(DEFAULT_GOV); setShowForm(true); }}
-            className="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-white"
-            style={{ backgroundColor: BRAND }}
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors ml-4 mt-0.5 flex-none"
           >
-            <Plus className="h-4 w-4" /> Add Deduction
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Inline form */}
-        {showForm && (
-          <div className="mb-5 rounded-xl border border-gray-100 bg-gray-50 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-gray-700">{editEntry ? "Edit Entry" : "New Deduction"}</h3>
-              <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Deduction Name</label>
-                <select
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  value={form.type}
-                  onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as GovTableType }))}
-                >
-                  {GOV_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Employee Rate (%)</label>
-                <input type="number" step="0.01" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                  value={form.employeeShare} onChange={(e) => setForm((f) => ({ ...f, employeeShare: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Employer Rate (%)</label>
-                <input type="number" step="0.01" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                  value={form.employerShare} onChange={(e) => setForm((f) => ({ ...f, employerShare: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Range From (₱)</label>
-                <input type="number" step="0.01" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                  value={form.rangeFrom} onChange={(e) => setForm((f) => ({ ...f, rangeFrom: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Range To (₱)</label>
-                <input type="number" step="0.01" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                  value={form.rangeTo} onChange={(e) => setForm((f) => ({ ...f, rangeTo: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Effective Date</label>
-                <input type="date" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                  value={form.effectiveDate} onChange={(e) => setForm((f) => ({ ...f, effectiveDate: e.target.value }))} />
-              </div>
-            </div>
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={() => saveMut.mutate(form)}
-                disabled={saveMut.isPending}
-                className="rounded-full px-5 py-2 text-sm font-medium text-white"
-                style={{ backgroundColor: BRAND }}
-              >
-                {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-              </button>
-              <button onClick={resetForm} className="rounded-full border border-gray-200 px-5 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Filter */}
-        <div className="mb-4 flex items-center gap-3">
-          <select
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as "" | GovTableType)}
-          >
-            <option value="">All Types</option>
-            {GOV_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+        {/* Legend */}
+        <div className="flex flex-wrap items-center gap-5 px-6 py-3 border-b border-gray-100 text-xs text-gray-500 bg-gray-50">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="flex h-[18px] w-[18px] items-center justify-center rounded"
+              style={{ backgroundColor: BRAND }}
+            >
+              <Check className="h-3 w-3 text-white" />
+            </span>
+            Allowed
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-[18px] w-[18px] rounded bg-gray-700" />
+            Not allowed
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Lock className="h-3.5 w-3.5 text-gray-400" />
+            Locked — Admin only
+          </span>
         </div>
 
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Deduction Name</th>
-              <th className="py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Employee Rate</th>
-              <th className="py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Employer Rate</th>
-              <th className="py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {query.isLoading && <tr><td colSpan={4} className="py-8 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" /></td></tr>}
-            {!query.isLoading && (query.data ?? []).length === 0 && (
-              <tr><td colSpan={4} className="py-8 text-center text-sm text-gray-400">No entries yet.</td></tr>
-            )}
-            {(query.data ?? []).map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50/50">
-                <td className="py-3 font-medium text-gray-800">{r.type}</td>
-                <td className="py-3 tabular-nums text-gray-600">{r.employeeShare}%</td>
-                <td className="py-3 tabular-nums text-gray-600">{r.employerShare}%</td>
-                <td className="py-3">
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setEditEntry(r)} className="text-gray-400 hover:text-primary"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => setConfirmDelete(r)} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* Scrollable permission matrix */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+          {sections.map((section, si) => (
+            <div key={section.label}>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-400">
+                {section.label}
+              </p>
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className="pb-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 pr-4">
+                      Module
+                    </th>
+                    {PERM_KEYS.map((k) => (
+                      <th
+                        key={k}
+                        className="pb-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-400 w-14"
+                      >
+                        {k}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {section.modules.map((mod, mi) => (
+                    <tr key={mod.name} className="border-b border-gray-50 last:border-0">
+                      <td className="py-3 pr-4">
+                        <p className="text-sm font-medium text-gray-800">{mod.name}</p>
+                        <p className="text-xs text-gray-400">{mod.description}</p>
+                      </td>
+                      {PERM_KEYS.map((k) => {
+                        const state = mod.perms[k];
+                        return (
+                          <td key={k} className="py-3 text-center">
+                            <span className="inline-flex justify-center">
+                              {state === "locked" ? (
+                                <Lock className="h-4 w-4 text-gray-300" />
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => toggle(si, mi, k)}
+                                  className="flex h-[18px] w-[18px] items-center justify-center rounded transition-colors"
+                                  style={{ backgroundColor: state === "on" ? BRAND : "#374151" }}
+                                >
+                                  {state === "on" && <Check className="h-3 w-3 text-white" />}
+                                </button>
+                              )}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-5 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            className="rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors"
+            style={{ backgroundColor: BRAND }}
+          >
+            Save Changes
+          </button>
+        </div>
       </div>
-
-      <ConfirmDialog
-        open={!!confirmDelete}
-        onOpenChange={(o) => !o && setConfirmDelete(null)}
-        title="Delete entry?"
-        description={confirmDelete ? `Delete ${confirmDelete.type} bracket? This cannot be undone.` : ""}
-        confirmLabel="Delete"
-        destructive
-        onConfirm={() => confirmDelete && deleteMut.mutate(confirmDelete.id)}
-        loading={deleteMut.isPending}
-      />
-    </div>
+    </div>,
+    document.body
   );
 }
 
-// Pencil icon used in gov table
-function Pencil({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-    </svg>
-  );
-}

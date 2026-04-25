@@ -134,12 +134,14 @@ model User {
 // ============================================================================
 
 model Branch {
-  id        String  @id @default(uuid())
-  name      String  @unique
-  address   String
-  city      String
-  phone     String?
-  isActive  Boolean @default(true)
+  id             String  @id @default(uuid())
+  name           String  @unique
+  address        String
+  city           String
+  phone          String?
+  branchManager  String?
+  operatingHours String?
+  isActive       Boolean @default(true)
 
   employees         Employee[]
   shifts             Shift[]
@@ -516,6 +518,20 @@ model GovernmentTable {
 
   @@index([type, effectiveDate])
   @@map("government_tables")
+}
+
+// ============================================================================
+// DEDUCTIONS
+// ============================================================================
+
+model Deduction {
+  id        String   @id @default(uuid())
+  name      String
+  amount    Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("deductions")
 }
 
 // ============================================================================

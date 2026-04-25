@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, format, getDay, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X, MoreHorizontal, Clock, Users } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
@@ -17,7 +17,6 @@ import AssignShiftDialog from "./assign-shift-dialog";
 import AssignEmployeesDialog from "./assign-employees-dialog";
 import ShiftTypesDialog from "./shift-types-dialog";
 import ShiftFormDialog from "./shift-form-dialog";
-import GenerateShiftsDialog from "./generate-shifts-dialog";
 import EmployeeDefaultShiftsDialog from "./employee-default-shifts-dialog";
 
 const BRAND = "#8C1515";
@@ -56,8 +55,9 @@ export default function SchedulingPage() {
     { shift: Shift; employeeId: string; name: string } | null
   >(null);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
-  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [employeeDefaultShiftsDialogOpen, setEmployeeDefaultShiftsDialogOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
@@ -154,13 +154,16 @@ export default function SchedulingPage() {
   return (
     <div className="mx-auto max-w-full px-4 py-8 md:px-8">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Schedule</h1>
+      <div className="mb-6 flex items-center justify-between animate-fade-up">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Planning</p>
+          <h1 className="font-heading text-3xl text-gray-900">Schedule</h1>
+        </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white p-1">
+          <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
             <button
               onClick={() => setView("weekly")}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 view === "weekly"
                   ? "bg-gray-100 text-gray-800"
                   : "text-gray-600 hover:text-gray-800"
@@ -170,7 +173,7 @@ export default function SchedulingPage() {
             </button>
             <button
               onClick={() => setView("monthly")}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 view === "monthly"
                   ? "bg-gray-100 text-gray-800"
                   : "text-gray-600 hover:text-gray-800"
@@ -181,7 +184,7 @@ export default function SchedulingPage() {
           </div>
           {branchesQuery.data && branchesQuery.data.length > 1 && (
             <select
-              className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
             >
@@ -193,34 +196,42 @@ export default function SchedulingPage() {
           )}
           <button
             onClick={() => { setAssignShiftInitialDate(undefined); setAssignShiftDialogOpen(true); }}
-            className="flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium text-white shadow-sm"
+            className="flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
             style={{ backgroundColor: BRAND }}
           >
             + Add Shift
           </button>
-          <button
-            onClick={() => setTemplateDialogOpen(true)}
-            className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            title="Manage shift templates"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setGenerateDialogOpen(true)}
-            disabled={!branchId}
-            className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Generate shifts from employee defaults"
-          >
-            Generate Shifts
-          </button>
-          <button
-            onClick={() => setEmployeeDefaultShiftsDialogOpen(true)}
-            disabled={!branchId}
-            className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Set employee default shifts"
-          >
-            Employee Defaults
-          </button>
+          <div className="relative" ref={moreMenuRef}>
+            <button
+              onClick={() => setMoreMenuOpen((o) => !o)}
+              className="flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 hover:bg-gray-50 transition-colors"
+              title="More options"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {moreMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMoreMenuOpen(false)} />
+                <div className="absolute right-0 z-20 mt-2 w-52 rounded-xl border border-gray-100 bg-white py-1 shadow-lg">
+                  <button
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => { setMoreMenuOpen(false); setTemplateDialogOpen(true); }}
+                  >
+                    <Clock className="h-4 w-4 text-gray-400" />
+                    Shift Types
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={!branchId}
+                    onClick={() => { setMoreMenuOpen(false); setEmployeeDefaultShiftsDialogOpen(true); }}
+                  >
+                    <Users className="h-4 w-4 text-gray-400" />
+                    Shift Defaults
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -228,7 +239,7 @@ export default function SchedulingPage() {
       <div className="mb-5 flex items-center justify-between rounded-2xl bg-white px-5 py-3 shadow-sm">
         <button
           onClick={() => view === "weekly" ? setCalendarWeek((d) => subWeeks(d, 1)) : setCalendarMonth((d) => subMonths(d, 1))}
-          className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100"
+          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -237,7 +248,7 @@ export default function SchedulingPage() {
         </span>
         <button
           onClick={() => view === "weekly" ? setCalendarWeek((d) => addWeeks(d, 1)) : setCalendarMonth((d) => addMonths(d, 1))}
-          className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100"
+          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
         >
           <ChevronRight className="h-5 w-5" />
         </button>
@@ -456,7 +467,6 @@ export default function SchedulingPage() {
       <ShiftFormDialog open={dialogOpen} onOpenChange={setDialogOpen} shift={dialogShift} />
       <AssignEmployeesDialog open={!!assignShift} onOpenChange={(o) => !o && setAssignShift(null)} shift={assignShift} />
       <ShiftTypesDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} branchId={branchId} />
-      <GenerateShiftsDialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen} branchId={branchId} />
       <EmployeeDefaultShiftsDialog open={employeeDefaultShiftsDialogOpen} onOpenChange={setEmployeeDefaultShiftsDialogOpen} branchId={branchId} />
 
       <ConfirmDialog

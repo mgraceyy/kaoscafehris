@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Pencil, User } from "lucide-react";
+import { Download, Loader2, Pencil, Search } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import { listBranches } from "@/features/branches/branches.api";
 import {
@@ -10,6 +10,11 @@ import {
   type AttendanceStatus,
 } from "./attendance.api";
 import AttendanceAdjustDialog from "./attendance-adjust-dialog";
+
+const BRAND = "#8C1515";
+const AMBER = "#C4843A";
+const PURPLE = "#7a3db0";
+const GREEN = "#4e8a40";
 
 const DATE_RANGE_OPTIONS = [
   { label: "Today", days: 0 },
@@ -23,28 +28,40 @@ function daysAgoIso(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+
 function StatusBadge({ status, hasClockOut }: { status: AttendanceStatus; hasClockOut: boolean }) {
   if (!hasClockOut && (status === "PRESENT" || status === "LATE")) {
     return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#FFE4E6", color: "#E11D48" }}>
-        Incomplete
+      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fce9e9", color: BRAND }}>
+        Ongoing
       </span>
     );
   }
   switch (status) {
-    case "PRESENT": return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#DCFCE7", color: "#16A34A" }}>Complete</span>;
-    case "LATE": return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#FEF9C3", color: "#CA8A04" }}>Late</span>;
-    case "ABSENT": return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#FEE2E2", color: "#DC2626" }}>Absent</span>;
-    case "HALF_DAY": return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#F3F4F6", color: "#6B7280" }}>Half-day</span>;
+    case "PRESENT": return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#edf6ea", color: GREEN }}>On Time</span>;
+    case "LATE": return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fdf0e0", color: AMBER }}>Late</span>;
+    case "ABSENT": return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fce9e9", color: BRAND }}>Absent</span>;
+    case "HALF_DAY": return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#f3e8ff", color: PURPLE }}>On Leave</span>;
     default: return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600">{status}</span>;
   }
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 }
 
 export default function AttendancePage() {
   const [dateRangeIdx, setDateRangeIdx] = useState(0);
   const [branchId, setBranchId] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"" | "COMPLETE" | "LATE" | "INCOMPLETE" | "ABSENT">("");
+  const [search, setSearch] = useState("");
   const [adjustTarget, setAdjustTarget] = useState<AttendanceRecord | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
@@ -68,130 +85,210 @@ export default function AttendancePage() {
   });
 
   const records = useMemo(() => {
-    const data = query.data ?? [];
-    if (statusFilter === "COMPLETE") return data.filter((r) => r.clockOut && r.status === "PRESENT");
-    if (statusFilter === "INCOMPLETE") return data.filter((r) => !r.clockOut && (r.status === "PRESENT" || r.status === "LATE"));
+    let data = query.data ?? [];
+    if (statusFilter === "COMPLETE") data = data.filter((r) => r.clockOut && r.status === "PRESENT");
+    else if (statusFilter === "INCOMPLETE") data = data.filter((r) => !r.clockOut && (r.status === "PRESENT" || r.status === "LATE"));
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      data = data.filter((r) =>
+        `${r.employee.firstName} ${r.employee.lastName}`.toLowerCase().includes(q) ||
+        r.employee.employeeId.toLowerCase().includes(q)
+      );
+    }
     return data;
-  }, [query.data, statusFilter]);
+  }, [query.data, statusFilter, search]);
+
+  const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
+  const pageRecords = records.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const selectedBranch = branchesQuery.data?.find((b) => b.id === branchId);
+
+  const summary = {
+    present: records.filter(r => r.status === "PRESENT" && r.clockOut).length,
+    late: records.filter(r => r.status === "LATE").length,
+    absent: records.filter(r => r.status === "ABSENT").length,
+    onLeave: records.filter(r => r.status === "HALF_DAY").length,
+    ongoing: records.filter(r => (r.status === "PRESENT" || r.status === "LATE") && !r.clockOut).length,
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
-      <h1 className="mb-6 text-2xl font-bold text-gray-800">Attendance</h1>
-
-      {/* Filters */}
-      <div className="mb-5 flex flex-wrap gap-4 rounded-2xl bg-white p-5 shadow-sm">
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-gray-500">Date Range</p>
-          <select
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-            value={dateRangeIdx}
-            onChange={(e) => setDateRangeIdx(Number(e.target.value))}
-          >
-            {DATE_RANGE_OPTIONS.map((o, i) => (
-              <option key={o.label} value={i}>{o.label}</option>
-            ))}
-          </select>
+      {/* Header */}
+      <div className="mb-8 flex items-start justify-between animate-fade-up">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Records</p>
+          <h1 className="font-heading text-3xl text-gray-900">Attendance</h1>
+          <p className="text-sm text-gray-400 mt-1">{todayLabel()}</p>
         </div>
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-gray-500">Branch</p>
-          <select
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-            value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
+        <div className="flex items-center gap-2">
+          <button
+            className="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-all hover:shadow-sm"
+            style={{ borderColor: BRAND, color: BRAND }}
           >
-            <option value="">All Branches</option>
-            {branchesQuery.data?.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-gray-500">Status</p>
-          <select
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          >
-            <option value="">All Statuses</option>
-            <option value="COMPLETE">Complete</option>
-            <option value="LATE">Late</option>
-            <option value="INCOMPLETE">Incomplete</option>
-            <option value="ABSENT">Absent</option>
-          </select>
+            <Download className="h-4 w-4" />
+            Export
+          </button>
         </div>
       </div>
 
+      {/* Stat Cards */}
+      <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: "Present", value: summary.present + summary.ongoing, color: GREEN, stagger: 1 },
+          { label: "Late", value: summary.late, color: AMBER, stagger: 2 },
+          { label: "Absent", value: summary.absent, color: BRAND, stagger: 3 },
+          { label: "On Leave", value: summary.onLeave, color: PURPLE, stagger: 4 },
+        ].map((s) => (
+          <div key={s.label} className={`animate-fade-up stagger-${s.stagger} relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover`} style={{ borderLeft: `4px solid ${s.color}` }}>
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">{s.label}</p>
+            <p className="font-heading text-4xl leading-none" style={{ color: s.color }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Search + Filters bar */}
+      <div className="mb-5 flex flex-wrap gap-3 rounded-2xl bg-white p-4 shadow-sm items-center animate-fade-up stagger-5">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
+          <input
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm focus:border-primary focus:outline-none"
+            placeholder="Search by name or ID..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+        </div>
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:outline-none"
+          value={branchId}
+          onChange={(e) => { setBranchId(e.target.value); setPage(1); }}
+        >
+          <option value="">All Branches</option>
+          {branchesQuery.data?.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:outline-none"
+          value={dateRangeIdx}
+          onChange={(e) => { setDateRangeIdx(Number(e.target.value)); setPage(1); }}
+        >
+          {DATE_RANGE_OPTIONS.map((o, i) => (
+            <option key={o.label} value={i}>{o.label}</option>
+          ))}
+        </select>
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:outline-none"
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value as typeof statusFilter); setPage(1); }}
+        >
+          <option value="">All Statuses</option>
+          <option value="COMPLETE">On Time</option>
+          <option value="LATE">Late</option>
+          <option value="INCOMPLETE">Ongoing</option>
+          <option value="ABSENT">Absent</option>
+        </select>
+      </div>
+
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="animate-fade-up stagger-6 overflow-hidden rounded-2xl bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Employee</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Branch</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Time In</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Time Out</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Status</th>
-              <th className="px-5 py-3.5 w-10" />
+          <thead style={{ background: "#FDFAFA" }}>
+            <tr style={{ borderBottom: "1px solid #F5EDED" }}>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Employee</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Role</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Date</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Time In</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Time Out</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Status</th>
+              <th className="px-5 py-3 w-10" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y" style={{ borderColor: "#F5EDED" }}>
             {query.isLoading && (
               <tr>
-                <td colSpan={6} className="py-12 text-center">
+                <td colSpan={7} className="py-12 text-center">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" />
                 </td>
               </tr>
             )}
             {query.isError && (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-sm text-red-500">
+                <td colSpan={7} className="py-12 text-center text-sm text-red-500">
                   {extractErrorMessage(query.error, "Failed to load attendance")}
                 </td>
               </tr>
             )}
             {!query.isLoading && records.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
+                <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
                   No records match these filters.
                 </td>
               </tr>
             )}
-            {records.map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50/50">
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
-                      <User className="h-4 w-4 text-gray-400" />
+            {pageRecords.map((r) => (
+                <tr key={r.id} className="hover:bg-[#FAF0F0]/40 transition-colors">
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold flex-shrink-0" style={{ background: "#F3E4E4", color: BRAND }}>
+                        {`${r.employee.firstName[0]}${r.employee.lastName[0]}`.toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-800">{r.employee.firstName} {r.employee.lastName}</p>
+                        <p className="text-xs text-gray-400">{r.employee.employeeId}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-800">{r.employee.firstName} {r.employee.lastName}</p>
-                      <p className="text-xs text-gray-400">{r.employee.employeeId}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-4 text-gray-600">{r.branch?.name ?? "—"}</td>
-                <td className="px-5 py-4 tabular-nums font-medium text-gray-800">
-                  {formatClockTime(r.clockIn)}
-                </td>
-                <td className="px-5 py-4 tabular-nums text-gray-600">
-                  {r.clockOut ? formatClockTime(r.clockOut) : <span className="text-gray-300">—</span>}
-                </td>
-                <td className="px-5 py-4">
-                  <StatusBadge status={r.status} hasClockOut={!!r.clockOut} />
-                </td>
-                <td className="px-4 py-4 text-right">
-                  <button
-                    onClick={() => setAdjustTarget(r)}
-                    className="text-gray-400 hover:text-primary transition-colors"
-                    title="Adjust"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                </td>
-              </tr>
+                  </td>
+                  <td className="px-5 py-4 text-gray-600">{r.employee.position ?? "—"}</td>
+                  <td className="px-5 py-4 text-gray-600">{formatDate(r.clockIn)}</td>
+                  <td className="px-5 py-4 tabular-nums font-medium text-gray-800">
+                    {formatClockTime(r.clockIn)}
+                  </td>
+                  <td className="px-5 py-4 tabular-nums text-gray-600">
+                    {r.clockOut ? formatClockTime(r.clockOut) : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-5 py-4">
+                    <StatusBadge status={r.status} hasClockOut={!!r.clockOut} />
+                  </td>
+                  <td className="px-4 py-4 text-right">
+                    <button
+                      onClick={() => setAdjustTarget(r)}
+                      className="text-gray-400 hover:text-primary transition-colors"
+                      title="Adjust"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </td>
+                </tr>
             ))}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        {!query.isLoading && records.length > 0 && (
+          <div style={{ padding: "12px 20px", borderTop: "1px solid #F5EDED", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "12px", color: "#aaa" }}>
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, records.length)} of {records.length} records
+            </span>
+            <div style={{ display: "flex", gap: 4 }}>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).slice(0, 5).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  style={{
+                    width: 28, height: 28, borderRadius: 6,
+                    border: p === page ? "none" : "1px solid #eee",
+                    background: p === page ? BRAND : "#fff",
+                    color: p === page ? "#fff" : "#666",
+                    fontSize: 12, cursor: "pointer",
+                    fontWeight: p === page ? 700 : 400,
+                  }}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <AttendanceAdjustDialog

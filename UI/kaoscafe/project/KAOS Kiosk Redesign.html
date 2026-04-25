@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>KAOS Kiosk — Redesign</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<style>* { box-sizing:border-box; margin:0; padding:0; } body { background:#1a1a1a; overflow:hidden; height:100vh; }</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const BRAND      = "#811c12";  // --kaos-crimson
+const DARK       = "#280906";  // --kaos-maroon
+const BLUSH      = "#f7ebeb";  // --kaos-blush
+const ROSE       = "#a28587";  // --kaos-rose
+const BRIGHT     = "#b10b0b";  // --kaos-red (accent)
+const NEAR_BLACK = "#110200";  // --kaos-dark
+
+// ── Shared helpers ──────────────────────────────────────────────────────────
+
+function KIcon({ name, size=20, color="currentColor" }) {
+  const d = {
+    clock:      <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
+    building:   <><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></>,
+    check:      <><path d="M20 6 9 17l-5-5"/></>,
+    checkcircle:<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>,
+    refresh:    <><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.07-8.51L23 10"/></>,
+    logout:     <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></>,
+    alert:      <><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></>,
+    calendar:   <><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></>,
+    camera:     <><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></>,
+    user:       <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
+    star:       <><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      {d[name]}
+    </svg>
+  );
+}
+
+// Animated live clock hook
+function useClock() {
+  const [t, setT] = React.useState(new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setT(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return t;
+}
+
+// KAOS wordmark SVG (inline, white)
+function KaosLogo({ size=40 }) {
+  return <img src="assets/kaos-logo.png" alt="KAOS" style={{ height:size, width:"auto", filter:"brightness(0) invert(1)" }} />;
+}
+
+// Shared kiosk header
+function KioskHeader({ name, showClock=true }) {
+  const now = useClock();
+  const timeStr = now.toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", hour12:true });
+  const dateStr = now.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
+
+  return (
+    <div style={{ background: `linear-gradient(160deg, ${DARK} 0%, ${BRAND} 100%)`, padding:"22px 20px 22px", flexShrink:0 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+        <div>
+          {name ? (
+            <>
+              <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13 }}>Good evening,</div>
+              <div style={{ color:"#fff", fontSize:22, fontWeight:800, letterSpacing:-.3, marginTop:1 }}>{name}</div>
+            </>
+          ) : (
+            <div style={{ color:"#fff", fontSize:20, fontWeight:900, letterSpacing:1, fontFamily:"Georgia,serif" }}>KAOS</div>
+          )}
+          {/* FIX: Live clock in header */}
+          {showClock && (
+            <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:5 }}>
+              <KIcon name="clock" size={12} color="rgba(255,255,255,0.5)" />
+              <span style={{ color:"rgba(255,255,255,0.7)", fontSize:12, fontVariantNumeric:"tabular-nums" }}>{timeStr} · {dateStr}</span>
+            </div>
+          )}
+        </div>
+        <KaosLogo size={40} />
+      </div>
+    </div>
+  );
+}
+
+// ── Screen 1: ID Entry — client-approved login style ────────────────────────
+
+function KaosLineLogo({ size=68 }) {
+  return <img src="assets/kaos-logo.png" alt="KAOS" style={{ height:size, width:"auto", filter:"brightness(0) invert(1)" }} />;
+}
+
+// Real brand background image
+function LoginBg() {
+  return (
+    <div style={{
+      position:"absolute", inset:0,
+      backgroundImage:"url('assets/login-bg.png')",
+      backgroundSize:"cover", backgroundPosition:"center",
+    }}/>
+  );
+}
+
+function Screen1_IdEntry() {
+  const [val, setVal] = React.useState("");
+  const [pass, setPass] = React.useState("");
+  const [err, setErr] = React.useState(false);
+
+  function tryLogin() {
+    if (!val.trim()) { setErr(true); return; }
+    setErr(true);
+  }
+
+  return (
+    <div style={{ height:"100%", position:"relative", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
+      {/* Painted background */}
+      <LoginBg />
+
+      {/* Content */}
+      <div style={{ position:"relative", zIndex:2, width:"100%", display:"flex", flexDirection:"column", alignItems:"center", padding:"0 36px", gap:0 }}>
+
+        {/* Logo */}
+        <KaosLineLogo size={68} />
+
+        {/* Title */}
+        <div style={{ color:"#fff", fontSize:24, fontWeight:800, marginTop:10, letterSpacing:.2 }}>KAOS Café Attendance</div>
+
+        {/* Inputs */}
+        <div style={{ width:"100%", marginTop:32, display:"flex", flexDirection:"column", gap:12 }}>
+          <input
+            type="text"
+            placeholder="Enter ID Number"
+            value={val}
+            onChange={e => { setVal(e.target.value.toUpperCase()); setErr(false); }}
+            style={{
+              width:"100%", padding:"15px 20px", borderRadius:40,
+              border:"none", background:"rgba(255,255,255,0.92)",
+              color:"#333", fontSize:14, outline:"none", letterSpacing:.5,
+            }}
+          />
+          <input
+            type="password"
+            placeholder="Enter Password"
+            value={pass}
+            onChange={e => { setPass(e.target.value); setErr(false); }}
+            style={{
+              width:"100%", padding:"15px 20px", borderRadius:40,
+              border:"none", background:"rgba(255,255,255,0.92)",
+              color:"#333", fontSize:14, outline:"none",
+            }}
+          />
+        </div>
+
+        {/* Error */}
+        <div style={{ marginTop:20, minHeight:22, display:"flex", alignItems:"center", gap:6, opacity: err ? 1 : 0, transition:"opacity .25s" }}>
+          <KIcon name="alert" size={13} color="rgba(255,255,255,0.75)" />
+          <span style={{ fontSize:12.5, color:"rgba(255,255,255,0.75)" }}>ID does not exist</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Screen 2: Main (Shift + Camera) ─────────────────────────────────────────
+
+function Screen2_Main() {
+  return (
+    <div style={{ height:"100%", display:"flex", flexDirection:"column", background:BLUSH, fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
+      <KioskHeader name="Emma T. Cruz" />
+
+      <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 12px" }}>
+
+        {/* Shift card */}
+        <div style={{ background:"#fff", borderRadius:16, padding:"16px 18px", marginBottom:14, boxShadow:"0 2px 10px rgba(140,21,21,0.07)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <span style={{ fontSize:14, fontWeight:700, color:"#110200" }}>Today's Shift</span>
+            {/* FIX: badge is now warm amber — not muted gray */}
+            <span style={{ fontSize:10.5, fontWeight:700, background:"#fdf0e0", color:"#a06010", borderRadius:20, padding:"4px 12px", letterSpacing:.3 }}>
+              Not Yet Timed In
+            </span>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+            <KIcon name="clock" size={14} color={ROSE} />
+            <span style={{ fontSize:13.5, color:"#222", fontWeight:600 }}>10:00 PM – 6:00 AM</span>
+            <span style={{ fontSize:11, color:"#aaa", marginLeft:2 }}>Mon → Tue</span>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+            <KIcon name="building" size={14} color={ROSE} />
+            <span style={{ fontSize:13, color:"#555" }}>Marfori Branch</span>
+          </div>
+          <div style={{ borderTop:"1px solid #F0E6E6", paddingTop:10, fontSize:12, color:"#aaa" }}>
+            Last clock-in: Yesterday at 10:02 PM
+          </div>
+        </div>
+
+        {/* FIX: Camera frame is large and prominent — no extra card borders */}
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#110200", marginBottom:10 }}>Photo Attendance</div>
+
+          {/* Big camera frame */}
+          <div style={{ borderRadius:18, overflow:"hidden", position:"relative", background:"#110200", aspectRatio:"3/4" }}>
+            {/* Simulated camera feed */}
+            <div style={{ width:"100%", height:"100%", background:"linear-gradient(135deg, #2a1010 0%, #1a0a0a 100%)", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10 }}>
+              <KIcon name="camera" size={36} color="rgba(255,255,255,0.2)" />
+              <span style={{ color:"rgba(255,255,255,0.3)", fontSize:12 }}>Camera preview</span>
+            </div>
+            {/* Face guide overlay */}
+            <div style={{
+              position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+              pointerEvents:"none"
+            }}>
+              <div style={{
+                width:160, height:200, border:"2px solid rgba(255,255,255,0.35)", borderRadius:"50% 50% 50% 50% / 60% 60% 40% 40%",
+                boxShadow:"0 0 0 9999px rgba(0,0,0,0.25)"
+              }}/>
+            </div>
+            {/* Instruction */}
+            <div style={{ position:"absolute", bottom:12, left:0, right:0, textAlign:"center" }}>
+              <span style={{ fontSize:12, color:"rgba(255,255,255,0.6)", background:"rgba(0,0,0,0.35)", borderRadius:20, padding:"4px 14px" }}>
+                Center your face in the frame
+              </span>
+            </div>
+          </div>
+
+          {/* Time In button */}
+          <button style={{
+            width:"100%", marginTop:12, padding:"16px", borderRadius:14,
+            background:"#2d7a3a", border:"none", color:"#fff", fontSize:15, fontWeight:800,
+            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+            boxShadow:"0 4px 14px rgba(45,122,58,0.3)"
+          }}>
+            <KIcon name="clock" size={18} color="#fff" />
+            Time In
+          </button>
+        </div>
+
+        {/* FIX: Logout demoted to a small text link — no longer a dominant button */}
+        <div style={{ textAlign:"center", paddingBottom:8 }}>
+          <button style={{ background:"none", border:"none", color:ROSE, fontSize:12.5, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:5, fontWeight:500 }}>
+            <KIcon name="logout" size={13} color={ROSE} />
+            Not you? Switch employee
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Screen 3: Confirm Photo ──────────────────────────────────────────────────
+
+function Screen3_Confirm() {
+  return (
+    <div style={{ height:"100%", display:"flex", flexDirection:"column", background:BLUSH, fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
+      <KioskHeader name="Emma T. Cruz" />
+
+      <div style={{ flex:1, overflowY:"auto", padding:"16px" }}>
+        <div style={{ background:"#fff", borderRadius:18, padding:"20px", boxShadow:"0 2px 12px rgba(140,21,21,0.08)" }}>
+
+          <div style={{ textAlign:"center", marginBottom:16 }}>
+            <div style={{ fontSize:15, fontWeight:800, color:"#110200" }}>Confirm Your Photo</div>
+            <div style={{ fontSize:12, color:"#aaa", marginTop:3 }}>Review carefully before submitting</div>
+          </div>
+
+          {/* Photo */}
+          <div style={{ borderRadius:14, overflow:"hidden", background:"#110200", aspectRatio:"4/3", marginBottom:16, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8, opacity:.4 }}>
+              <KIcon name="user" size={48} color="#fff" />
+              <span style={{ color:"#fff", fontSize:12 }}>Photo preview</span>
+            </div>
+          </div>
+
+          {/* Action buttons — retake (outline) + confirm (filled) */}
+          <div style={{ display:"flex", gap:12, marginBottom:18, justifyContent:"center" }}>
+            <button style={{
+              flex:1, padding:"13px", borderRadius:12, border:`1.5px solid #ddd`,
+              background:"#fff", color:"#555", fontSize:13, fontWeight:600, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:7
+            }}>
+              <KIcon name="refresh" size={15} color="#888" /> Retake
+            </button>
+            <button style={{
+              flex:1.4, padding:"13px", borderRadius:12, border:"none",
+              background:"#2d7a3a", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:7,
+              boxShadow:"0 3px 10px rgba(45,122,58,0.25)"
+            }}>
+              <KIcon name="check" size={15} color="#fff" /> Confirm Time In
+            </button>
+          </div>
+
+          {/* Details grid */}
+          <div style={{ borderTop:"1px solid #F0E6E6", paddingTop:14 }}>
+            <div style={{ fontSize:18, fontWeight:800, color:"#110200", marginBottom:10 }}>
+              <span style={{ fontWeight:900 }}>Cruz,</span> Emma T.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px 16px" }}>
+              {[
+                ["Action",  <span style={{ display:"inline-block", background:"#edf6ea", color:"#2d7a3a", fontSize:11, fontWeight:700, borderRadius:20, padding:"3px 12px", marginTop:2 }}>Time In</span>],
+                ["Branch",  <span style={{ fontSize:13, fontWeight:600, color:"#110200" }}>Marfori</span>],
+                ["Time",    <span style={{ fontSize:13, fontWeight:600, color:"#110200", fontVariantNumeric:"tabular-nums" }}>10:04 PM</span>],
+                ["Date",    <span style={{ fontSize:13, fontWeight:600, color:"#110200" }}>Apr 23, 2026</span>],
+              ].map(([label, val]) => (
+                <div key={label}>
+                  <div style={{ fontSize:10, color:"#aaa", textTransform:"uppercase", letterSpacing:.5, fontWeight:600, marginBottom:3 }}>{label}</div>
+                  {val}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* FIX: No Logout button here — removed from confirm screen */}
+        </div>
+
+        <div style={{ textAlign:"center", marginTop:14 }}>
+          <button style={{ background:"none", border:"none", color:ROSE, fontSize:12, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:5 }}>
+            <KIcon name="logout" size={12} color={ROSE} /> Cancel & switch employee
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Screen 4: Success ────────────────────────────────────────────────────────
+
+function Screen4_Success() {
+  const [secs, setSecs] = React.useState(5);
+  React.useEffect(() => {
+    const id = setInterval(() => setSecs(s => Math.max(0, s-1)), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    // FIX: Full on-brand success screen — maroon gradient, not plain white
+    <div style={{ height:"100%", display:"flex", flexDirection:"column", background:`linear-gradient(160deg, ${DARK} 0%, ${BRAND} 55%, #a01818 100%)`, fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
+
+      {/* Top branding */}
+      <div style={{ padding:"28px 24px 0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <KaosLogo size={44} />
+        {/* FIX: Live clock on success screen too */}
+        <span style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontVariantNumeric:"tabular-nums" }}>10:04 PM · Apr 23</span>
+      </div>
+
+      {/* Center content */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 28px", gap:6 }}>
+
+        {/* Success check circle */}
+        <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:8, border:"2px solid rgba(255,255,255,0.25)" }}>
+          <KIcon name="checkcircle" size={40} color="#fff" />
+        </div>
+
+        <div style={{ color:"rgba(255,255,255,0.7)", fontSize:13, letterSpacing:.5, textTransform:"uppercase", fontWeight:600 }}>Time Recorded</div>
+        <div style={{ color:"#fff", fontSize:44, fontWeight:900, letterSpacing:-1, fontVariantNumeric:"tabular-nums" }}>10:04 PM</div>
+        <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Wednesday, April 23, 2026</div>
+
+        {/* FIX: Shift summary on success screen */}
+        <div style={{ marginTop:20, background:"rgba(255,255,255,0.1)", borderRadius:16, padding:"16px 22px", width:"100%", backdropFilter:"blur(4px)", border:"1px solid rgba(255,255,255,0.15)" }}>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:.5, fontWeight:600, marginBottom:10 }}>Shift Summary</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <KIcon name="clock" size={14} color="rgba(255,255,255,0.5)" />
+              <span style={{ fontSize:13.5, color:"#fff", fontWeight:600 }}>10:00 PM – 6:00 AM</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <KIcon name="building" size={14} color="rgba(255,255,255,0.5)" />
+              <span style={{ fontSize:13, color:"rgba(255,255,255,0.75)" }}>Marfori Branch</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <KIcon name="user" size={14} color="rgba(255,255,255,0.5)" />
+              <span style={{ fontSize:13, color:"rgba(255,255,255,0.75)" }}>Emma T. Cruz</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ color:"rgba(255,255,255,0.55)", fontSize:13, marginTop:12, textAlign:"center" }}>
+          Have a great shift, Emma! ☕
+        </div>
+      </div>
+
+      {/* Countdown & return */}
+      <div style={{ padding:"0 28px 40px", display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", textAlign:"center" }}>
+          Returning to login in{" "}
+          <span style={{ fontWeight:800, color:"rgba(255,255,255,0.8)", fontVariantNumeric:"tabular-nums" }}>{secs}</span>
+          {" "}seconds
+        </div>
+        {/* Progress bar */}
+        <div style={{ width:"100%", height:3, background:"rgba(255,255,255,0.12)", borderRadius:4, overflow:"hidden" }}>
+          <div style={{ height:"100%", background:"rgba(255,255,255,0.5)", borderRadius:4, width:`${(secs/5)*100}%`, transition:"width 1s linear" }}/>
+        </div>
+        <button style={{ background:"none", border:"1px solid rgba(255,255,255,0.2)", borderRadius:10, padding:"9px 22px", color:"rgba(255,255,255,0.7)", fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
+          Return to Login Now
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Fix legend ───────────────────────────────────────────────────────────────
+
+const FIXES = [
+  { n:1, t:'Login: version tag removed; subtle "tap your card" hint added' },
+  { n:2, t:"All screens: live clock in header — employees verify time before clocking" },
+  { n:3, t:'"Not Yet Timed In" badge now warm amber — visible and distinct' },
+  { n:4, t:"Camera frame enlarged to full-width — bigger, face-guide overlay added" },
+  { n:5, t:"Logout demoted to a small text link — can't be accidentally tapped" },
+  { n:6, t:"Confirm screen: redundant Logout button removed" },
+  { n:7, t:"Success screen: full maroon rebrand + shift summary (time, branch, name)" },
+];
+
+function Legend() {
+  return (
+    <div style={{ position:"fixed", bottom:14, left:"50%", transform:"translateX(-50%)", zIndex:1000,
+      background:"rgba(20,4,4,0.93)", backdropFilter:"blur(10px)", borderRadius:14,
+      padding:"12px 18px", maxWidth:820, width:"calc(100vw - 32px)",
+      display:"flex", flexWrap:"wrap", gap:"6px 18px"
+    }}>
+      {FIXES.map(f => (
+        <div key={f.n} style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:"rgba(255,255,255,0.7)" }}>
+          <span style={{ width:17, height:17, borderRadius:"50%", background:"#811c12", color:"#fff", fontSize:9, fontWeight:800, display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{f.n}</span>
+          {f.t}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── App ──────────────────────────────────────────────────────────────────────
+
+function App() {
+  return (
+    <>
+      <DesignCanvas title="KAOS Café — Kiosk Redesign">
+        <DCSection id="kiosk" title="Kiosk / Attendance Logger — All 4 Screens Redesigned">
+
+          <DCArtboard id="s1" label="① ID Entry — Client-approved style" width={390} height={780}>
+            <div style={{ width:"100%", height:"100%", borderRadius:12, overflow:"hidden" }}>
+              <Screen1_IdEntry />
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="s2" label="② Shift + Camera" width={390} height={780}>
+            <div style={{ width:"100%", height:"100%", borderRadius:12, overflow:"hidden" }}>
+              <Screen2_Main />
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="s3" label="③ Confirm Photo" width={390} height={780}>
+            <div style={{ width:"100%", height:"100%", borderRadius:12, overflow:"hidden" }}>
+              <Screen3_Confirm />
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="s4" label="④ Success ✦ Rebranded" width={390} height={780}>
+            <div style={{ width:"100%", height:"100%", borderRadius:12, overflow:"hidden" }}>
+              <Screen4_Success />
+            </div>
+          </DCArtboard>
+
+        </DCSection>
+      </DesignCanvas>
+      <Legend />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

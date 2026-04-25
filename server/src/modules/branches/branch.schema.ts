@@ -10,6 +10,18 @@ export const createBranchSchema = z.object({
     .max(30)
     .optional()
     .or(z.literal("").transform(() => undefined)),
+  branchManager: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  operatingHours: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   isActive: z.boolean().optional(),
 });
 

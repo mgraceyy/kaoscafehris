@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { format, endOfMonth } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listEmployees, updateEmployee } from "@/features/employees/employees.api";
 import { listShiftTypes } from "./shift-types.api";
+import { generateShifts } from "./generate-shifts.api";
 
 interface Props {
   open: boolean;
@@ -41,13 +43,24 @@ export default function EmployeeDefaultShiftsDialog({ open, onOpenChange, branch
   });
 
   const mutation = useMutation({
-    mutationFn: () =>
-      updateEmployee(selectedEmployeeId, {
+    mutationFn: async () => {
+      await updateEmployee(selectedEmployeeId, {
         defaultShiftTypeId: selectedShiftTypeId || null,
-      }),
+      });
+      if (selectedShiftTypeId && branchId) {
+        const today = new Date();
+        await generateShifts({
+          branchId,
+          startDate: format(today, "yyyy-MM-dd"),
+          endDate: format(endOfMonth(today), "yyyy-MM-dd"),
+          excludeWeekendsAndHolidays: true,
+        });
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["employees"] });
-      toast("Default shift updated", "success");
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+      toast("Default shift saved and shifts generated", "success");
       setSelectedEmployeeId("");
       setSelectedShiftTypeId("");
     },

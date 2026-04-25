@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Search, Settings, X } from "lucide-react";
+import { Download, Loader2, Settings } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { useAuthStore } from "@/features/auth/auth.store";
@@ -29,8 +29,34 @@ const TYPE_LABEL: Record<LeaveType, string> = {
   UNPAID: "Unpaid Leave",
 };
 
+const TYPE_COLOR: Record<LeaveType, string> = {
+  VACATION: "#2563EB",
+  SICK: "#6B7280",
+  EMERGENCY: "#D97706",
+  MATERNITY: "#7C3AED",
+  PATERNITY: "#0891B2",
+  UNPAID: "#374151",
+};
+
+function getInitials(first: string, last: string) {
+  return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
+}
+
+function Avatar({ first, last }: { first: string; last: string }) {
+  const colors = ["#8C1515", "#2563EB", "#7C3AED", "#0891B2", "#D97706", "#16A34A"];
+  const idx = (first.charCodeAt(0) + last.charCodeAt(0)) % colors.length;
+  return (
+    <div
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+      style={{ backgroundColor: colors[idx] }}
+    >
+      {getInitials(first, last)}
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: LeaveStatus }) {
-  const map = {
+  const map: Record<LeaveStatus, { bg: string; color: string; label: string }> = {
     PENDING:   { bg: "#FEF9C3", color: "#CA8A04", label: "Pending" },
     APPROVED:  { bg: "#DCFCE7", color: "#16A34A", label: "Approved" },
     REJECTED:  { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
@@ -47,89 +73,11 @@ function StatusBadge({ status }: { status: LeaveStatus }) {
   );
 }
 
-// Detail panel shown on row click
-function LeaveDetailPanel({
-  request,
-  canReview,
-  onClose,
-  onApprove,
-  onReject,
-  approving,
-  rejecting,
-}: {
-  request: LeaveRequest;
-  canReview: boolean;
-  onClose: () => void;
-  onApprove: () => void;
-  onReject: () => void;
-  approving: boolean;
-  rejecting: boolean;
-}) {
+function StatCard({ label, value, color, stagger }: { label: string; value: number; color: string; stagger: number }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/20" onClick={onClose}>
-      <div
-        className="h-full w-80 overflow-y-auto bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b p-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-gray-800">Leave Request Details</h2>
-              <p className="text-xs text-gray-400">
-                Submitted on {new Date(request.createdAt ?? "").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-              </p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="mt-3">
-            <StatusBadge status={request.status} />
-          </div>
-        </div>
-        <div className="space-y-4 p-5">
-          <Field label="Employee" value={`${request.employee.firstName} ${request.employee.lastName}`} />
-          <Field label="Branch" value={request.employee.branchId ?? "—"} />
-          <Field label="Leave Type" value={TYPE_LABEL[request.leaveType]} />
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Start Date" value={new Date(request.startDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} />
-            <Field label="End Date" value={new Date(request.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} />
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Reason</p>
-            <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">{request.reason || "—"}</p>
-          </div>
-        </div>
-        {canReview && request.status === "PENDING" && (
-          <div className="border-t p-5 flex gap-3">
-            <button
-              disabled={approving || rejecting}
-              onClick={onApprove}
-              className="flex-1 rounded-full py-2.5 text-sm font-medium text-white transition-colors"
-              style={{ backgroundColor: "#16A34A" }}
-            >
-              {approving ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Approve"}
-            </button>
-            <button
-              disabled={approving || rejecting}
-              onClick={onReject}
-              className="flex-1 rounded-full py-2.5 text-sm font-medium text-white transition-colors"
-              style={{ backgroundColor: BRAND }}
-            >
-              {rejecting ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Reject"}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="text-sm font-medium text-gray-800">{value}</p>
+    <div className={`animate-fade-up stagger-${stagger} relative overflow-hidden rounded-xl bg-white p-5 shadow-sm card-hover`} style={{ borderLeft: `4px solid ${color}` }}>
+      <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">{label}</p>
+      <p className="font-heading text-4xl leading-none" style={{ color }}>{value}</p>
     </div>
   );
 }
@@ -154,7 +102,7 @@ function BalanceCards({ balances }: { balances: LeaveBalance[] }) {
               <span className="mb-0.5 text-sm text-gray-400">/ {total} days</span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-              <div className="h-full rounded-full" style={{ width: `${Math.min(pct,100)}%`, backgroundColor: BRAND }} />
+              <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: BRAND }} />
             </div>
             <p className="text-xs text-gray-400">{used} used</p>
           </div>
@@ -162,6 +110,10 @@ function BalanceCards({ balances }: { balances: LeaveBalance[] }) {
       })}
     </div>
   );
+}
+
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export default function LeavePage() {
@@ -172,15 +124,15 @@ export default function LeavePage() {
   const isEmployee = user?.role === "EMPLOYEE";
   const canReview = user?.role === "ADMIN" || user?.role === "MANAGER";
 
-  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"" | LeaveType>("");
+  const [statusFilter, setStatusFilter] = useState<"" | LeaveStatus>("");
   const [branchId, setBranchId] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | LeaveStatus>(isEmployee ? "" : "PENDING");
-  const [detailRequest, setDetailRequest] = useState<LeaveRequest | null>(null);
   const [balanceOpen, setBalanceOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<LeaveRequest | null>(null);
 
   const currentYear = new Date().getFullYear();
+  const monthLabel = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
@@ -189,9 +141,8 @@ export default function LeavePage() {
   });
 
   const filters = useMemo(() => ({
-    status: statusFilter || undefined,
     ...(isEmployee && user?.employee ? { employeeId: user.employee.id } : {}),
-  }), [statusFilter, isEmployee, user]);
+  }), [isEmployee, user]);
 
   const query = useQuery({
     queryKey: ["leave-requests", filters],
@@ -204,53 +155,105 @@ export default function LeavePage() {
     enabled: isEmployee && !!user?.employee,
   });
 
-
   const approveMut = useMutation({
     mutationFn: (id: string) => reviewRequest(id, { status: "APPROVED" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); toast("Request approved", "success"); setDetailRequest(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); toast("Request approved", "success"); },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
   const rejectMut = useMutation({
     mutationFn: (id: string) => reviewRequest(id, { status: "REJECTED" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); toast("Request rejected", "success"); setDetailRequest(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); toast("Request rejected", "success"); },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
+  const allData = query.data ?? [];
+
   const filtered = useMemo(() => {
-    let data = query.data ?? [];
-    if (search) {
-      const q = search.toLowerCase();
-      data = data.filter((r) =>
-        `${r.employee.firstName} ${r.employee.lastName}`.toLowerCase().includes(q)
-      );
-    }
-    if (branchId) {
-      data = data.filter((r) => r.employee.branchId === branchId);
-    }
+    let data = allData;
+    if (typeFilter) data = data.filter((r) => r.leaveType === typeFilter);
+    if (statusFilter) data = data.filter((r) => r.status === statusFilter);
+    if (branchId) data = data.filter((r) => r.employee.branchId === branchId);
     return data;
-  }, [query.data, search, branchId]);
+  }, [allData, typeFilter, statusFilter, branchId]);
+
+  const stats = useMemo(() => ({
+    pending: allData.filter((r) => r.status === "PENDING").length,
+    approved: allData.filter((r) => r.status === "APPROVED").length,
+    rejected: allData.filter((r) => r.status === "REJECTED").length,
+    total: allData.length,
+  }), [allData]);
+
+  const selectedBranchName = branchId
+    ? branchesQuery.data?.find((b) => b.id === branchId)?.name ?? "Selected Branch"
+    : "All Branches";
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {isEmployee ? "My Leave" : "Leave Management"}
-        </h1>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4 animate-fade-up">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Requests</p>
+          <h1 className="font-heading text-3xl text-gray-900">
+            {isEmployee ? "My Leave" : "Leave Management"}
+          </h1>
+          <p className="text-sm text-gray-400 mt-1">{monthLabel} · {selectedBranchName}</p>
+        </div>
         <div className="flex items-center gap-2">
+          {/* Type filter */}
+          <select
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as "" | LeaveType)}
+          >
+            <option value="">All Types</option>
+            {(Object.keys(TYPE_LABEL) as LeaveType[]).map((t) => (
+              <option key={t} value={t}>{TYPE_LABEL[t]}</option>
+            ))}
+          </select>
+          {/* Status filter */}
+          <select
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "" | LeaveStatus)}
+          >
+            <option value="">All Status</option>
+            <option value="PENDING">Pending</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="CANCELLED">Cancelled</option>
+          </select>
+          {/* Branch filter for admin/manager */}
+          {!isEmployee && (
+            <select
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm"
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+            >
+              <option value="">All Branches</option>
+              {branchesQuery.data?.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          )}
+          {/* Export button */}
+          <button className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm" style={{ backgroundColor: BRAND }}>
+            <Download className="h-4 w-4" /> Export
+          </button>
+          {/* Admin settings */}
           {isAdmin && (
             <button
               onClick={() => setBalanceOpen(true)}
-              className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 shadow-sm hover:bg-gray-50"
             >
-              <Settings className="h-4 w-4" /> Settings
+              <Settings className="h-4 w-4" />
             </button>
           )}
+          {/* Employee file request */}
           {!isAdmin && (
             <button
               onClick={() => setRequestOpen(true)}
-              className="flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium text-white shadow-sm"
+              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm"
               style={{ backgroundColor: BRAND }}
             >
               + File Request
@@ -266,111 +269,117 @@ export default function LeavePage() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="mb-5 flex flex-wrap gap-4 rounded-2xl bg-white p-5 shadow-sm">
-        {!isEmployee && (
-          <div className="space-y-1 flex-1 min-w-[160px]">
-            <p className="text-xs font-medium text-gray-500">Search Employee</p>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
-              <input
-                className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm"
-                placeholder="Search by name"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-        {!isEmployee && (
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500">Branch</p>
-            <select
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-            >
-              <option value="">All Branches</option>
-              {branchesQuery.data?.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-gray-500">Status</p>
-          <select
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "" | LeaveStatus)}
-          >
-            <option value="">All Statuses</option>
-            <option value="PENDING">Pending</option>
-            <option value="APPROVED">Approved</option>
-            <option value="REJECTED">Rejected</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
+      {/* Stat cards — admin/manager only */}
+      {!isEmployee && (
+        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <StatCard label="Pending" value={stats.pending} color="#CA8A04" stagger={1} />
+          <StatCard label="Approved" value={stats.approved} color="#16A34A" stagger={2} />
+          <StatCard label="Rejected" value={stats.rejected} color="#DC2626" stagger={3} />
+          <StatCard label="Total" value={stats.total} color={BRAND} stagger={4} />
         </div>
-      </div>
+      )}
 
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="animate-fade-up stagger-5 overflow-hidden rounded-2xl bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Employee</th>
-              {!isEmployee && <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Branch</th>}
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Leave Type</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Date Range</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Status</th>
+          <thead style={{ background: "#FDFAFA" }}>
+            <tr style={{ borderBottom: "1px solid #F5EDED" }}>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Employee</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Leave Type</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">From</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">To</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Days</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Filed On</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Reason</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Status</th>
+              {canReview && <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Action</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y" style={{ borderColor: "#F5EDED" }}>
             {query.isLoading && (
-              <tr><td colSpan={5} className="py-12 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" /></td></tr>
-            )}
-            {!query.isLoading && filtered.length === 0 && (
-              <tr><td colSpan={5} className="py-12 text-center text-sm text-gray-400">No leave requests found.</td></tr>
-            )}
-            {filtered.map((r) => (
-              <tr
-                key={r.id}
-                className="cursor-pointer hover:bg-gray-50/80"
-                onClick={() => canReview ? setDetailRequest(r) : setReviewTarget(r)}
-              >
-                <td className="px-5 py-4 font-semibold text-gray-800">
-                  {r.employee.firstName} {r.employee.lastName}
-                </td>
-                {!isEmployee && (
-                  <td className="px-5 py-4 text-gray-600">{r.employee.position}</td>
-                )}
-                <td className="px-5 py-4 text-gray-600">{TYPE_LABEL[r.leaveType]}</td>
-                <td className="px-5 py-4 tabular-nums text-gray-600">
-                  {new Date(r.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                  {" – "}
-                  {new Date(r.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                </td>
-                <td className="px-5 py-4">
-                  <StatusBadge status={r.status} />
+              <tr>
+                <td colSpan={canReview ? 9 : 8} className="py-12 text-center">
+                  <Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" />
                 </td>
               </tr>
-            ))}
+            )}
+            {!query.isLoading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={canReview ? 9 : 8} className="py-12 text-center text-sm text-gray-400">
+                  No leave requests found.
+                </td>
+              </tr>
+            )}
+            {filtered.map((r) => {
+              const isPending = r.status === "PENDING";
+              const isApproving = approveMut.isPending && approveMut.variables === r.id;
+              const isRejecting = rejectMut.isPending && rejectMut.variables === r.id;
+              return (
+                <tr
+                  key={r.id}
+                  className="hover:bg-gray-50/60 cursor-pointer"
+                  onClick={() => setReviewTarget(r)}
+                >
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar first={r.employee.firstName} last={r.employee.lastName} />
+                      <div>
+                        <p className="font-semibold text-gray-800 leading-tight">
+                          {r.employee.firstName} {r.employee.lastName}
+                        </p>
+                        <p className="text-xs text-gray-400">{r.employee.position}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className="font-medium" style={{ color: TYPE_COLOR[r.leaveType] }}>
+                      {TYPE_LABEL[r.leaveType]}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-gray-600 tabular-nums">{formatDate(r.startDate)}</td>
+                  <td className="px-5 py-4 text-gray-600 tabular-nums">{formatDate(r.endDate)}</td>
+                  <td className="px-5 py-4 text-gray-600 tabular-nums">{Number(r.totalDays)}d</td>
+                  <td className="px-5 py-4 text-gray-500 tabular-nums">{formatDate(r.createdAt)}</td>
+                  <td className="px-5 py-4 text-gray-600 max-w-[160px] truncate">{r.reason || "—"}</td>
+                  <td className="px-5 py-4">
+                    <StatusBadge status={r.status} />
+                  </td>
+                  {canReview && (
+                    <td className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
+                      {isPending ? (
+                        <div className="flex gap-2">
+                          <button
+                            disabled={isApproving || isRejecting}
+                            onClick={() => approveMut.mutate(r.id)}
+                            className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600 disabled:opacity-60"
+                          >
+                            {isApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Approve"}
+                          </button>
+                          <button
+                            disabled={isApproving || isRejecting}
+                            onClick={() => rejectMut.mutate(r.id)}
+                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                            style={{ backgroundColor: BRAND }}
+                          >
+                            {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Reject"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="border-t border-gray-100 px-5 py-3">
+            <p className="text-xs text-gray-400">Showing {filtered.length} of {allData.length} requests</p>
+          </div>
+        )}
       </div>
-
-      {/* Detail slide-over panel */}
-      {detailRequest && (
-        <LeaveDetailPanel
-          request={detailRequest}
-          canReview={canReview}
-          onClose={() => setDetailRequest(null)}
-          onApprove={() => approveMut.mutate(detailRequest.id)}
-          onReject={() => rejectMut.mutate(detailRequest.id)}
-          approving={approveMut.isPending}
-          rejecting={rejectMut.isPending}
-        />
-      )}
 
       <LeaveReviewDialog
         open={!!reviewTarget}

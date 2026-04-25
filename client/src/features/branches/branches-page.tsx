@@ -1,14 +1,33 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Loader2, MapPin, Pencil } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, MapPin, Pencil, X } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { extractErrorMessage } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
+import { listEmployees } from "@/features/employees/employees.api";
 import {
   listBranches,
+  createBranch,
+  updateBranch,
   type Branch,
+  type BranchInput,
 } from "./branches.api";
-import BranchFormDialog from "./branch-form-dialog";
 
 const BRAND = "#8C1515";
+
+const schema = z.object({
+  name: z.string().trim().min(2, "Name must be at least 2 characters"),
+  address: z.string().trim().min(3, "Address is required"),
+  city: z.string().trim().min(2, "City is required"),
+  branchManager: z.string().trim().optional(),
+  operatingHours: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
+  isActive: z.enum(["true", "false"]),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 function StatusBadge({ active }: { active: boolean }) {
   return (
@@ -25,53 +44,133 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
+
 export default function BranchesPage() {
-  const [dialogBranch, setDialogBranch] = useState<Branch | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [panelBranch, setPanelBranch] = useState<Branch | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const isEdit = !!panelBranch;
 
   const query = useQuery({
     queryKey: ["branches", {}],
     queryFn: () => listBranches(),
   });
 
+  const employeesQuery = useQuery({
+    queryKey: ["employees", {}],
+    queryFn: () => listEmployees(),
+    enabled: panelOpen,
+  });
+
+  const branches = query.data ?? [];
+  const totalBranches = branches.length;
+  const activeBranches = branches.filter((b) => b.isActive).length;
+  const inactiveBranches = branches.filter((b) => !b.isActive).length;
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: "", address: "", city: "", branchManager: "", operatingHours: "", phone: "", isActive: "true" },
+  });
+
   function openCreate() {
-    setDialogBranch(null);
-    setDialogOpen(true);
+    setPanelBranch(null);
+    reset({ name: "", address: "", city: "", branchManager: "", operatingHours: "", phone: "", isActive: "true" });
+    setPanelOpen(true);
   }
 
   function openEdit(branch: Branch) {
-    setDialogBranch(branch);
-    setDialogOpen(true);
+    setPanelBranch(branch);
+    reset({
+      name: branch.name,
+      address: branch.address,
+      city: branch.city,
+      branchManager: branch.branchManager ?? "",
+      operatingHours: branch.operatingHours ?? "",
+      phone: branch.phone ?? "",
+      isActive: branch.isActive ? "true" : "false",
+    });
+    setPanelOpen(true);
   }
+
+  function closePanel() {
+    setPanelOpen(false);
+    setPanelBranch(null);
+  }
+
+  const mutation = useMutation({
+    mutationFn: async (values: FormValues) => {
+      const payload: BranchInput = {
+        name: values.name,
+        address: values.address,
+        city: values.city,
+        branchManager: values.branchManager || undefined,
+        operatingHours: values.operatingHours || undefined,
+        phone: values.phone || undefined,
+        isActive: values.isActive === "true",
+      };
+      return isEdit ? updateBranch(panelBranch!.id, payload) : createBranch(payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["branches"] });
+      toast(isEdit ? "Branch updated" : "Branch created", "success");
+      closePanel();
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
-      {/* Page header */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Branches</h1>
+      {/* Header */}
+      <div className="mb-8 flex items-start justify-between animate-fade-up">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Locations</p>
+          <h1 className="font-heading text-3xl text-gray-900">Branches</h1>
+        </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-medium text-white shadow-sm"
+          className="flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
           style={{ backgroundColor: BRAND }}
         >
           + Add Branch
         </button>
       </div>
 
-      {/* Table card */}
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+      {/* Stat Cards */}
+      <div className="mb-6 grid grid-cols-3 gap-4">
+        <div className="animate-fade-up stagger-1 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: `4px solid ${BRAND}` }}>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Total</p>
+          <p className="font-heading text-4xl leading-none" style={{ color: BRAND }}>{totalBranches}</p>
+        </div>
+        <div className="animate-fade-up stagger-2 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: "4px solid #16A34A" }}>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Active</p>
+          <p className="font-heading text-4xl leading-none text-green-600">{activeBranches}</p>
+        </div>
+        <div className="animate-fade-up stagger-3 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: "4px solid #9CA3AF" }}>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Inactive</p>
+          <p className="font-heading text-4xl leading-none text-gray-400">{inactiveBranches}</p>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="animate-fade-up stagger-4 overflow-hidden rounded-2xl bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Branch Name</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Address</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Branch Manager</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Employees</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Status</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Actions</th>
+          <thead style={{ background: "#FDFAFA" }}>
+            <tr style={{ borderBottom: "1px solid #F5EDED" }}>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Branch Name</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Address</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Branch Manager</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Employees</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Status</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y" style={{ borderColor: "#F5EDED" }}>
             {query.isLoading && (
               <tr>
                 <td colSpan={6} className="py-12 text-center">
@@ -93,16 +192,18 @@ export default function BranchesPage() {
                 </td>
               </tr>
             )}
-            {query.data?.map((b) => (
-              <tr key={b.id} className="hover:bg-gray-50/50">
-                <td className="px-5 py-4 font-semibold text-gray-800">{b.name}</td>
+            {branches.map((b) => (
+              <tr key={b.id} className="transition-colors hover:bg-[#FAF5F5]" style={{ borderBottom: "1px solid #F5EDED" }}>
+                <td className="px-5 py-4 font-semibold" style={{ color: BRAND }}>
+                  {b.name}
+                </td>
                 <td className="px-5 py-4 text-gray-500">
                   <span className="flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                    <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                     {[b.address, b.city].filter(Boolean).join(", ")}
                   </span>
                 </td>
-                <td className="px-5 py-4 text-gray-400">—</td>
+                <td className="px-5 py-4 text-gray-600">{b.branchManager ?? <span className="text-gray-300">—</span>}</td>
                 <td className="px-5 py-4 tabular-nums text-gray-700">
                   {b._count?.employees ?? 0}
                 </td>
@@ -112,10 +213,11 @@ export default function BranchesPage() {
                 <td className="px-5 py-4">
                   <button
                     onClick={() => openEdit(b)}
-                    className="text-gray-400 hover:text-primary transition-colors"
-                    title="Edit"
+                    className="flex items-center gap-1 text-sm font-medium hover:opacity-80 transition-opacity"
+                    style={{ color: BRAND }}
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit
                   </button>
                 </td>
               </tr>
@@ -124,11 +226,172 @@ export default function BranchesPage() {
         </table>
       </div>
 
-      <BranchFormDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        branch={dialogBranch}
-      />
+      {/* Slide Panel */}
+      {panelOpen && (
+        <div className="fixed inset-0 z-40 flex">
+          <div className="flex-1 bg-black/30" onClick={closePanel} />
+          <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col overflow-hidden">
+            {/* Panel header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {isEdit ? "Edit Branch" : "Add New Branch"}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {isEdit ? "Update branch details." : "Create a new branch location."}
+                </p>
+              </div>
+              <button
+                onClick={closePanel}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSubmit((v) => mutation.mutate(v))}
+              noValidate
+              className="flex flex-col flex-1 overflow-hidden"
+            >
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+                {/* Branch Details section */}
+                <div>
+                  <h3
+                    className="text-xs font-bold uppercase tracking-widest mb-3"
+                    style={{ color: BRAND }}
+                  >
+                    Branch Details
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        Branch Name *
+                      </label>
+                      <input
+                        {...register("name")}
+                        placeholder="e.g. Marfori Branch"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400"
+                      />
+                      {errors.name && (
+                        <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        Address *
+                      </label>
+                      <input
+                        {...register("address")}
+                        placeholder="e.g. 123 Marfori St., Davao City"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400"
+                      />
+                      {errors.address && (
+                        <p className="text-xs text-red-500 mt-1">{errors.address.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        City *
+                      </label>
+                      <input
+                        {...register("city")}
+                        placeholder="e.g. Davao City"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400"
+                      />
+                      {errors.city && (
+                        <p className="text-xs text-red-500 mt-1">{errors.city.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        Branch Manager
+                      </label>
+                      <select
+                        {...register("branchManager")}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400 bg-white"
+                      >
+                        <option value="">— Select manager —</option>
+                        {(employeesQuery.data ?? []).map((e) => (
+                          <option key={e.id} value={`${e.firstName} ${e.lastName}`}>
+                            {e.firstName} {e.lastName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        Operating Hours
+                      </label>
+                      <input
+                        {...register("operatingHours")}
+                        placeholder="e.g. 6:00 AM – 12:00 AM"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        Contact Number
+                      </label>
+                      <input
+                        {...register("phone")}
+                        placeholder="+63 82 123 4567"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Branch Status section */}
+                <div>
+                  <h3
+                    className="text-xs font-bold uppercase tracking-widest mb-3"
+                    style={{ color: BRAND }}
+                  >
+                    Branch Status
+                  </h3>
+                  <select
+                    {...register("isActive")}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400 bg-white"
+                  >
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="border-t border-gray-100 px-6 py-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={closePanel}
+                  className="flex-1 py-2.5 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={mutation.isPending}
+                  className="flex-1 py-2.5 rounded-lg font-medium text-white flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+                  style={{ backgroundColor: BRAND }}
+                >
+                  {mutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Pencil className="h-4 w-4" />
+                  )}
+                  {isEdit ? "Save Changes" : "Create Branch"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

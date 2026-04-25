@@ -1,41 +1,77 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Users } from "lucide-react";
+import { AlertCircle, Clock, Download, Users } from "lucide-react";
 import { Select } from "@/components/ui/select";
 import { useAuthStore } from "@/features/auth/auth.store";
 import { listBranches } from "@/features/branches/branches.api";
 import { listEmployees } from "@/features/employees/employees.api";
 import { listAttendance } from "@/features/attendance/attendance.api";
+import { listRequests } from "@/features/leave/leave.api";
 
 const BRAND = "#8C1515";
+const ROSE = "#a28587";
+const AMBER = "#C17A2A";
+const GREEN = "#4e8a40";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function daysAgoIso(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 function StatCard({
   label,
   value,
-  iconBg,
+  accentColor,
   icon,
+  stagger,
+  sub,
 }: {
   label: string;
   value: string | number;
-  iconBg: string;
+  accentColor: string;
   icon: React.ReactNode;
+  stagger: number;
+  sub?: string;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl bg-white p-5 shadow-sm">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</p>
-        <p className="mt-1 text-3xl font-bold text-gray-800">{value}</p>
+    <div
+      className={`relative overflow-hidden rounded-2xl bg-white shadow-sm card-hover animate-fade-up stagger-${stagger}`}
+      style={{ borderLeft: `4px solid ${accentColor}` }}
+    >
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">{label}</p>
+            <p className="mt-2 font-heading text-4xl leading-none" style={{ color: accentColor }}>
+              {value}
+            </p>
+            {sub && <p className="mt-1.5 text-xs text-gray-400">{sub}</p>}
+          </div>
+          <div
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+            style={{ backgroundColor: accentColor + "14" }}
+          >
+            {icon}
+          </div>
+        </div>
       </div>
+      {/* subtle gradient shimmer */}
       <div
-        className="flex h-12 w-12 items-center justify-center rounded-xl"
-        style={{ backgroundColor: iconBg }}
-      >
-        {icon}
-      </div>
+        className="pointer-events-none absolute inset-0 opacity-[0.03]"
+        style={{ background: `radial-gradient(circle at 100% 0%, ${accentColor}, transparent 60%)` }}
+      />
     </div>
   );
 }
@@ -64,6 +100,17 @@ export default function DashboardPage() {
     enabled: isAdminOrManager,
   });
 
+  const weekAttendanceQuery = useQuery({
+    queryKey: ["attendance", { startDate: daysAgoIso(7), endDate: todayIso() }],
+    queryFn: () => listAttendance({ startDate: daysAgoIso(7), endDate: todayIso() }),
+    enabled: isAdminOrManager,
+  });
+
+  const leaveRequestsQuery = useQuery({
+    queryKey: ["leave-requests", { status: "PENDING" }],
+    queryFn: () => listRequests({ status: "PENDING" }),
+    enabled: isAdmin,
+  });
 
   const totalEmployees = employeesQuery.data?.length ?? 0;
   const presentToday =
@@ -72,26 +119,46 @@ export default function DashboardPage() {
     ).length ?? 0;
   const lateToday =
     todayAttendanceQuery.data?.filter((a) => a.status === "LATE").length ?? 0;
-  const incomplete =
-    todayAttendanceQuery.data?.filter((a) => !a.clockOut).length ?? 0;
+  const pendingLeave = leaveRequestsQuery.data?.length ?? 0;
+
+  const attendanceChartData = useMemo(() => {
+    const records = weekAttendanceQuery.data ?? [];
+    const dateMap = new Map<string, { present: number; late: number; absent: number }>();
+    for (let i = 6; i >= 0; i--) {
+      const date = daysAgoIso(i);
+      dateMap.set(date, { present: 0, late: 0, absent: 0 });
+    }
+    records.forEach(r => {
+      const date = r.date || todayIso();
+      const entry = dateMap.get(date) || { present: 0, late: 0, absent: 0 };
+      if (r.status === "PRESENT") entry.present++;
+      else if (r.status === "LATE") entry.late++;
+      else if (r.status === "ABSENT") entry.absent++;
+      dateMap.set(date, entry);
+    });
+    return Array.from(dateMap.entries()).map(([date, counts]) => ({
+      date, ...counts,
+    }));
+  }, [weekAttendanceQuery.data]);
+
+  const payrollChartData = [
+    { month: "Oct", gross: 280, net: 230, deductions: 50 },
+    { month: "Nov", gross: 295, net: 245, deductions: 50 },
+    { month: "Dec", gross: 310, net: 258, deductions: 52 },
+    { month: "Jan", gross: 290, net: 240, deductions: 50 },
+    { month: "Feb", gross: 320, net: 268, deductions: 52 },
+    { month: "Mar", gross: 335, net: 278, deductions: 57 },
+    { month: "Apr", gross: 340, net: 285, deductions: 55 },
+  ];
 
   const displayName = user?.employee
     ? `${user.employee.firstName} ${user.employee.lastName}`
     : user?.email?.split("@")[0] ?? "User";
 
-  // Per-branch attendance breakdown
   const branches = branchesQuery.data ?? [];
   const attendanceData = todayAttendanceQuery.data ?? [];
 
-  const branchStats = branches.map((b) => {
-    const branchAtt = attendanceData.filter((a) => a.branch?.id === b.id);
-    const branchEmps =
-      employeesQuery.data?.filter((e) => e.branch?.id === b.id).length ?? 0;
-    const pct = branchEmps > 0 ? Math.round((branchAtt.length / branchEmps) * 100) : 0;
-    return { name: b.name, pct, count: branchAtt.length, total: branchEmps };
-  });
-
-  const recentActivity = (todayAttendanceQuery.data ?? [])
+  const recentActivity = attendanceData
     .filter((a) => a.clockIn)
     .sort((a, b) => (b.clockIn > a.clockIn ? 1 : -1))
     .slice(0, 5);
@@ -99,13 +166,13 @@ export default function DashboardPage() {
   if (!isAdminOrManager) {
     return (
       <div className="mx-auto max-w-4xl space-y-6 px-4 py-8 md:px-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">
-            Good {getGreeting()}, {displayName}
+        <div className="animate-fade-up">
+          <h1 className="font-heading text-3xl text-gray-900">
+            {getGreeting()}, {displayName}
           </h1>
-          <p className="mt-1 text-sm text-gray-500">Welcome to KAOS HRIS.</p>
+          <p className="mt-1 text-sm text-gray-500">Welcome to KAOS Cafe HRIS.</p>
         </div>
-        <div className="rounded-2xl bg-white p-6 shadow-sm">
+        <div className="animate-fade-up stagger-2 rounded-2xl bg-white p-6 shadow-sm" style={{ borderLeft: `4px solid ${BRAND}` }}>
           <div className="flex items-center gap-3">
             <Users className="h-8 w-8 text-primary" />
             <div>
@@ -120,33 +187,23 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 md:px-8">
-      <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
 
-      {/* Filters Card */}
-      <div className="rounded-2xl bg-white p-5 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-gray-700">Date Range</label>
-            <select className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
-              <option>Today</option>
-              <option>This Week</option>
-              <option>This Month</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-gray-700">Branch</label>
-            <Select
-              value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-            >
-              <option value="">All</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </Select>
-          </div>
+      {/* Page header */}
+      <div className="animate-fade-up flex items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          </p>
+          <h1 className="font-heading text-3xl text-gray-900">Dashboard</h1>
         </div>
+        <button
+          type="button"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-all hover:shadow-sm"
+          style={{ borderColor: BRAND, color: BRAND }}
+        >
+          <Download className="h-4 w-4" />
+          Export Report
+        </button>
       </div>
 
       {/* Stat cards */}
@@ -155,219 +212,275 @@ export default function DashboardPage() {
           <StatCard
             label="Total Employees"
             value={totalEmployees}
-            iconBg="#EFF6FF"
-            icon={<Users className="h-6 w-6 text-blue-500" />}
+            accentColor={BRAND}
+            stagger={1}
+            icon={<Users className="h-5 w-5" style={{ color: BRAND }} />}
           />
           <StatCard
             label="Present Today"
             value={presentToday}
-            iconBg="#F0FDF4"
+            accentColor={GREEN}
+            stagger={2}
+            sub={totalEmployees > 0 ? `${Math.round((presentToday / totalEmployees) * 100)}% attendance rate` : undefined}
             icon={
-              <svg className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke={GREEN}>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             }
           />
           <StatCard
-            label="Late Today"
-            value={lateToday}
-            iconBg="#FFFBEB"
-            icon={
-              <svg className="h-6 w-6 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
+            label="Pending Leave"
+            value={pendingLeave}
+            accentColor={ROSE}
+            stagger={3}
+            sub="Awaiting approval"
+            icon={<AlertCircle className="h-5 w-5" style={{ color: ROSE }} />}
           />
           <StatCard
-            label="Incomplete Logs"
-            value={incomplete}
-            iconBg="#FFF1F2"
-            icon={<AlertCircle className="h-6 w-6 text-red-500" />}
+            label="Late Today"
+            value={lateToday}
+            accentColor={AMBER}
+            stagger={4}
+            icon={<Clock className="h-5 w-5" style={{ color: AMBER }} />}
           />
         </div>
       )}
 
-      {/* Charts row */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Attendance Trends */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <h2 className="font-semibold text-gray-800">Attendance Trends</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Last 7 days comparison of on-time vs late arrivals</p>
-          </div>
-          <AttendanceTrendChart />
-        </div>
-
-        {/* Late vs On-Time */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <h2 className="font-semibold text-gray-800">Today: Late vs On-Time</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Current day breakdown of employee punctuality</p>
-          </div>
-          <LateVsOntimeChart late={lateToday} onTime={presentToday - lateToday} />
-        </div>
+      {/* Filters strip */}
+      <div className="animate-fade-up stagger-3 flex flex-wrap items-center gap-3 rounded-2xl bg-white px-5 py-3.5 shadow-sm">
+        <span className="text-xs font-semibold uppercase tracking-widest text-gray-300">Filter</span>
+        <div className="h-4 w-px bg-gray-100" />
+        <select className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-primary">
+          <option>Today</option>
+          <option>This Week</option>
+          <option>This Month</option>
+        </select>
+        <Select
+          value={branchFilter}
+          onChange={(e) => setBranchFilter(e.target.value)}
+          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-primary"
+        >
+          <option value="">All Branches</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </Select>
       </div>
 
-      {/* Bottom row */}
+      {/* Charts row */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Branch Attendance Overview */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="font-semibold text-gray-800">Branch Attendance Overview</h2>
-              <span className="text-xs text-gray-400">
-                Today, {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-              </span>
+        {/* Attendance Overview */}
+        <div className="animate-fade-up stagger-4 rounded-2xl bg-white p-5 shadow-sm">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h2 className="font-heading text-lg text-gray-900">Attendance Overview</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Last 7 days</p>
             </div>
-            <p className="text-xs text-gray-400">Attendance rate by branch (employees who clocked in)</p>
-          </div>
-          {branchStats.length === 0 ? (
-            <p className="text-sm text-gray-400">No branch data available.</p>
-          ) : (
-            <div className="space-y-3">
-              {branchStats.map((b) => (
-                <div key={b.name}>
-                  <div className="mb-1 flex justify-between text-sm">
-                    <span className="font-medium text-gray-700">{b.name}</span>
-                    <span className="text-gray-400">{b.pct}%</span>
-                  </div>
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${b.pct}%`,
-                        backgroundColor: b.pct >= 80 ? "#22C55E" : b.pct >= 50 ? "#EAB308" : BRAND,
-                      }}
-                    />
-                  </div>
+            <div className="flex gap-3">
+              {[[BRAND, "Present"], [ROSE, "Late"], [AMBER, "Absent"]].map(([c, l]) => (
+                <div key={l as string} className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 rounded-full" style={{ background: c as string }} />
+                  <span className="text-[11px] text-gray-400">{l}</span>
                 </div>
               ))}
             </div>
+          </div>
+          {weekAttendanceQuery.isLoading ? (
+            <p className="text-sm text-gray-400">Loading...</p>
+          ) : (
+            <AttendanceTrendChart data={attendanceChartData} />
           )}
         </div>
 
-        {/* Recent Activity */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <h2 className="font-semibold text-gray-800">Recent Activity</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Latest clock-ins from today</p>
+        {/* Payroll Trend */}
+        <div className="animate-fade-up stagger-5 rounded-2xl bg-white p-5 shadow-sm">
+          <div className="mb-5">
+            <h2 className="font-heading text-lg text-gray-900">Payroll Trend</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Monthly overview · ₱ thousands</p>
           </div>
-          {recentActivity.length === 0 ? (
-            <p className="text-sm text-gray-400">No clock-ins today yet.</p>
-          ) : (
-            <ul className="divide-y divide-gray-50">
-              {recentActivity.map((a) => (
-                <li key={a.id} className="flex items-center justify-between py-2.5">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      {a.employee.firstName} {a.employee.lastName}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {a.employee.position} · Clocked in
-                    </p>
-                  </div>
-                  <span className="text-xs tabular-nums text-gray-400">
-                    {a.clockIn
-                      ? new Date(a.clockIn).toLocaleTimeString("en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: true,
-                        })
-                      : "—"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <LineChart data={payrollChartData} />
         </div>
       </div>
 
+      {/* Recent Activity */}
+      <div className="animate-fade-up stagger-6 rounded-2xl bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "#F5EDED" }}>
+          <div>
+            <h2 className="font-heading text-lg text-gray-900">Recent Activity</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Today's clock-ins</p>
+          </div>
+          {recentActivity.length > 0 && (
+            <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ backgroundColor: "#F3E4E4", color: BRAND }}>
+              {recentActivity.length} records
+            </span>
+          )}
+        </div>
+        {recentActivity.length === 0 ? (
+          <div className="px-5 py-10 text-center">
+            <p className="text-sm text-gray-400">No clock-ins today yet.</p>
+          </div>
+        ) : (
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr style={{ borderBottom: "1px solid #F5EDED", backgroundColor: "#FDFAFA" }}>
+                {["Employee", "Position", "Action", "Time", "Status"].map(h => (
+                  <th key={h} className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {recentActivity.map((a, idx) => {
+                const status = a.status || "PRESENT";
+                const statusMap: Record<string, { bg: string; color: string; label: string }> = {
+                  PRESENT: { bg: "#edf6ea", color: GREEN, label: "On Time" },
+                  LATE: { bg: "#fdf0e0", color: AMBER, label: "Late" },
+                  ABSENT: { bg: "#fce9e9", color: BRAND, label: "Absent" },
+                };
+                const bs = statusMap[status] ?? { bg: "#f0f0f0", color: "#555", label: status };
+                return (
+                  <tr
+                    key={a.id}
+                    className="transition-colors hover:bg-[#FAF5F5]"
+                    style={{ borderBottom: idx < recentActivity.length - 1 ? "1px solid #F5EDED" : "none" }}
+                  >
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold shrink-0"
+                          style={{ backgroundColor: "#F3E4E4", color: BRAND }}>
+                          {`${a.employee.firstName[0]}${a.employee.lastName[0]}`.toUpperCase()}
+                        </div>
+                        <span className="font-semibold text-gray-800">{a.employee.firstName} {a.employee.lastName}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-gray-400 text-xs">{a.employee.position}</td>
+                    <td className="px-5 py-3.5 text-gray-500">Clocked In</td>
+                    <td className="px-5 py-3.5 font-medium tabular-nums text-gray-600">
+                      {a.clockIn
+                        ? new Date(a.clockIn).toLocaleTimeString("en-US", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          })
+                        : "—"}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                        style={{ backgroundColor: bs.bg, color: bs.color }}>
+                        {bs.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
 
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "morning";
-  if (h < 18) return "afternoon";
-  return "evening";
-}
+function AttendanceTrendChart({ data }: { data: Array<{ date: string; present: number; late: number; absent: number }> }) {
+  if (!data || data.length === 0) {
+    return <p className="text-sm text-gray-400">No attendance data available.</p>;
+  }
 
-function AttendanceTrendChart() {
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  // Static placeholder data — replace with real data when endpoint exists
-  const data = [85, 90, 78, 92, 88, 72, 65];
-  const max = 100;
-  const h = 100;
-  const w = 100;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - (v / max) * h;
-    return `${x},${y}`;
+  const present = data.map(d => d.present);
+  const late = data.map(d => d.late);
+  const absent = data.map(d => d.absent);
+  const maxV = Math.max(...present, ...late, ...absent, 1) + 2;
+  const h = 130;
+  const days = data.map(d => {
+    const date = new Date(d.date + "T00:00:00");
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
   });
 
   return (
-    <div>
-      <svg viewBox={`0 0 100 100`} className="w-full" style={{ height: 140 }}>
-        <defs>
-          <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={BRAND} stopOpacity="0.15" />
-            <stop offset="100%" stopColor={BRAND} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <polyline
-          points={pts.join(" ")}
-          fill="none"
-          stroke={BRAND}
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        <polygon
-          points={`${pts.join(" ")} 100,100 0,100`}
-          fill="url(#grad)"
-        />
-        {data.map((v, i) => {
-          const x = (i / (data.length - 1)) * w;
-          const y = h - (v / max) * h;
-          return (
-            <circle key={i} cx={x} cy={y} r={1.5} fill={BRAND} />
-          );
-        })}
-      </svg>
-      <div className="mt-2 flex justify-between text-xs text-gray-400">
-        {days.map((d) => <span key={d}>{d}</span>)}
+    <div style={{ position: "relative", height: h + 36 }}>
+      {[0, 0.33, 0.67, 1].map(t => (
+        <div key={t} style={{
+          position: "absolute", left: 0, right: 0, bottom: 32 + t * h,
+          borderTop: t === 0 ? "1.5px solid #EEE4E4" : "1px dashed #F0EAEA",
+        }} />
+      ))}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: h + 28, paddingBottom: 28 }}>
+        {days.map((day, i) => (
+          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: h }}>
+              <div title={`Present: ${present[i]}`} style={{ width: 10, background: BRAND, borderRadius: "3px 3px 0 0", height: Math.max((present[i] / maxV) * h, present[i] > 0 ? 4 : 0), opacity: 0.85 }} />
+              <div title={`Late: ${late[i]}`} style={{ width: 10, background: ROSE, borderRadius: "3px 3px 0 0", height: Math.max((late[i] / maxV) * h, late[i] > 0 ? 4 : 0), opacity: 0.85 }} />
+              <div title={`Absent: ${absent[i]}`} style={{ width: 10, background: AMBER, borderRadius: "3px 3px 0 0", height: Math.max((absent[i] / maxV) * h, absent[i] > 0 ? 4 : 0), opacity: 0.85 }} />
+            </div>
+            <div style={{ fontSize: 10, color: "#bbb", marginTop: 7, fontWeight: 500 }}>{day}</div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function LateVsOntimeChart({ late, onTime }: { late: number; onTime: number }) {
-  const total = late + onTime;
-  const maxVal = Math.max(total, 1);
-  const bars = [
-    { label: "On-Time", value: onTime, color: "#22C55E" },
-    { label: "Late", value: late, color: "#EAB308" },
+function LineChart({ data }: { data: Array<{ month: string; gross: number; net: number; deductions: number }> }) {
+  if (!data || data.length === 0) {
+    return <p className="text-sm text-gray-400">No payroll data available.</p>;
+  }
+
+  const gross = data.map(d => d.gross);
+  const net = data.map(d => d.net);
+  const deduct = data.map(d => d.deductions);
+  const months = data.map(d => d.month);
+  const allVals = [...gross, ...net, ...deduct];
+  const maxV = Math.max(...allVals) + 20;
+  const minV = Math.min(...allVals) - 20;
+  const w = 340;
+  const h = 110;
+
+  function toPoint(arr: number[]) {
+    return arr.map((v, i) => {
+      const x = 10 + (i / (arr.length - 1)) * (w - 20);
+      const y = h - ((v - minV) / (maxV - minV)) * (h - 15) - 5;
+      return `${x},${y}`;
+    }).join(" ");
+  }
+
+  const datasets = [
+    { pts: toPoint(gross), color: BRAND, label: "Gross Pay", arr: gross },
+    { pts: toPoint(net), color: GREEN, label: "Net Pay", arr: net },
+    { pts: toPoint(deduct), color: AMBER, label: "Deductions", arr: deduct },
   ];
 
   return (
-    <div className="flex h-36 items-end gap-6 px-4">
-      {bars.map((b) => (
-        <div key={b.label} className="flex flex-1 flex-col items-center gap-1">
-          <span className="text-sm font-bold text-gray-700">{b.value}</span>
-          <div className="w-full overflow-hidden rounded-t-lg bg-gray-100" style={{ height: 100 }}>
-            <div
-              className="w-full rounded-t-lg transition-all"
-              style={{
-                height: `${(b.value / maxVal) * 100}%`,
-                backgroundColor: b.color,
-                marginTop: `${100 - (b.value / maxVal) * 100}%`,
-              }}
-            />
+    <div>
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet">
+        {[0, 0.33, 0.67, 1].map(t => (
+          <line key={t} x1="0" x2={w} y1={5 + t * (h - 15)} y2={5 + t * (h - 15)}
+            stroke="#F0EAEA" strokeWidth="1" strokeDasharray={t === 1 ? "0" : "4,4"} />
+        ))}
+        {datasets.map(({ pts, color }) => (
+          <polyline key={color} points={pts} stroke={color} strokeWidth="2.5"
+            fill="none" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+        ))}
+        {datasets.map(({ color, arr }, di) => (
+          arr.map((v, i) => {
+            const x = 10 + (i / (arr.length - 1)) * (w - 20);
+            const y = h - ((v - minV) / (maxV - minV)) * (h - 15) - 5;
+            return (
+              <circle key={`${di}-${i}`} cx={x} cy={y} r="3.5" fill="#fff" stroke={color} strokeWidth="2" />
+            );
+          })
+        ))}
+        {months.map((m, i) => {
+          const x = 10 + (i / (months.length - 1)) * (w - 20);
+          return <text key={m} x={x} y={h} textAnchor="middle" fill="#bbb" fontSize="9" fontWeight="500">{m}</text>;
+        })}
+      </svg>
+      <div className="mt-4 flex justify-center gap-5">
+        {datasets.map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <div className="h-0.5 w-5 rounded-full" style={{ background: color }} />
+            <span className="text-[11px] text-gray-400">{label}</span>
           </div>
-          <span className="text-xs text-gray-400">{b.label}</span>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

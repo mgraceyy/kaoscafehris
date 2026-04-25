@@ -13,6 +13,8 @@ import {
 } from "@/features/leave/leave.api";
 
 const BRAND = "#8C1515";
+const ROSE = "#a28587";
+const AMBER = "#C4843A";
 
 const TYPE_LABEL: Record<LeaveType, string> = {
   VACATION: "Vacation Leave",
@@ -21,6 +23,15 @@ const TYPE_LABEL: Record<LeaveType, string> = {
   MATERNITY: "Maternity Leave",
   PATERNITY: "Paternity Leave",
   UNPAID: "Unpaid Leave",
+};
+
+const TYPE_COLORS: Record<LeaveType, string> = {
+  VACATION: BRAND,
+  SICK: ROSE,
+  EMERGENCY: AMBER,
+  MATERNITY: "#7a3db0",
+  PATERNITY: "#7a3db0",
+  UNPAID: "#888",
 };
 
 const MONTH_NAMES = [
@@ -35,10 +46,10 @@ function fmtDate(iso: string) {
 
 function StatusBadge({ status }: { status: LeaveStatus }) {
   const map = {
-    PENDING:   { bg: "#FEF3C7", color: "#D97706", label: "Pending" },
-    APPROVED:  { bg: "#D1FAE5", color: "#065F46", label: "Complete" },
-    REJECTED:  { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
-    CANCELLED: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
+    PENDING:   { bg: "#fce9e9", color: BRAND, label: "Pending" },
+    APPROVED:  { bg: "#edf6ea", color: "#4e8a40", label: "Approved" },
+    REJECTED:  { bg: "#f3f3f3", color: "#888", label: "Rejected" },
+    CANCELLED: { bg: "#f3f3f3", color: "#888", label: "Cancelled" },
   };
   const s = map[status];
   return (
@@ -52,33 +63,30 @@ function StatusBadge({ status }: { status: LeaveStatus }) {
 }
 
 function LeaveCard({ request }: { request: LeaveRequest }) {
+  const typeColor = TYPE_COLORS[request.leaveType];
   return (
     <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl"
-            style={{ backgroundColor: "#FAF0F0" }}
-          >
-            <CalendarDays className="h-5 w-5" style={{ color: BRAND }} />
-          </div>
-          <p className="font-semibold text-gray-800">{TYPE_LABEL[request.leaveType]}</p>
-        </div>
+        <p className="font-semibold text-sm" style={{ color: typeColor }}>{TYPE_LABEL[request.leaveType]}</p>
         <StatusBadge status={request.status} />
       </div>
 
-      <div className="flex items-center gap-2 mb-1.5">
-        <CalendarDays className="h-4 w-4 text-gray-400 shrink-0" />
-        <p className="text-sm text-gray-700">
-          {fmtDate(request.startDate.slice(0, 10))} – {fmtDate(request.endDate.slice(0, 10))}
-        </p>
-      </div>
-
       {request.reason && (
-        <p className="text-sm text-gray-600 mb-2 ml-6">{request.reason}</p>
+        <p className="text-sm text-gray-600 mb-3">{request.reason}</p>
       )}
 
-      <p className="text-xs text-gray-400 ml-6">
+      <div className="flex gap-4 mb-3">
+        <div>
+          <div className="text-xs text-gray-400 mb-1">FROM</div>
+          <div className="text-sm font-semibold text-gray-800">{fmtDate(request.startDate.slice(0, 10))}</div>
+        </div>
+        <div>
+          <div className="text-xs text-gray-400 mb-1">TO</div>
+          <div className="text-sm font-semibold text-gray-800">{fmtDate(request.endDate.slice(0, 10))}</div>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-400">
         Submitted {fmtDate(request.createdAt.slice(0, 10))}
       </p>
     </div>
@@ -256,15 +264,28 @@ export default function PortalLeavePage() {
   return (
     <div className="relative">
       {/* Header */}
-      <div className="rounded-b-[28px] px-6 pt-14 pb-6" style={{ backgroundColor: BRAND }}>
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">Leave Request</h1>
-          <img src="/kaos-logo.svg" alt="KAOS" className="h-10 w-auto brightness-0 invert opacity-60" />
+      <div className="rounded-b-[28px] px-6 pt-14 pb-6" style={{ background: `linear-gradient(135deg, #6B0F0F 0%, ${BRAND} 50%, #9E1A1A 100%)` }}>
+        <div className="flex items-center justify-between animate-fade-up">
+          <div>
+            <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-1">My Portal</p>
+            <h1 className="font-heading text-2xl italic text-white">Leave Request</h1>
+          </div>
+          <img src="/kaos-logo.svg" alt="KAOS" className="h-10 w-auto brightness-0 invert opacity-40" />
         </div>
       </div>
 
       <div className="px-4 pt-5 pb-24 space-y-4">
-        <h2 className="text-[15px] font-semibold text-gray-800">Recent Leave Requests</h2>
+        {/* Leave balance strip */}
+        <div className="animate-fade-up stagger-2 bg-white rounded-2xl p-4 shadow-sm flex justify-around" style={{ borderTop: `3px solid ${BRAND}` }}>
+          {[["Sick","5 days"],["Vacation","8 days"],["Emergency","2 days"]].map(([t,v]) => (
+            <div key={t} className="text-center">
+              <div className="font-heading text-2xl leading-none" style={{ color: BRAND }}>{v.split(" ")[0]}</div>
+              <div className="text-xs text-gray-400 mt-1">{t} days left</div>
+            </div>
+          ))}
+        </div>
+
+        <h2 className="font-heading text-lg text-gray-800 mt-4">Your Requests</h2>
 
         {query.isLoading ? (
           <div className="flex justify-center py-10">
