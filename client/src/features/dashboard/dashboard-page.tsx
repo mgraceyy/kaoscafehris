@@ -112,7 +112,8 @@ export default function DashboardPage() {
     enabled: isAdmin,
   });
 
-  const totalEmployees = employeesQuery.data?.length ?? 0;
+  const totalEmployees =
+    employeesQuery.data?.filter((e) => e.position !== "Administrator").length ?? 0;
   const presentToday =
     todayAttendanceQuery.data?.filter(
       (a) => a.status === "PRESENT" || a.status === "LATE"

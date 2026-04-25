@@ -246,8 +246,9 @@ export default function EmployeesPage() {
     },
   });
 
-  // Filter by role client-side since API may not support it
+  // Filter by role client-side since API may not support it; exclude Administrator position
   const filtered = (employeesQuery.data ?? []).filter((e) => {
+    if (e.position === "Administrator") return false;
     if (role && e.user.role !== role) return false;
     return true;
   });
