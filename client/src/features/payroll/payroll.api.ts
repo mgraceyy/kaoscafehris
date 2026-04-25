@@ -92,7 +92,6 @@ export interface PayslipDeduction extends PayslipLineItem {
 
 export interface PayslipDetail extends PayslipSummary {
   employee: PayslipSummary["employee"] & {
-    department: string | null;
     basicSalary: string;
     sssNumber: string | null;
     philhealthNumber: string | null;

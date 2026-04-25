@@ -39,6 +39,12 @@ const DEFAULT_FORM: FormState = {
   endTime: "17:00",
 };
 
+function toHHMM(value: string): string {
+  if (/^\d{2}:\d{2}$/.test(value)) return value;
+  const d = new Date(value);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
 export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -92,8 +98,8 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
     if (editing) {
       setForm({
         name: editing.name,
-        startTime: editing.startTime,
-        endTime: editing.endTime,
+        startTime: toHHMM(editing.startTime),
+        endTime: toHHMM(editing.endTime),
       });
       setShowForm(true);
     }
@@ -239,7 +245,7 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
                           {template.name}
                         </td>
                         <td className="px-3 py-2 text-gray-600 tabular-nums">
-                          {template.startTime} - {template.endTime}
+                          {toHHMM(template.startTime)} - {toHHMM(template.endTime)}
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-2">

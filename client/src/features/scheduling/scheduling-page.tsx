@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, format, getDay, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X, MoreHorizontal, Clock, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
@@ -17,7 +17,7 @@ import AssignShiftDialog from "./assign-shift-dialog";
 import AssignEmployeesDialog from "./assign-employees-dialog";
 import ShiftTypesDialog from "./shift-types-dialog";
 import ShiftFormDialog from "./shift-form-dialog";
-import EmployeeDefaultShiftsDialog from "./employee-default-shifts-dialog";
+import { listShiftTypes } from "./shift-types.api";
 
 const BRAND = "#8C1515";
 
@@ -55,9 +55,6 @@ export default function SchedulingPage() {
     { shift: Shift; employeeId: string; name: string } | null
   >(null);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
-  const [employeeDefaultShiftsDialogOpen, setEmployeeDefaultShiftsDialogOpen] = useState(false);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
@@ -88,6 +85,14 @@ export default function SchedulingPage() {
     queryKey: ["shifts", filters],
     queryFn: () => listShifts(filters),
   });
+
+  const shiftTypesQuery = useQuery({
+    queryKey: ["shift-types", branchId],
+    queryFn: () => listShiftTypes(branchId),
+    enabled: !!branchId,
+  });
+
+  const hasNoShiftTypes = !!branchId && !shiftTypesQuery.isLoading && (shiftTypesQuery.data?.length ?? 0) === 0;
 
   const remove = useMutation({
     mutationFn: (id: string) => deleteShift(id),
@@ -156,8 +161,7 @@ export default function SchedulingPage() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between animate-fade-up">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Planning</p>
-          <h1 className="font-heading text-3xl text-gray-900">Schedule</h1>
+          <h1 className="font-heading text-3xl font-bold text-gray-900">Schedule</h1>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
@@ -195,43 +199,18 @@ export default function SchedulingPage() {
             </select>
           )}
           <button
+            onClick={() => setTemplateDialogOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Shift Types
+          </button>
+          <button
             onClick={() => { setAssignShiftInitialDate(undefined); setAssignShiftDialogOpen(true); }}
             className="flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
             style={{ backgroundColor: BRAND }}
           >
             + Add Shift
           </button>
-          <div className="relative" ref={moreMenuRef}>
-            <button
-              onClick={() => setMoreMenuOpen((o) => !o)}
-              className="flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 hover:bg-gray-50 transition-colors"
-              title="More options"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-            {moreMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setMoreMenuOpen(false)} />
-                <div className="absolute right-0 z-20 mt-2 w-52 rounded-xl border border-gray-100 bg-white py-1 shadow-lg">
-                  <button
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-                    onClick={() => { setMoreMenuOpen(false); setTemplateDialogOpen(true); }}
-                  >
-                    <Clock className="h-4 w-4 text-gray-400" />
-                    Shift Types
-                  </button>
-                  <button
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={!branchId}
-                    onClick={() => { setMoreMenuOpen(false); setEmployeeDefaultShiftsDialogOpen(true); }}
-                  >
-                    <Users className="h-4 w-4 text-gray-400" />
-                    Shift Defaults
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
         </div>
       </div>
 
@@ -253,6 +232,25 @@ export default function SchedulingPage() {
           <ChevronRight className="h-5 w-5" />
         </button>
       </div>
+
+      {/* No shift types warning */}
+      {hasNoShiftTypes && (
+        <div className="mb-5 flex items-start gap-3 rounded-2xl border border-yellow-200 bg-yellow-50 px-5 py-4 text-sm text-yellow-800">
+          <span className="text-base leading-none">⚠</span>
+          <div>
+            <p className="font-semibold">No shift types found for this branch.</p>
+            <p className="mt-0.5 text-yellow-700">
+              Create a shift type first before adding shifts.{" "}
+              <button
+                className="font-semibold underline underline-offset-2 hover:text-yellow-900 transition-colors"
+                onClick={() => setTemplateDialogOpen(true)}
+              >
+                Add Shift Type →
+              </button>
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Loading */}
       {query.isLoading && (
@@ -467,7 +465,6 @@ export default function SchedulingPage() {
       <ShiftFormDialog open={dialogOpen} onOpenChange={setDialogOpen} shift={dialogShift} />
       <AssignEmployeesDialog open={!!assignShift} onOpenChange={(o) => !o && setAssignShift(null)} shift={assignShift} />
       <ShiftTypesDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} branchId={branchId} />
-      <EmployeeDefaultShiftsDialog open={employeeDefaultShiftsDialogOpen} onOpenChange={setEmployeeDefaultShiftsDialogOpen} branchId={branchId} />
 
       <ConfirmDialog
         open={!!confirmDelete}

@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import {
@@ -28,7 +27,6 @@ const editSchema = z.object({
   date: z.string().min(1, "Required"),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "HH:MM required"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "HH:MM required"),
-  status: z.enum(["DRAFT", "PUBLISHED"]),
 });
 
 type EditValues = z.infer<typeof editSchema>;
@@ -55,7 +53,6 @@ export default function ShiftFormDialog({ open, onOpenChange, shift }: Props) {
       date: "",
       startTime: "08:00",
       endTime: "16:00",
-      status: "DRAFT",
     },
   });
 
@@ -66,7 +63,6 @@ export default function ShiftFormDialog({ open, onOpenChange, shift }: Props) {
       date: shift.date.slice(0, 10),
       startTime: formatShiftTime(shift.startTime),
       endTime: formatShiftTime(shift.endTime),
-      status: shift.status,
     });
   }, [open, shift, reset]);
 
@@ -78,7 +74,6 @@ export default function ShiftFormDialog({ open, onOpenChange, shift }: Props) {
         date: values.date,
         startTime: values.startTime,
         endTime: values.endTime,
-        status: values.status,
       });
     },
     onSuccess: () => {
@@ -131,13 +126,6 @@ export default function ShiftFormDialog({ open, onOpenChange, shift }: Props) {
             {errors.endTime && (
               <p className="text-xs text-destructive">{errors.endTime.message}</p>
             )}
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="status">Status</Label>
-            <Select id="status" {...register("status")}>
-              <option value="DRAFT">Draft</option>
-              <option value="PUBLISHED">Published</option>
-            </Select>
           </div>
         </div>
 

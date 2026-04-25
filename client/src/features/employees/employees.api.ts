@@ -39,7 +39,6 @@ export interface Employee {
   emergencyPhone: string | null;
   emergencyRelation: string | null;
   position: string;
-  department: string | null;
   employmentStatus: EmploymentStatus;
   dateHired: string;
   dateTerminated: string | null;
@@ -65,7 +64,6 @@ export interface EmployeeCreateInput {
   lastName: string;
   middleName?: string;
   position: string;
-  department?: string;
   employmentStatus?: EmploymentStatus;
   dateHired: string; // ISO date
   basicSalary: number;
@@ -129,6 +127,38 @@ export interface ImportResult {
   created: number;
   skipped: number;
   failed: Array<{ row: number; reason: string }>;
+}
+
+export interface ImportPreviewRow {
+  row: number;
+  status: "ready" | "skipped" | "error";
+  reason?: string;
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  branch: string;
+  position: string;
+  role: string;
+  employmentStatus: string;
+  dateHired: string;
+  basicSalary: string;
+}
+
+export interface ImportPreview {
+  rows: ImportPreviewRow[];
+  readyCount: number;
+  skippedCount: number;
+  errorCount: number;
+}
+
+export async function previewImportCsv(file: File): Promise<ImportPreview> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<{ data: ImportPreview }>("/employees/import/preview", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data.data;
 }
 
 export async function importEmployeesCsv(file: File): Promise<ImportResult> {

@@ -54,7 +54,6 @@ export async function getProfile(userId: string) {
           emergencyPhone: true,
           emergencyRelation: true,
           position: true,
-          department: true,
           employmentStatus: true,
           dateHired: true,
           basicSalary: true,
@@ -125,7 +124,7 @@ export async function updateProfilePhoto(userId: string, photoUrl: string) {
 export async function getSchedule(userId: string, query: DateRangeQuery) {
   const employeeId = await resolveEmployeeIdOrThrow(userId);
 
-  const shiftWhere: Prisma.ShiftWhereInput = { status: "PUBLISHED" };
+  const shiftWhere: Prisma.ShiftWhereInput = {};
   if (query.startDate || query.endDate) {
     shiftWhere.date = {};
     if (query.startDate) shiftWhere.date.gte = dateOnly(query.startDate);

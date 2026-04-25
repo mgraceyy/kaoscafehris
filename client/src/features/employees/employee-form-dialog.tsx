@@ -38,7 +38,6 @@ const baseSchema = {
   firstName: z.string().trim().min(1, "Required"),
   lastName: z.string().trim().min(1, "Required"),
   position: z.string().trim().min(1, "Required"),
-  department: z.string().trim().optional(),
   employmentStatus: z.enum(["ACTIVE", "INACTIVE", "TERMINATED", "ON_LEAVE"]),
   dateHired: z.string().min(1, "Required"),
   basicSalary: z
@@ -103,7 +102,6 @@ export default function EmployeeFormDialog({ open, onOpenChange, employee }: Pro
       firstName: "",
       lastName: "",
       position: "",
-      department: "",
       employmentStatus: "ACTIVE",
       dateHired: "",
       basicSalary: 0 as unknown as number,
@@ -123,7 +121,6 @@ export default function EmployeeFormDialog({ open, onOpenChange, employee }: Pro
         firstName: employee.firstName,
         lastName: employee.lastName,
         position: employee.position,
-        department: employee.department ?? "",
         employmentStatus: employee.employmentStatus,
         dateHired: employee.dateHired.slice(0, 10),
         basicSalary: parseFloat(employee.basicSalary),
@@ -139,7 +136,6 @@ export default function EmployeeFormDialog({ open, onOpenChange, employee }: Pro
         firstName: "",
         lastName: "",
         position: "",
-        department: "",
         employmentStatus: "ACTIVE",
         dateHired: "",
         basicSalary: 0 as unknown as number,
@@ -159,7 +155,6 @@ export default function EmployeeFormDialog({ open, onOpenChange, employee }: Pro
           firstName: values.firstName,
           lastName: values.lastName,
           position: values.position,
-          department: values.department || undefined,
           employmentStatus: values.employmentStatus,
           dateHired: values.dateHired,
           basicSalary: values.basicSalary,
@@ -177,7 +172,6 @@ export default function EmployeeFormDialog({ open, onOpenChange, employee }: Pro
         firstName: values.firstName,
         lastName: values.lastName,
         position: values.position,
-        department: values.department || undefined,
         employmentStatus: values.employmentStatus,
         dateHired: values.dateHired,
         basicSalary: values.basicSalary,
@@ -315,10 +309,6 @@ export default function EmployeeFormDialog({ open, onOpenChange, employee }: Pro
               {errors.position && (
                 <p className="text-xs text-destructive">{errors.position.message}</p>
               )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
-              <Input id="department" placeholder="Operations" {...register("department")} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="dateHired">Date hired</Label>

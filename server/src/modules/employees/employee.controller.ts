@@ -106,6 +106,47 @@ export async function importCsv(req: Request, res: Response, next: NextFunction)
   }
 }
 
+export async function previewImportCsv(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.file) {
+      res.status(400).json({ message: "No file uploaded" });
+      return;
+    }
+
+    let csvContent: string;
+
+    const isXlsx =
+      req.file.originalname.endsWith(".xlsx") ||
+      req.file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    if (isXlsx) {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(req.file.buffer);
+      const ws = wb.worksheets.find((s) => s.state !== "veryHidden" && s.state !== "hidden");
+      if (!ws) throw new Error("No readable sheet found in the uploaded file");
+
+      const rows: string[] = [];
+      ws.eachRow((row) => {
+        const cells = (row.values as (ExcelJS.CellValue | undefined)[])
+          .slice(1)
+          .map((v) => {
+            const str = v == null ? "" : String(v);
+            return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+          });
+        rows.push(cells.join(","));
+      });
+      csvContent = rows.join("\n");
+    } else {
+      csvContent = req.file.buffer.toString("utf-8");
+    }
+
+    const data = await employeeService.previewImportEmployees(csvContent);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function csvTemplate(_req: Request, res: Response, next: NextFunction) {
   try {
     const branches = await prisma.branch.findMany({
@@ -127,18 +168,26 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
     const ws = wb.addWorksheet("Employees");
 
     const COLUMNS = [
+      // Required
       { header: "employeeId",       key: "employeeId",       width: 18 },
       { header: "firstName",        key: "firstName",        width: 16 },
       { header: "lastName",         key: "lastName",         width: 16 },
+      { header: "middleName",       key: "middleName",       width: 16 },
       { header: "email",            key: "email",            width: 28 },
       { header: "password",         key: "password",         width: 18 },
       { header: "role",             key: "role",             width: 12 },
       { header: "branchId",         key: "branchId",         width: 24 },
       { header: "position",         key: "position",         width: 18 },
-      { header: "department",       key: "department",       width: 18 },
       { header: "dateHired",        key: "dateHired",        width: 14 },
       { header: "basicSalary",      key: "basicSalary",      width: 14 },
       { header: "employmentStatus", key: "employmentStatus", width: 18 },
+      // Contact
+      { header: "phone",            key: "phone",            width: 16 },
+      // Government IDs
+      { header: "sssNumber",        key: "sssNumber",        width: 16 },
+      { header: "philhealthNumber", key: "philhealthNumber", width: 18 },
+      { header: "pagibigNumber",    key: "pagibigNumber",    width: 16 },
+      { header: "tinNumber",        key: "tinNumber",        width: 16 },
     ];
     ws.columns = COLUMNS;
 
@@ -156,15 +205,20 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
       employeeId: "EXAMPLE-001",
       firstName: "Jane",
       lastName: "Doe",
+      middleName: "Santos",
       email: "jane@example.com",
       password: "ChangeMe@1234",
       role: "EMPLOYEE",
       branchId: branchNames[0] ?? "",
       position: "Barista",
-      department: "Operations",
       dateHired: "2024-01-15",
       basicSalary: 18000,
       employmentStatus: "ACTIVE",
+      phone: "09171234567",
+      sssNumber: "12-3456789-0",
+      philhealthNumber: "12-345678901-2",
+      pagibigNumber: "1234-5678-9012",
+      tinNumber: "123-456-789-000",
     });
     exampleRow.eachCell((cell) => {
       cell.font = { italic: true, color: { argb: "FF999999" } };
@@ -176,7 +230,7 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
     noteCell.font = { italic: true, color: { argb: "FFCC0000" } };
 
     const MAX_ROWS = 500;
-    const branchCol = 7; // column G
+    const branchCol = 8; // column H (branchId moved to col 8 after middleName was inserted)
 
     if (branchNames.length > 0) {
       const branchFormula = `_branches!$A$1:$A$${branchNames.length}`;
@@ -191,16 +245,16 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
       }
     }
 
-    // role dropdown
+    // role dropdown (col 7) and employmentStatus dropdown (col 13)
     for (let r = 2; r <= MAX_ROWS; r++) {
-      ws.getCell(r, 6).dataValidation = {
+      ws.getCell(r, 7).dataValidation = {
         type: "list",
         formulae: ['"EMPLOYEE,MANAGER,ADMIN"'],
         showErrorMessage: true,
         errorTitle: "Invalid role",
         error: "Choose EMPLOYEE, MANAGER, or ADMIN.",
       };
-      ws.getCell(r, 12).dataValidation = {
+      ws.getCell(r, 13).dataValidation = {
         type: "list",
         formulae: ['"ACTIVE,INACTIVE,ON_LEAVE"'],
         showErrorMessage: true,

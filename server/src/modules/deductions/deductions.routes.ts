@@ -7,9 +7,12 @@ import { authenticate, authorize } from "../../middleware/auth.js";
 const router = Router();
 router.use(authenticate);
 
+const GOV_TYPES = ["SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX"] as const;
+
 const deductionSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   amount: z.coerce.number().nonnegative("Amount must be 0 or greater"),
+  type: z.enum(GOV_TYPES).optional().nullable(),
 });
 
 router.get("/", async (_req, res, next) => {

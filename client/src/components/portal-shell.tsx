@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { CalendarDays, Clock, FileText, Home, Leaf, User } from "lucide-react";
+import { CalendarDays, Clock, FileText, Home, Leaf, Timer, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -7,6 +7,7 @@ const NAV = [
   { to: "/portal/schedule", label: "Schedule", icon: CalendarDays, end: false },
   { to: "/portal/attendance", label: "Attendance", icon: Clock, end: false },
   { to: "/portal/leave", label: "Leave", icon: Leaf, end: false },
+  { to: "/portal/overtime", label: "Overtime", icon: Timer, end: false },
   { to: "/portal/payslips", label: "Payslips", icon: FileText, end: false },
   { to: "/portal/profile", label: "Profile", icon: User, end: false },
 ];
@@ -29,8 +30,8 @@ export default function PortalShell() {
                     isActive ? "text-[#8C1515]" : "text-gray-400"
                   )}
                 >
-                  <Icon className="h-[18px] w-[18px]" />
-                  <span className="text-[10px] font-medium leading-none">{label}</span>
+                  <Icon className="h-[17px] w-[17px]" />
+                  <span className="text-[9px] font-medium leading-none">{label}</span>
                 </div>
               )}
             </NavLink>

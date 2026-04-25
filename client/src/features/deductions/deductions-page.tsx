@@ -14,12 +14,20 @@ import {
 
 const BRAND = "#8C1515";
 
+const GOV_TYPE_LABELS: Record<string, string> = {
+  SSS: "SSS",
+  PHILHEALTH: "PhilHealth",
+  PAGIBIG: "Pag-IBIG",
+  BIR_TAX: "Withholding Tax",
+};
+
 interface FormState {
   name: string;
   amount: string;
+  type: string;
 }
 
-const DEFAULT_FORM: FormState = { name: "", amount: "" };
+const DEFAULT_FORM: FormState = { name: "", amount: "", type: "" };
 
 export default function DeductionsPage() {
   const qc = useQueryClient();
@@ -39,7 +47,7 @@ export default function DeductionsPage() {
 
   function openEdit(d: Deduction) {
     setEditing(d);
-    setForm({ name: d.name, amount: String(d.amount) });
+    setForm({ name: d.name, amount: String(d.amount), type: d.type ?? "" });
     setShowForm(true);
   }
 
@@ -51,7 +59,7 @@ export default function DeductionsPage() {
 
   const saveMut = useMutation({
     mutationFn: () => {
-      const payload = { name: form.name.trim(), amount: Number(form.amount) };
+      const payload = { name: form.name.trim(), amount: Number(form.amount), type: form.type || null };
       return editing
         ? updateDeduction(editing.id, payload)
         : createDeduction(payload);
@@ -109,7 +117,7 @@ export default function DeductionsPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <label className="block text-xs font-medium text-gray-500">Deduction Name</label>
                 <input
@@ -131,6 +139,20 @@ export default function DeductionsPage() {
                   value={form.amount}
                   onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
                 />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-gray-500">Gov. Contribution Type</label>
+                <select
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                  value={form.type}
+                  onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+                >
+                  <option value="">Custom / None</option>
+                  <option value="SSS">SSS</option>
+                  <option value="PHILHEALTH">PhilHealth</option>
+                  <option value="PAGIBIG">Pag-IBIG</option>
+                  <option value="BIR_TAX">Withholding Tax</option>
+                </select>
               </div>
             </div>
             <div className="mt-3 flex gap-2">
@@ -163,7 +185,10 @@ export default function DeductionsPage() {
                 Deduction Name
               </th>
               <th className="py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">
-                Deduction Amount
+                Type
+              </th>
+              <th className="py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Amount
               </th>
               <th className="py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">
                 Action
@@ -173,14 +198,14 @@ export default function DeductionsPage() {
           <tbody className="divide-y divide-gray-50">
             {query.isLoading && (
               <tr>
-                <td colSpan={3} className="py-10 text-center">
+                <td colSpan={4} className="py-10 text-center">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" />
                 </td>
               </tr>
             )}
             {!query.isLoading && (query.data ?? []).length === 0 && (
               <tr>
-                <td colSpan={3} className="py-10 text-center text-sm text-gray-400">
+                <td colSpan={4} className="py-10 text-center text-sm text-gray-400">
                   No deductions yet. Click "Add Deduction" to create one.
                 </td>
               </tr>
@@ -188,6 +213,9 @@ export default function DeductionsPage() {
             {(query.data ?? []).map((d) => (
               <tr key={d.id} className="hover:bg-gray-50/60">
                 <td className="py-3 font-medium text-gray-800">{d.name}</td>
+                <td className="py-3 text-gray-500 text-xs">
+                  {d.type ? (GOV_TYPE_LABELS[d.type] ?? d.type) : <span className="text-gray-300">—</span>}
+                </td>
                 <td className="py-3 tabular-nums text-gray-600">
                   ₱{Number(d.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                 </td>

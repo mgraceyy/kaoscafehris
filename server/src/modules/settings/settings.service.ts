@@ -36,7 +36,7 @@ export const DEFAULT_SETTINGS: ReadonlyArray<{
   { key: "attendance.late_grace_minutes", value: 5, group: "attendance" },
   { key: "attendance.half_day_threshold_hours", value: 4, group: "attendance" },
   // Payroll
-  { key: "payroll.regular_ot_rate", value: 1.25, group: "payroll" },
+  { key: "payroll.regular_ot_rate", value: 0, group: "payroll" },
   { key: "payroll.rest_day_ot_rate", value: 1.30, group: "payroll" },
   { key: "payroll.night_diff_rate", value: 1.10, group: "payroll" },
   { key: "payroll.holiday_pay_rate", value: 2.00, group: "payroll" },

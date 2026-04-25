@@ -189,7 +189,6 @@ model Employee {
 
   // Employment details
   position         String
-  department       String?
   employmentStatus EmploymentStatus @default(ACTIVE)
   dateHired        DateTime
   dateTerminated   DateTime?
@@ -526,6 +525,7 @@ model GovernmentTable {
 
 model Deduction {
   id        String   @id @default(uuid())
+  type      String?  // "SSS" | "PHILHEALTH" | "PAGIBIG" | "BIR_TAX" — links to payroll auto-apply; null = custom/manual only
   name      String
   amount    Decimal  @db.Decimal(10, 2)
   createdAt DateTime @default(now())
@@ -543,7 +543,7 @@ model PublicHoliday {
   date        DateTime @db.Date
   name        String
   type        String   // "REGULAR" | "SPECIAL_NON_WORKING"
-  payRatePct  Int      @default(200)
+  amount      Decimal  @db.Decimal(12, 2) @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

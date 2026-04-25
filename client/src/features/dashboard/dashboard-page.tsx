@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Clock, Download, Users } from "lucide-react";
+import { AlertCircle, Clock, Users } from "lucide-react";
 import { Select } from "@/components/ui/select";
 import { useAuthStore } from "@/features/auth/auth.store";
 import { listBranches } from "@/features/branches/branches.api";
@@ -167,7 +167,7 @@ export default function DashboardPage() {
     return (
       <div className="mx-auto max-w-4xl space-y-6 px-4 py-8 md:px-8">
         <div className="animate-fade-up">
-          <h1 className="font-heading text-3xl text-gray-900">
+          <h1 className="font-heading text-3xl font-bold text-gray-900">
             {getGreeting()}, {displayName}
           </h1>
           <p className="mt-1 text-sm text-gray-500">Welcome to KAOS Cafe HRIS.</p>
@@ -189,21 +189,8 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 md:px-8">
 
       {/* Page header */}
-      <div className="animate-fade-up flex items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-          </p>
-          <h1 className="font-heading text-3xl text-gray-900">Dashboard</h1>
-        </div>
-        <button
-          type="button"
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-all hover:shadow-sm"
-          style={{ borderColor: BRAND, color: BRAND }}
-        >
-          <Download className="h-4 w-4" />
-          Export Report
-        </button>
+      <div className="animate-fade-up">
+        <h1 className="font-heading text-3xl font-bold text-gray-900">Dashboard</h1>
       </div>
 
       {/* Stat cards */}

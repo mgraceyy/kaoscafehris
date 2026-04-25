@@ -25,7 +25,6 @@ async function runAutoClockout() {
   const shifts = await prisma.shift.findMany({
     where: {
       date: todayUtc,
-      status: "PUBLISHED",
     },
     include: {
       assignments: {

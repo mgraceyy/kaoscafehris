@@ -1,9 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FileSpreadsheet, FileText, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ChevronDown, Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -27,6 +25,7 @@ import {
   type ReportType,
 } from "./report.api";
 
+const BRAND = "#8C1515";
 type Tab = "attendance" | "payroll" | "headcount";
 
 function firstOfMonth(d: Date): string {
@@ -48,6 +47,20 @@ export default function ReportsPage() {
   const [branchId, setBranchId] = useState<string>("");
   const [periodStart, setPeriodStart] = useState<string>(firstOfMonth(today));
   const [periodEnd, setPeriodEnd] = useState<string>(lastOfMonth(today));
+
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [exportOpen]);
 
   const branchesQuery = useQuery({
     queryKey: ["branches", {}],
@@ -100,103 +113,115 @@ export default function ReportsPage() {
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
+  const TAB_LABELS: Record<Tab, string> = {
+    attendance: "Attendance",
+    payroll: "Payroll",
+    headcount: "Headcount",
+  };
+
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 md:px-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
-        <p className="text-sm text-muted-foreground">
-          Analytics across attendance, payroll, and headcount.
-        </p>
+    <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="font-heading text-3xl font-bold text-gray-900">Reports</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Analytics across attendance, payroll, and headcount.
+          </p>
+        </div>
+        <div className="relative" ref={exportRef}>
+          <button
+            onClick={() => setExportOpen((v) => !v)}
+            disabled={exportMut.isPending}
+            className="flex items-center gap-1.5 rounded-lg px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md disabled:opacity-60"
+            style={{ backgroundColor: BRAND }}
+          >
+            {exportMut.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            Export
+            <ChevronDown className="h-3.5 w-3.5 ml-0.5" />
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 z-10 w-36 rounded-lg border bg-white shadow-md py-1">
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => { exportMut.mutate({ format: "pdf" }); setExportOpen(false); }}
+                disabled={exportMut.isPending}
+              >
+                <FileText className="h-4 w-4 text-gray-400" />
+                PDF
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => { exportMut.mutate({ format: "xlsx" }); setExportOpen(false); }}
+                disabled={exportMut.isPending}
+              >
+                <FileSpreadsheet className="h-4 w-4 text-gray-400" />
+                Excel
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 rounded-lg border bg-card p-1">
+      <div className="mb-5 flex gap-1 rounded-xl border border-gray-100 bg-white p-1 shadow-sm w-fit">
         {(["attendance", "payroll", "headcount"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors",
+              "rounded-lg px-5 py-2 text-sm font-medium transition-colors",
               tab === t
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted"
+                ? "text-white shadow-sm"
+                : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
             )}
+            style={tab === t ? { backgroundColor: BRAND } : undefined}
           >
-            {t}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
       {/* Filters */}
-      <div className="grid gap-3 rounded-lg border bg-card p-4 md:grid-cols-4">
-        <div className="space-y-1.5">
-          <label htmlFor="f-branch" className="text-sm font-medium leading-none">
-            Branch
-          </label>
-          <Select
-            id="f-branch"
-            value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
-          >
-            <option value="">All branches</option>
-            {branchesQuery.data?.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="f-start" className="text-sm font-medium leading-none">
-            Period start
-          </label>
-          <Input
-            id="f-start"
-            type="date"
-            value={periodStart}
-            onChange={(e) => setPeriodStart(e.target.value)}
-            disabled={tab === "headcount"}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="f-end" className="text-sm font-medium leading-none">
-            Period end
-          </label>
-          <Input
-            id="f-end"
-            type="date"
-            value={periodEnd}
-            onChange={(e) => setPeriodEnd(e.target.value)}
-            disabled={tab === "headcount"}
-          />
-        </div>
-        <div className="flex items-end gap-2">
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={() => exportMut.mutate({ format: "pdf" })}
-            disabled={exportMut.isPending}
-          >
-            {exportMut.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4" />
-            )}
-            PDF
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={() => exportMut.mutate({ format: "xlsx" })}
-            disabled={exportMut.isPending}
-          >
-            {exportMut.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileSpreadsheet className="h-4 w-4" />
-            )}
-            Excel
-          </Button>
+      <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap gap-4">
+          <div className="min-w-[180px]">
+            <p className="mb-1.5 text-xs font-medium text-gray-500">Branch</p>
+            <select
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+            >
+              <option value="">All Branches</option>
+              {branchesQuery.data?.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[160px]">
+            <p className="mb-1.5 text-xs font-medium text-gray-500">Period Start</p>
+            <Input
+              type="date"
+              value={periodStart}
+              onChange={(e) => setPeriodStart(e.target.value)}
+              disabled={tab === "headcount"}
+              className="text-sm"
+            />
+          </div>
+          <div className="min-w-[160px]">
+            <p className="mb-1.5 text-xs font-medium text-gray-500">Period End</p>
+            <Input
+              type="date"
+              value={periodEnd}
+              onChange={(e) => setPeriodEnd(e.target.value)}
+              disabled={tab === "headcount"}
+              className="text-sm"
+            />
+          </div>
         </div>
       </div>
 
@@ -235,22 +260,34 @@ function StatCard({
   label,
   value,
   tone,
+  accent,
 }: {
   label: string;
   value: string | number;
-  tone?: "muted" | "destructive";
+  tone?: "destructive";
+  accent?: boolean;
 }) {
+  const borderColor = accent ? BRAND : tone === "destructive" ? "#DC2626" : "#D4A0A0";
+  const valueColor = accent ? BRAND : tone === "destructive" ? "#DC2626" : "#111827";
+
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div
-        className={cn(
-          "mt-1 text-xl font-semibold tabular-nums",
-          tone === "destructive" && "text-destructive"
-        )}
-      >
+    <div
+      className="rounded-xl border bg-white p-4 shadow-sm"
+      style={{ borderLeftWidth: 4, borderLeftColor: borderColor }}
+    >
+      <div className="text-xs font-medium text-gray-500">{label}</div>
+      <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: valueColor }}>
         {value}
       </div>
+    </div>
+  );
+}
+
+function SectionDivider({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <span className="text-xs font-bold uppercase tracking-widest text-gray-400">{title}</span>
+      <div className="flex-1 border-t border-gray-100" />
     </div>
   );
 }
@@ -271,8 +308,8 @@ function StateRow({
   if (loading) {
     return (
       <TableRow>
-        <TableCell colSpan={colSpan} className="py-10 text-center">
-          <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
+        <TableCell colSpan={colSpan} className="py-14 text-center">
+          <Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" />
         </TableCell>
       </TableRow>
     );
@@ -280,10 +317,7 @@ function StateRow({
   if (error) {
     return (
       <TableRow>
-        <TableCell
-          colSpan={colSpan}
-          className="py-10 text-center text-destructive"
-        >
+        <TableCell colSpan={colSpan} className="py-14 text-center text-sm text-red-500">
           {extractErrorMessage(error, fallback)}
         </TableCell>
       </TableRow>
@@ -292,10 +326,7 @@ function StateRow({
   if (empty) {
     return (
       <TableRow>
-        <TableCell
-          colSpan={colSpan}
-          className="py-10 text-center text-muted-foreground"
-        >
+        <TableCell colSpan={colSpan} className="py-14 text-center text-sm text-gray-400">
           No data for this period.
         </TableCell>
       </TableRow>
@@ -311,132 +342,77 @@ function AttendanceSection({
 }: SectionProps<import("./report.api").AttendanceReport>) {
   const empty = !loading && !error && (!data || data.totals.totalRecords === 0);
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-        <StatCard
-          label="Total records"
-          value={data?.totals.totalRecords ?? 0}
-        />
+        <StatCard label="Total Records" value={data?.totals.totalRecords ?? 0} accent />
         <StatCard label="Present" value={data?.totals.present ?? 0} />
-        <StatCard
-          label="Late"
-          value={data?.totals.late ?? 0}
-          tone="destructive"
-        />
+        <StatCard label="Late" value={data?.totals.late ?? 0} tone="destructive" />
         <StatCard label="Absent" value={data?.totals.absent ?? 0} />
-        <StatCard
-          label="Hours worked"
-          value={(data?.totals.totalHoursWorked ?? 0).toFixed(2)}
-        />
-        <StatCard
-          label="Overtime hours"
-          value={(data?.totals.totalOvertimeHours ?? 0).toFixed(2)}
-        />
-        <StatCard
-          label="Late minutes"
-          value={data?.totals.totalLateMinutes ?? 0}
-          tone="destructive"
-        />
-        <StatCard label="Half day" value={data?.totals.halfDay ?? 0} />
+        <StatCard label="Hours Worked" value={(data?.totals.totalHoursWorked ?? 0).toFixed(2)} />
+        <StatCard label="Overtime Hours" value={(data?.totals.totalOvertimeHours ?? 0).toFixed(2)} />
+        <StatCard label="Late Minutes" value={data?.totals.totalLateMinutes ?? 0} tone="destructive" />
+        <StatCard label="Half Day" value={data?.totals.halfDay ?? 0} />
       </div>
 
-      <h2 className="text-sm font-semibold text-muted-foreground">By branch</h2>
-      <div className="rounded-lg border bg-card">
+      <SectionDivider title="By Branch" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Branch</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Present</TableHead>
-              <TableHead className="text-right">Late</TableHead>
-              <TableHead className="text-right">Absent</TableHead>
-              <TableHead className="text-right">Late mins</TableHead>
+            <TableRow className="border-b border-gray-100 bg-gray-50/60">
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Total</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Present</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Absent</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late Mins</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            <StateRow
-              loading={loading}
-              error={error}
-              empty={empty}
-              colSpan={6}
-              fallback="Failed to load attendance report"
-            />
+          <TableBody className="divide-y divide-gray-50">
+            <StateRow loading={loading} error={error} empty={empty} colSpan={6} fallback="Failed to load attendance report" />
             {data?.byBranch.map((b) => (
-              <TableRow key={b.branchId}>
-                <TableCell className="font-medium">{b.branchName}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.totalRecords}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.present}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-destructive">
-                  {b.late}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.absent}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.totalLateMinutes}
-                </TableCell>
+              <TableRow key={b.branchId} className="hover:bg-[#FAF5F5]">
+                <TableCell className="font-medium" style={{ color: BRAND }}>{b.branchName}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.totalRecords}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.present}</TableCell>
+                <TableCell className="text-right tabular-nums text-red-500">{b.late}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.absent}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.totalLateMinutes}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
 
-      <h2 className="text-sm font-semibold text-muted-foreground">
-        By employee
-      </h2>
-      <div className="rounded-lg border bg-card">
+      <SectionDivider title="By Employee" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead className="text-right">Present</TableHead>
-              <TableHead className="text-right">Late</TableHead>
-              <TableHead className="text-right">Absent</TableHead>
-              <TableHead className="text-right">Hours</TableHead>
-              <TableHead className="text-right">OT hrs</TableHead>
-              <TableHead className="text-right">Late mins</TableHead>
+            <TableRow className="border-b border-gray-100 bg-gray-50/60">
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Employee</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Present</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Absent</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Hours</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">OT Hrs</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late Mins</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            <StateRow
-              loading={loading}
-              error={error}
-              empty={empty}
-              colSpan={8}
-              fallback="Failed to load attendance report"
-            />
+          <TableBody className="divide-y divide-gray-50">
+            <StateRow loading={loading} error={error} empty={empty} colSpan={8} fallback="Failed to load attendance report" />
             {data?.byEmployee.map((e) => (
-              <TableRow key={e.employeeId}>
+              <TableRow key={e.employeeId} className="hover:bg-[#FAF5F5]">
                 <TableCell>
-                  <div className="font-medium">{e.employeeName}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {e.employeeCode}
-                  </div>
+                  <div className="font-medium text-gray-900">{e.employeeName}</div>
+                  <div className="text-xs text-gray-400">{e.employeeCode}</div>
                 </TableCell>
-                <TableCell>{e.branchName}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {e.present}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-destructive">
-                  {e.late}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {e.absent}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {e.totalHoursWorked.toFixed(2)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {e.totalOvertimeHours.toFixed(2)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {e.totalLateMinutes}
-                </TableCell>
+                <TableCell className="text-gray-600">{e.branchName}</TableCell>
+                <TableCell className="text-right tabular-nums">{e.present}</TableCell>
+                <TableCell className="text-right tabular-nums text-red-500">{e.late}</TableCell>
+                <TableCell className="text-right tabular-nums">{e.absent}</TableCell>
+                <TableCell className="text-right tabular-nums">{e.totalHoursWorked.toFixed(2)}</TableCell>
+                <TableCell className="text-right tabular-nums">{e.totalOvertimeHours.toFixed(2)}</TableCell>
+                <TableCell className="text-right tabular-nums">{e.totalLateMinutes}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -453,109 +429,69 @@ function PayrollSection({
 }: SectionProps<import("./report.api").PayrollReport>) {
   const empty = !loading && !error && (!data || data.totals.runCount === 0);
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
         <StatCard label="Runs" value={data?.totals.runCount ?? 0} />
         <StatCard label="Payslips" value={data?.totals.payslipCount ?? 0} />
-        <StatCard
-          label="Total gross"
-          value={formatCurrency(data?.totals.totalGross ?? 0)}
-        />
-        <StatCard
-          label="Total deductions"
-          value={formatCurrency(data?.totals.totalDeductions ?? 0)}
-          tone="destructive"
-        />
-        <StatCard
-          label="Total net"
-          value={formatCurrency(data?.totals.totalNet ?? 0)}
-        />
+        <StatCard label="Total Gross" value={formatCurrency(data?.totals.totalGross ?? 0)} />
+        <StatCard label="Total Deductions" value={formatCurrency(data?.totals.totalDeductions ?? 0)} tone="destructive" />
+        <StatCard label="Total Net Pay" value={formatCurrency(data?.totals.totalNet ?? 0)} accent />
       </div>
 
-      <h2 className="text-sm font-semibold text-muted-foreground">By branch</h2>
-      <div className="rounded-lg border bg-card">
+      <SectionDivider title="By Branch" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Branch</TableHead>
-              <TableHead className="text-right">Runs</TableHead>
-              <TableHead className="text-right">Payslips</TableHead>
-              <TableHead className="text-right">Gross</TableHead>
-              <TableHead className="text-right">Deductions</TableHead>
-              <TableHead className="text-right">Net</TableHead>
+            <TableRow className="border-b border-gray-100 bg-gray-50/60">
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Runs</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Payslips</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Gross</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Deductions</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Net Pay</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            <StateRow
-              loading={loading}
-              error={error}
-              empty={empty}
-              colSpan={6}
-              fallback="Failed to load payroll report"
-            />
+          <TableBody className="divide-y divide-gray-50">
+            <StateRow loading={loading} error={error} empty={empty} colSpan={6} fallback="Failed to load payroll report" />
             {data?.byBranch.map((b) => (
-              <TableRow key={b.branchId}>
-                <TableCell className="font-medium">{b.branchName}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.runCount}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.payslipCount}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatCurrency(b.totalGross)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-destructive">
-                  {formatCurrency(b.totalDeductions)}
-                </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">
-                  {formatCurrency(b.totalNet)}
-                </TableCell>
+              <TableRow key={b.branchId} className="hover:bg-[#FAF5F5]">
+                <TableCell className="font-medium" style={{ color: BRAND }}>{b.branchName}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.runCount}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.payslipCount}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCurrency(b.totalGross)}</TableCell>
+                <TableCell className="text-right tabular-nums text-red-500">{formatCurrency(b.totalDeductions)}</TableCell>
+                <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(b.totalNet)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
 
-      <h2 className="text-sm font-semibold text-muted-foreground">Runs</h2>
-      <div className="rounded-lg border bg-card">
+      <SectionDivider title="Runs" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Period</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Payslips</TableHead>
-              <TableHead className="text-right">Gross</TableHead>
-              <TableHead className="text-right">Net</TableHead>
+            <TableRow className="border-b border-gray-100 bg-gray-50/60">
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Period</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Status</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Payslips</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Gross</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Net Pay</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            <StateRow
-              loading={loading}
-              error={error}
-              empty={empty}
-              colSpan={6}
-              fallback="Failed to load payroll report"
-            />
+          <TableBody className="divide-y divide-gray-50">
+            <StateRow loading={loading} error={error} empty={empty} colSpan={6} fallback="Failed to load payroll report" />
             {data?.runs.map((r) => (
-              <TableRow key={r.runId}>
-                <TableCell className="whitespace-nowrap tabular-nums">
+              <TableRow key={r.runId} className="hover:bg-[#FAF5F5]">
+                <TableCell className="whitespace-nowrap tabular-nums text-gray-600">
                   {r.periodStart} → {r.periodEnd}
                 </TableCell>
-                <TableCell>{r.branchName}</TableCell>
-                <TableCell className="text-muted-foreground">
-                  {r.status}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {r.payslipCount}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatCurrency(r.totalGross)}
-                </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">
-                  {formatCurrency(r.totalNet)}
-                </TableCell>
+                <TableCell className="font-medium">{r.branchName}</TableCell>
+                <TableCell className="text-gray-500 text-xs">{r.status}</TableCell>
+                <TableCell className="text-right tabular-nums">{r.payslipCount}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCurrency(r.totalGross)}</TableCell>
+                <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(r.totalNet)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -572,89 +508,59 @@ function HeadcountSection({
 }: SectionProps<import("./report.api").HeadcountReport>) {
   const empty = !loading && !error && (!data || data.totals.total === 0);
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
-        <StatCard label="Active" value={data?.totals.active ?? 0} />
+        <StatCard label="Active" value={data?.totals.active ?? 0} accent />
         <StatCard label="Inactive" value={data?.totals.inactive ?? 0} />
-        <StatCard label="On leave" value={data?.totals.onLeave ?? 0} />
-        <StatCard
-          label="Terminated"
-          value={data?.totals.terminated ?? 0}
-          tone="destructive"
-        />
+        <StatCard label="On Leave" value={data?.totals.onLeave ?? 0} />
+        <StatCard label="Terminated" value={data?.totals.terminated ?? 0} tone="destructive" />
         <StatCard label="Total" value={data?.totals.total ?? 0} />
       </div>
 
-      <h2 className="text-sm font-semibold text-muted-foreground">By branch</h2>
-      <div className="rounded-lg border bg-card">
+      <SectionDivider title="By Branch" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Branch</TableHead>
-              <TableHead className="text-right">Active</TableHead>
-              <TableHead className="text-right">Inactive</TableHead>
-              <TableHead className="text-right">On leave</TableHead>
-              <TableHead className="text-right">Terminated</TableHead>
-              <TableHead className="text-right">Total</TableHead>
+            <TableRow className="border-b border-gray-100 bg-gray-50/60">
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Active</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Inactive</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">On Leave</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Terminated</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Total</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            <StateRow
-              loading={loading}
-              error={error}
-              empty={empty}
-              colSpan={6}
-              fallback="Failed to load headcount"
-            />
+          <TableBody className="divide-y divide-gray-50">
+            <StateRow loading={loading} error={error} empty={empty} colSpan={6} fallback="Failed to load headcount" />
             {data?.byBranch.map((b) => (
-              <TableRow key={b.branchId}>
-                <TableCell className="font-medium">{b.branchName}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.active}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.inactive}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {b.onLeave}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-destructive">
-                  {b.terminated}
-                </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">
-                  {b.total}
-                </TableCell>
+              <TableRow key={b.branchId} className="hover:bg-[#FAF5F5]">
+                <TableCell className="font-medium" style={{ color: BRAND }}>{b.branchName}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.active}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.inactive}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.onLeave}</TableCell>
+                <TableCell className="text-right tabular-nums text-red-500">{b.terminated}</TableCell>
+                <TableCell className="text-right font-semibold tabular-nums">{b.total}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
 
-      <h2 className="text-sm font-semibold text-muted-foreground">
-        By position
-      </h2>
-      <div className="rounded-lg border bg-card">
+      <SectionDivider title="By Position" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Position</TableHead>
-              <TableHead className="text-right">Count</TableHead>
+            <TableRow className="border-b border-gray-100 bg-gray-50/60">
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Position</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Count</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            <StateRow
-              loading={loading}
-              error={error}
-              empty={empty}
-              colSpan={2}
-              fallback="Failed to load headcount"
-            />
+          <TableBody className="divide-y divide-gray-50">
+            <StateRow loading={loading} error={error} empty={empty} colSpan={2} fallback="Failed to load headcount" />
             {data?.byPosition.map((p) => (
-              <TableRow key={p.position}>
-                <TableCell>{p.position}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {p.count}
-                </TableCell>
+              <TableRow key={p.position} className="hover:bg-[#FAF5F5]">
+                <TableCell className="font-medium text-gray-700">{p.position}</TableCell>
+                <TableCell className="text-right tabular-nums font-semibold">{p.count}</TableCell>
               </TableRow>
             ))}
           </TableBody>

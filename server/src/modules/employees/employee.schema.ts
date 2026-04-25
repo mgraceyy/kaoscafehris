@@ -54,7 +54,6 @@ export const createEmployeeSchema = z.object({
   emergencyRelation: emptyToUndef(z.string().trim().max(60)),
 
   position: z.string().trim().min(1).max(100),
-  department: emptyToUndef(z.string().trim().max(100)),
   employmentStatus: employmentStatusEnum.default("ACTIVE"),
   dateHired: requiredDate,
   basicSalary: z

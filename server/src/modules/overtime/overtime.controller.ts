@@ -21,10 +21,20 @@ async function resolveEmployeeId(userId: string): Promise<string> {
 export async function list(req: Request, res: Response, next: NextFunction) {
   try {
     const query = listOvertimeQuerySchema.parse(req.query);
-    const scopedId = req.user?.role === "EMPLOYEE"
-      ? await resolveEmployeeId(req.user.userId)
-      : undefined;
-    const data = await overtimeService.listRequests(query, scopedId);
+    let scopedEmployeeId: string | undefined;
+    let scopedBranchId: string | undefined;
+
+    if (req.user?.role === "EMPLOYEE") {
+      scopedEmployeeId = await resolveEmployeeId(req.user.userId);
+    } else if (req.user?.role === "MANAGER") {
+      const emp = await prisma.employee.findUnique({
+        where: { userId: req.user.userId },
+        select: { branchId: true },
+      });
+      if (emp) scopedBranchId = emp.branchId;
+    }
+
+    const data = await overtimeService.listRequests(query, scopedEmployeeId, scopedBranchId);
     res.json({ data });
   } catch (err) { next(err); }
 }

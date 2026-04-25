@@ -1,18 +1,18 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   Download,
   FileSpreadsheet,
   FileText,
   Loader2,
   Pencil,
-  PlayCircle,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -37,18 +37,26 @@ import {
   type PayrollStatus,
 } from "./payroll.api";
 import PayslipEditDialog from "./payslip-edit-dialog";
+import PayslipViewDialog from "./payslip-view-dialog";
 
-function statusBadge(status: PayrollStatus) {
-  switch (status) {
-    case "DRAFT":
-      return <Badge variant="muted">Draft</Badge>;
-    case "PROCESSING":
-      return <Badge variant="warn">Processing</Badge>;
-    case "COMPLETED":
-      return <Badge variant="success">Completed</Badge>;
-    case "CANCELLED":
-      return <Badge variant="destructive">Cancelled</Badge>;
-  }
+const BRAND = "#8C1515";
+
+function StatusPill({ status }: { status: PayrollStatus }) {
+  const map: Record<PayrollStatus, { bg: string; color: string; label: string }> = {
+    DRAFT:      { bg: "#F3F4F6", color: "#6B7280", label: "Draft" },
+    PROCESSING: { bg: "#FEF3C7", color: "#D97706", label: "In Progress" },
+    COMPLETED:  { bg: "#DCFCE7", color: "#16A34A", label: "Finalized" },
+    CANCELLED:  { bg: "#FEE2E2", color: "#DC2626", label: "Cancelled" },
+  };
+  const s = map[status];
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: s.bg, color: s.color }}
+    >
+      {s.label}
+    </span>
+  );
 }
 
 export default function PayrollRunDetailPage() {
@@ -58,8 +66,22 @@ export default function PayrollRunDetailPage() {
   const { toast } = useToast();
 
   const [editPayslipId, setEditPayslipId] = useState<string | null>(null);
+  const [viewPayslipId, setViewPayslipId] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [completeOpen, setCompleteOpen] = useState(false);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [exportOpen]);
 
   const runQuery = useQuery({
     queryKey: ["payroll-run", runId],
@@ -67,27 +89,27 @@ export default function PayrollRunDetailPage() {
     enabled: !!runId,
   });
 
-  const process = useMutation({
+  const reprocess = useMutation({
     mutationFn: () => processRun(runId!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["payroll-run", runId] });
       qc.invalidateQueries({ queryKey: ["payroll-runs"] });
-      toast("Payslips generated", "success");
+      toast("Payslips regenerated", "success");
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
-  const complete = useMutation({
+  const finalize = useMutation({
     mutationFn: () => completeRun(runId!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["payroll-run", runId] });
       qc.invalidateQueries({ queryKey: ["payroll-runs"] });
-      toast("Payroll run completed", "success");
-      setCompleteOpen(false);
+      toast("Payroll run finalized", "success");
+      setFinalizeOpen(false);
     },
     onError: (err) => {
       toast(extractErrorMessage(err), "error");
-      setCompleteOpen(false);
+      setFinalizeOpen(false);
     },
   });
 
@@ -95,7 +117,7 @@ export default function PayrollRunDetailPage() {
     mutationFn: () => cancelRun(runId!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["payroll-runs"] });
-      toast("Payroll run cancelled", "success");
+      toast("Payroll run deleted", "success");
       navigate("/payroll");
     },
     onError: (err) => {
@@ -139,18 +161,19 @@ export default function PayrollRunDetailPage() {
           className="mt-4 inline-flex items-center gap-1 text-sm text-primary underline"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to runs
+          Back to payroll
         </Link>
       </div>
     );
   }
 
   const run = runQuery.data;
-  const canProcess = run.status === "DRAFT" || run.status === "PROCESSING";
-  const canComplete = run.status === "PROCESSING";
-  const canCancel = run.status === "DRAFT" || run.status === "PROCESSING";
-  const canEdit = run.status !== "COMPLETED" && run.status !== "CANCELLED";
-
+  const isFinalized = run.status === "COMPLETED";
+  const isCancelled = run.status === "CANCELLED";
+  const canReprocess = run.status === "PROCESSING" || run.status === "DRAFT";
+  const canFinalize = run.status === "PROCESSING";
+  const canDelete = !isFinalized && !isCancelled;
+  const canEdit = !isFinalized && !isCancelled;
   const canExport = run.payslips.length > 0;
   const filenameBase = `payroll_${run.branch.name.replace(/[^\w-]+/g, "-")}_${run.periodStart.slice(0, 10)}_to_${run.periodEnd.slice(0, 10)}`;
 
@@ -166,142 +189,147 @@ export default function PayrollRunDetailPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 md:px-8">
-      <div>
-        <Link
-          to="/payroll"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to runs
-        </Link>
-      </div>
+      {/* Back */}
+      <Link
+        to="/payroll"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to payroll
+      </Link>
 
+      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {run.branch.name}
-            </h1>
-            {statusBadge(run.status)}
+            <h1 className="text-2xl font-bold text-gray-900">{run.branch.name}</h1>
+            <StatusPill status={run.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Period: {run.periodStart.slice(0, 10)} → {run.periodEnd.slice(0, 10)}
+            {run.periodStart.slice(0, 10)} → {run.periodEnd.slice(0, 10)}
             {run.processedAt &&
-              ` · processed ${new Date(run.processedAt).toLocaleString()}`}
+              ` · finalized ${new Date(run.processedAt).toLocaleDateString()}`}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {canProcess && (
-            <Button
-              onClick={() => process.mutate()}
-              disabled={process.isPending}
-            >
-              {process.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <PlayCircle className="h-4 w-4" />
-              )}
-              {run.status === "DRAFT" ? "Process" : "Re-process"}
-            </Button>
-          )}
-          {canComplete && (
+
+        <div className="flex flex-wrap items-center gap-2">
+          {canReprocess && (
             <Button
               variant="outline"
-              onClick={() => setCompleteOpen(true)}
-              disabled={complete.isPending}
+              onClick={() => reprocess.mutate()}
+              disabled={reprocess.isPending}
+              title="Regenerate payslips from attendance data"
+            >
+              {reprocess.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Regenerate
+            </Button>
+          )}
+          {canFinalize && (
+            <Button
+              onClick={() => setFinalizeOpen(true)}
+              disabled={finalize.isPending}
+              style={{ backgroundColor: BRAND }}
+              className="text-white hover:opacity-90"
             >
               <CheckCircle2 className="h-4 w-4" />
-              Complete run
+              Finalize
             </Button>
           )}
           {canExport && (
-            <>
+            <div className="relative" ref={exportRef}>
               <Button
-                variant="outline"
-                onClick={() => pdfExport.mutate(`${filenameBase}.pdf`)}
-                disabled={pdfExport.isPending}
+                onClick={() => setExportOpen((v) => !v)}
+                disabled={pdfExport.isPending || xlsxExport.isPending}
+                style={{ backgroundColor: BRAND }}
+                className="text-white hover:opacity-90"
               >
-                {pdfExport.isPending ? (
+                {pdfExport.isPending || xlsxExport.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <FileText className="h-4 w-4" />
+                  <Download className="h-4 w-4" />
                 )}
-                Export PDF
+                Export
+                <ChevronDown className="h-3.5 w-3.5 ml-1" />
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => xlsxExport.mutate(`${filenameBase}.xlsx`)}
-                disabled={xlsxExport.isPending}
-              >
-                {xlsxExport.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileSpreadsheet className="h-4 w-4" />
-                )}
-                Export Excel
-              </Button>
-            </>
+              {exportOpen && (
+                <div className="absolute right-0 top-full mt-1 z-10 w-36 rounded-lg border bg-white shadow-md py-1">
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => { pdfExport.mutate(`${filenameBase}.pdf`); setExportOpen(false); }}
+                    disabled={pdfExport.isPending}
+                  >
+                    <FileText className="h-4 w-4 text-gray-400" />
+                    PDF
+                  </button>
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => { xlsxExport.mutate(`${filenameBase}.xlsx`); setExportOpen(false); }}
+                    disabled={xlsxExport.isPending}
+                  >
+                    <FileSpreadsheet className="h-4 w-4 text-gray-400" />
+                    Excel
+                  </button>
+                </div>
+              )}
+            </div>
           )}
-          {canCancel && (
+          {canDelete && (
             <Button
               variant="outline"
               onClick={() => setCancelOpen(true)}
               disabled={cancel.isPending}
+              className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/60"
             >
               <Trash2 className="h-4 w-4" />
-              Cancel
+              Delete
             </Button>
           )}
         </div>
       </div>
 
+      {/* Totals */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-xs font-medium text-muted-foreground">
-            Total Gross
-          </div>
-          <div className="mt-1 text-xl font-semibold tabular-nums">
-            {formatCurrency(totals.gross)}
-          </div>
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium text-muted-foreground">Total Gross</div>
+          <div className="mt-1 text-xl font-bold tabular-nums">{formatCurrency(totals.gross)}</div>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-xs font-medium text-muted-foreground">
-            Total Deductions
-          </div>
-          <div className="mt-1 text-xl font-semibold tabular-nums text-destructive">
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium text-muted-foreground">Total Deductions</div>
+          <div className="mt-1 text-xl font-bold tabular-nums text-destructive">
             {formatCurrency(totals.deductions)}
           </div>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-xs font-medium text-muted-foreground">
-            Total Net
-          </div>
-          <div className="mt-1 text-xl font-semibold tabular-nums">
+        <div className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderLeftWidth: 4, borderLeftColor: BRAND }}>
+          <div className="text-xs font-medium text-muted-foreground">Total Net Pay</div>
+          <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: BRAND }}>
             {formatCurrency(totals.net)}
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border bg-card">
+      {/* Payslips table */}
+      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
               <TableHead className="text-right">Basic</TableHead>
               <TableHead className="text-right">Gross</TableHead>
+              <TableHead className="text-right">Earnings</TableHead>
               <TableHead className="text-right">Deductions</TableHead>
-              <TableHead className="text-right">Net</TableHead>
+              <TableHead className="text-right">Net Pay</TableHead>
               <TableHead className="w-0" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {run.payslips.length === 0 && (
               <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="py-10 text-center text-muted-foreground"
-                >
-                  No payslips yet — click <strong>Process</strong> to generate.
+                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  No payslips yet.
                 </TableCell>
               </TableRow>
             )}
@@ -321,6 +349,14 @@ export default function PayrollRunDetailPage() {
                 <TableCell className="text-right tabular-nums">
                   {formatCurrency(p.grossPay)}
                 </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatCurrency(
+                    Number(p.overtimePay) +
+                    Number(p.bonuses) +
+                    Number(p.allowances) +
+                    Number(p.holidayPay)
+                  )}
+                </TableCell>
                 <TableCell className="text-right tabular-nums text-destructive">
                   {formatCurrency(p.totalDeductions)}
                 </TableCell>
@@ -338,19 +374,28 @@ export default function PayrollRunDetailPage() {
                       })
                     }
                     disabled={payslipPdf.isPending}
-                    aria-label="Download PDF"
-                    title="Download PDF"
+                    title="Download payslip PDF"
                   >
                     <Download className="h-3.5 w-3.5" />
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setEditPayslipId(p.id)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    {canEdit ? "Edit" : "View"}
-                  </Button>
+                  {canEdit ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditPayslipId(p.id)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setViewPayslipId(p.id)}
+                    >
+                      View
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -364,22 +409,28 @@ export default function PayrollRunDetailPage() {
         payslipId={editPayslipId}
       />
 
+      <PayslipViewDialog
+        open={!!viewPayslipId}
+        onOpenChange={(open) => !open && setViewPayslipId(null)}
+        payslipId={viewPayslipId}
+      />
+
       <ConfirmDialog
-        open={completeOpen}
-        onOpenChange={setCompleteOpen}
-        title="Complete payroll run?"
-        description="All payslips will be finalized and locked. This cannot be undone."
-        confirmLabel="Complete"
-        loading={complete.isPending}
-        onConfirm={() => complete.mutate()}
+        open={finalizeOpen}
+        onOpenChange={setFinalizeOpen}
+        title="Finalize payroll run?"
+        description="All payslips will be locked and made visible to employees. This cannot be undone."
+        confirmLabel="Finalize"
+        loading={finalize.isPending}
+        onConfirm={() => finalize.mutate()}
       />
 
       <ConfirmDialog
         open={cancelOpen}
         onOpenChange={setCancelOpen}
-        title="Cancel payroll run?"
-        description="The run and all its payslips will be deleted. This cannot be undone."
-        confirmLabel="Delete run"
+        title="Delete payroll run?"
+        description="This run and all its payslips will be permanently deleted."
+        confirmLabel="Delete"
         destructive
         loading={cancel.isPending}
         onConfirm={() => cancel.mutate()}

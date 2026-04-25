@@ -13,7 +13,6 @@ type RunExport = Prisma.PayrollRunGetPayload<{
             firstName: true;
             lastName: true;
             position: true;
-            department: true;
             sssNumber: true;
             philhealthNumber: true;
             pagibigNumber: true;
@@ -62,7 +61,6 @@ export async function runToXlsx(run: RunExport): Promise<Buffer> {
     "Last Name",
     "First Name",
     "Position",
-    "Department",
     "Basic Pay",
     "OT Pay",
     "Bonuses",
@@ -94,7 +92,7 @@ export async function runToXlsx(run: RunExport): Promise<Buffer> {
   });
 
   const currencyCols = [
-    "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
+    "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
   ];
 
   run.payslips.forEach((p, idx) => {
@@ -104,7 +102,6 @@ export async function runToXlsx(run: RunExport): Promise<Buffer> {
       p.employee.lastName,
       p.employee.firstName,
       p.employee.position,
-      p.employee.department ?? "",
       num(p.basicPay),
       num(p.overtimePay),
       num(p.bonuses),
@@ -155,68 +152,6 @@ export async function runToXlsx(run: RunExport): Promise<Buffer> {
     { width: 20 },
     { width: 16 },
     ...currencyCols.map(() => ({ width: 14 })),
-  ];
-
-  // --- Sheet 2: Itemized line items ---------------------------------------
-  const items = wb.addWorksheet("Line Items");
-  items.getRow(1).values = [
-    "Employee ID",
-    "Employee",
-    "Category",
-    "Type",
-    "Label",
-    "Amount",
-  ];
-  items.getRow(1).font = { bold: true };
-  items.getRow(1).eachCell((cell) => {
-    cell.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFEFEFEF" },
-    };
-  });
-
-  let rowIdx = 2;
-  for (const p of run.payslips) {
-    const name = `${p.employee.firstName} ${p.employee.lastName}`;
-    // Basic pay
-    items.getRow(rowIdx++).values = [
-      p.employee.employeeId,
-      name,
-      "Earning",
-      "BASIC",
-      "Basic pay",
-      num(p.basicPay),
-    ];
-    for (const e of p.earnings) {
-      items.getRow(rowIdx++).values = [
-        p.employee.employeeId,
-        name,
-        "Earning",
-        e.type,
-        e.label,
-        num(e.amount),
-      ];
-    }
-    for (const d of p.deductions) {
-      items.getRow(rowIdx++).values = [
-        p.employee.employeeId,
-        name,
-        "Deduction",
-        d.type,
-        d.label,
-        -num(d.amount),
-      ];
-    }
-  }
-  items.getColumn(6).numFmt = '_-"₱"* #,##0.00_-;-"₱"* #,##0.00_-;_-"₱"* "-"??_-;_-@_-';
-  items.columns = [
-    { width: 14 },
-    { width: 26 },
-    { width: 12 },
-    { width: 16 },
-    { width: 28 },
-    { width: 14 },
   ];
 
   const raw = await wb.xlsx.writeBuffer();

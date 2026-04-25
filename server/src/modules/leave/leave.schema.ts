@@ -53,6 +53,15 @@ export const upsertLeaveBalanceSchema = z.object({
     .pipe(z.number().min(0).max(365)),
 });
 
+export const upsertBalanceForAllSchema = z.object({
+  leaveType: leaveTypeEnum,
+  year: z.number().int().min(2020).max(2100),
+  totalDays: z
+    .union([z.number(), z.string()])
+    .transform((v) => (typeof v === "string" ? Number(v) : v))
+    .pipe(z.number().min(0).max(365)),
+});
+
 export const listLeaveBalancesQuerySchema = z.object({
   employeeId: z.string().uuid().optional(),
   year: z
@@ -66,4 +75,5 @@ export type CreateLeaveRequestInput = z.infer<typeof createLeaveRequestSchema>;
 export type ReviewLeaveInput = z.infer<typeof reviewLeaveSchema>;
 export type ListLeaveQuery = z.infer<typeof listLeaveQuerySchema>;
 export type UpsertLeaveBalanceInput = z.infer<typeof upsertLeaveBalanceSchema>;
+export type UpsertBalanceForAllInput = z.infer<typeof upsertBalanceForAllSchema>;
 export type ListLeaveBalancesQuery = z.infer<typeof listLeaveBalancesQuerySchema>;

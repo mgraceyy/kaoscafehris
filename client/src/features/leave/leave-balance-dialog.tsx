@@ -78,7 +78,6 @@ export default function LeaveBalanceDialog({ open, onOpenChange }: Props) {
   const currentYear = new Date().getUTCFullYear();
   const [filterYear, setFilterYear] = useState<number>(currentYear);
   const [filterEmployee, setFilterEmployee] = useState<string>("");
-  const [applyToAll, setApplyToAll] = useState(false);
 
   const employeesQuery = useQuery({
     queryKey: ["employees", { status: "ACTIVE" }],
@@ -121,10 +120,7 @@ export default function LeaveBalanceDialog({ open, onOpenChange }: Props) {
   const watchApplyToAll = watch("applyToAll");
 
   useEffect(() => {
-    if (open) {
-      reset(defaults);
-      setApplyToAll(false);
-    }
+    if (open) reset(defaults);
   }, [open, reset, defaults]);
 
   const mutation = useMutation({
@@ -145,13 +141,13 @@ export default function LeaveBalanceDialog({ open, onOpenChange }: Props) {
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["leave-balances"] });
+      qc.invalidateQueries({ queryKey: ["portal-leave-balances"] });
       if (typeof result === "object" && "message" in result) {
         toast(`${result.message}`, "success");
       } else {
         toast("Balance saved", "success");
       }
       reset(defaults);
-      setApplyToAll(false);
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
@@ -179,9 +175,6 @@ export default function LeaveBalanceDialog({ open, onOpenChange }: Props) {
                   <input
                     type="checkbox"
                     {...register("applyToAll")}
-                    onChange={(e) => {
-                      setApplyToAll(e.target.checked);
-                    }}
                     className="rounded border-gray-300"
                   />
                   <span>Apply to all employees</span>

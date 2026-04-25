@@ -11,6 +11,7 @@ import {
   type LeaveStatus,
   type LeaveType,
 } from "@/features/leave/leave.api";
+import { getMyLeaveBalances } from "./portal.api";
 
 const BRAND = "#8C1515";
 const ROSE = "#a28587";
@@ -253,12 +254,18 @@ function NewLeaveRequestForm({
 export default function PortalLeavePage() {
   const user = useAuthStore((s) => s.user);
   const [showForm, setShowForm] = useState(false);
+  const currentYear = new Date().getFullYear();
 
   const query = useQuery({
     queryKey: ["leave-requests", { employeeId: user?.employee?.id }],
     queryFn: () =>
       listRequests(user?.employee ? { employeeId: user.employee!.id } : {}),
     enabled: !!user?.employee,
+  });
+
+  const balanceQuery = useQuery({
+    queryKey: ["portal-leave-balances", currentYear],
+    queryFn: () => getMyLeaveBalances(currentYear),
   });
 
   return (
@@ -276,13 +283,27 @@ export default function PortalLeavePage() {
 
       <div className="px-4 pt-5 pb-24 space-y-4">
         {/* Leave balance strip */}
-        <div className="animate-fade-up stagger-2 bg-white rounded-2xl p-4 shadow-sm flex justify-around" style={{ borderTop: `3px solid ${BRAND}` }}>
-          {[["Sick","5 days"],["Vacation","8 days"],["Emergency","2 days"]].map(([t,v]) => (
-            <div key={t} className="text-center">
-              <div className="font-heading text-2xl leading-none" style={{ color: BRAND }}>{v.split(" ")[0]}</div>
-              <div className="text-xs text-gray-400 mt-1">{t} days left</div>
+        <div className="animate-fade-up stagger-2 bg-white rounded-2xl p-4 shadow-sm" style={{ borderTop: `3px solid ${BRAND}` }}>
+          {balanceQuery.isLoading ? (
+            <div className="flex justify-center py-2">
+              <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
             </div>
-          ))}
+          ) : !balanceQuery.data || balanceQuery.data.length === 0 ? (
+            <p className="text-center text-xs text-gray-400 py-1">No leave balances configured yet.</p>
+          ) : (
+            <div className="flex overflow-x-auto gap-4 justify-around">
+              {balanceQuery.data.map((b) => (
+                <div key={b.id} className="text-center shrink-0">
+                  <div className="font-heading text-2xl leading-none" style={{ color: BRAND }}>
+                    {parseFloat(b.remainingDays)}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {TYPE_LABEL[b.leaveType as LeaveType]?.replace(" Leave", "") ?? b.leaveType} left
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <h2 className="font-heading text-lg text-gray-800 mt-4">Your Requests</h2>

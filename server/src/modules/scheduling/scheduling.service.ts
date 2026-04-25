@@ -125,7 +125,7 @@ export async function createShift(input: CreateShiftInput) {
       date: dateOnly(input.date),
       startTime,
       endTime,
-      status: input.status ?? "DRAFT",
+      status: "PUBLISHED",
       assignments: input.employeeIds.length
         ? {
             create: input.employeeIds.map((employeeId) => ({ employeeId })),

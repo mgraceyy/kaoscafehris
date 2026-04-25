@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { eachDayOfInterval, format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,12 +23,24 @@ import { listEmployees } from "@/features/employees/employees.api";
 import { createShift } from "./scheduling.api";
 import { listShiftTypes } from "./shift-types.api";
 
-const schema = z.object({
-  branchId: z.string().uuid("Select a branch"),
-  shiftTypeId: z.string().uuid("Select a shift template"),
-  date: z.string().min(1, "Pick a date"),
-  employeeIds: z.array(z.string().uuid()).min(1, "Select at least one employee"),
-});
+function toHHMM(value: string): string {
+  if (/^\d{2}:\d{2}$/.test(value)) return value;
+  const d = new Date(value);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+const schema = z
+  .object({
+    branchId: z.string().uuid("Select a branch"),
+    shiftTypeId: z.string().uuid("Select a shift template"),
+    dateFrom: z.string().min(1, "Pick a start date"),
+    dateTo: z.string().min(1, "Pick an end date"),
+    employeeIds: z.array(z.string().uuid()).min(1, "Select at least one employee"),
+  })
+  .refine((v) => !v.dateFrom || !v.dateTo || v.dateTo >= v.dateFrom, {
+    message: "End date must be on or after start date",
+    path: ["dateTo"],
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -53,7 +66,8 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
     defaultValues: {
       branchId: "",
       shiftTypeId: "",
-      date: initialDate ?? "",
+      dateFrom: initialDate ?? "",
+      dateTo: initialDate ?? "",
       employeeIds: [],
     },
   });
@@ -75,8 +89,7 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
 
   const employeesQuery = useQuery({
     queryKey: ["employees", { branchId: selectedBranch }],
-    queryFn: () =>
-      listEmployees({ branchId: selectedBranch, status: "ACTIVE" }),
+    queryFn: () => listEmployees({ branchId: selectedBranch, status: "ACTIVE" }),
     enabled: open && !!selectedBranch,
   });
 
@@ -85,7 +98,8 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
       reset({
         branchId: "",
         shiftTypeId: "",
-        date: initialDate ?? "",
+        dateFrom: initialDate ?? "",
+        dateTo: initialDate ?? "",
         employeeIds: [],
       });
     }
@@ -93,21 +107,31 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      // Get the shift template to get the shift name
       const shiftType = shiftTypesQuery.data?.find((t) => t.id === values.shiftTypeId);
       if (!shiftType) throw new Error("Shift template not found");
 
-      return createShift({
-        branchId: values.branchId,
-        shiftTypeId: values.shiftTypeId,
-        name: shiftType.name,
-        date: values.date,
-        employeeIds: values.employeeIds,
+      const dates = eachDayOfInterval({
+        start: new Date(values.dateFrom),
+        end: new Date(values.dateTo),
       });
+
+      await Promise.all(
+        dates.map((d) =>
+          createShift({
+            branchId: values.branchId,
+            shiftTypeId: values.shiftTypeId,
+            name: shiftType.name,
+            date: format(d, "yyyy-MM-dd"),
+            employeeIds: values.employeeIds,
+          })
+        )
+      );
+
+      return dates.length;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ["shifts"] });
-      toast("Shift assigned to employees", "success");
+      toast(`${count} shift${count !== 1 ? "s" : ""} created`, "success");
       onOpenChange(false);
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
@@ -115,9 +139,7 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
 
   function toggleEmployee(id: string, checked: boolean) {
     const current = selectedEmployees ?? [];
-    const next = checked
-      ? [...current, id]
-      : current.filter((x) => x !== id);
+    const next = checked ? [...current, id] : current.filter((x) => x !== id);
     setValue("employeeIds", next, { shouldDirty: true });
   }
 
@@ -126,7 +148,7 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
       <DialogHeader>
         <DialogTitle>Assign Shift</DialogTitle>
         <DialogDescription>
-          Select a shift template, date, and employees to assign to that shift.
+          Select a shift template, date range, and employees to assign.
         </DialogDescription>
       </DialogHeader>
 
@@ -151,13 +173,13 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="shiftTypeId">Shift Template</Label>
             <Select id="shiftTypeId" {...register("shiftTypeId")}>
               <option value="">Select template…</option>
               {shiftTypesQuery.data?.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name} ({t.startTime} - {t.endTime})
+                  {t.name} ({toHHMM(t.startTime)} - {toHHMM(t.endTime)})
                 </option>
               ))}
             </Select>
@@ -167,10 +189,18 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="date">Date</Label>
-            <Input id="date" type="date" {...register("date")} />
-            {errors.date && (
-              <p className="text-xs text-destructive">{errors.date.message}</p>
+            <Label htmlFor="dateFrom">Date From</Label>
+            <Input id="dateFrom" type="date" {...register("dateFrom")} />
+            {errors.dateFrom && (
+              <p className="text-xs text-destructive">{errors.dateFrom.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="dateTo">Date To</Label>
+            <Input id="dateTo" type="date" {...register("dateTo")} />
+            {errors.dateTo && (
+              <p className="text-xs text-destructive">{errors.dateTo.message}</p>
             )}
           </div>
         </div>

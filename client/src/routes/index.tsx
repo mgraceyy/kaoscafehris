@@ -30,6 +30,7 @@ import PortalAttendancePage from "@/features/portal/portal-attendance-page";
 import PortalLeavePage from "@/features/portal/portal-leave-page";
 import PortalPayslipsPage from "@/features/portal/portal-payslips-page";
 import PortalProfilePage from "@/features/portal/portal-profile-page";
+import PortalOvertimePage from "@/features/portal/portal-overtime-page";
 
 export default function AppRoutes() {
   return (
@@ -53,6 +54,7 @@ export default function AppRoutes() {
         <Route path="attendance" element={<PortalAttendancePage />} />
         <Route path="leave" element={<PortalLeavePage />} />
         <Route path="payslips" element={<PortalPayslipsPage />} />
+        <Route path="overtime" element={<PortalOvertimePage />} />
         <Route path="profile" element={<PortalProfilePage />} />
       </Route>
 

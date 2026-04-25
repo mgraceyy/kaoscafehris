@@ -151,20 +151,13 @@ function ShiftCard({
   onDelete: (s: Shift) => void;
   onAssign: (s: Shift) => void;
 }) {
-  const isPublished = shift.status === "PUBLISHED";
-
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={() => onEdit(shift)}
       onKeyDown={(e) => e.key === "Enter" && onEdit(shift)}
-      className={cn(
-        "group cursor-pointer rounded border p-1.5 text-xs space-y-1 transition-colors hover:brightness-95",
-        isPublished
-          ? "border-emerald-400/40 bg-emerald-50 dark:border-emerald-700/40 dark:bg-emerald-950/30"
-          : "border-border bg-muted/30"
-      )}
+      className="group cursor-pointer rounded border border-emerald-400/40 bg-emerald-50 dark:border-emerald-700/40 dark:bg-emerald-950/30 p-1.5 text-xs space-y-1 transition-colors hover:brightness-95"
     >
       {/* Name + status + action buttons */}
       <div className="flex items-start justify-between gap-1">
@@ -211,8 +204,8 @@ function ShiftCard({
               {shift.assignments.length}
             </span>
           )}
-          <Badge variant={isPublished ? "success" : "muted"} className="text-[10px] px-1.5 py-0">
-            {isPublished ? "Pub" : "Draft"}
+          <Badge variant="success" className="text-[10px] px-1.5 py-0">
+            Active
           </Badge>
         </div>
       </div>

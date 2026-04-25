@@ -131,3 +131,12 @@ export async function upsertBalance(req: Request, res: Response, next: NextFunct
     next(err);
   }
 }
+
+export async function upsertBalanceForAll(req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await leaveService.upsertBalanceForAll(req.body);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}

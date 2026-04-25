@@ -129,8 +129,7 @@ export default function BranchesPage() {
       {/* Header */}
       <div className="mb-8 flex items-start justify-between animate-fade-up">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Locations</p>
-          <h1 className="font-heading text-3xl text-gray-900">Branches</h1>
+          <h1 className="font-heading text-3xl font-bold text-gray-900">Branches</h1>
         </div>
         <button
           onClick={openCreate}

@@ -11,7 +11,7 @@ const holidaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
   name: z.string().trim().min(1),
   type: z.enum(["REGULAR", "SPECIAL_NON_WORKING"]),
-  payRatePct: z.coerce.number().int().min(100).max(500).default(200),
+  amount: z.coerce.number().nonnegative().default(0),
 });
 
 router.get("/", async (req, res, next) => {
@@ -38,7 +38,7 @@ router.post("/", authorize("ADMIN"), async (req, res, next) => {
         date: new Date(body.date),
         name: body.name,
         type: body.type,
-        payRatePct: body.payRatePct,
+        amount: body.amount,
       },
     });
     res.status(201).json({ data: holiday });
@@ -57,7 +57,7 @@ router.patch("/:id", authorize("ADMIN"), async (req, res, next) => {
         ...(body.date && { date: new Date(body.date) }),
         ...(body.name && { name: body.name }),
         ...(body.type && { type: body.type }),
-        ...(body.payRatePct !== undefined && { payRatePct: body.payRatePct }),
+        ...(body.amount !== undefined && { amount: body.amount }),
       },
     });
     res.json({ data: updated });

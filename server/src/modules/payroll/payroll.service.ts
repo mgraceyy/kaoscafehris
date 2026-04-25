@@ -12,11 +12,6 @@ import type {
 
 type Tx = Prisma.TransactionClient | PrismaClient;
 
-// --- Constants (fallback defaults when DB settings not yet seeded) ----------
-const DEFAULT_WORKING_DAYS = 22;
-const DEFAULT_WORKING_HOURS = 8;
-const DEFAULT_OT_MULTIPLIER = 1.25;
-
 // --- Helpers ---------------------------------------------------------------
 
 function dateOnly(isoDate: string): Date {
@@ -30,35 +25,6 @@ function round2(n: number): number {
 function toNum(d: Prisma.Decimal | number | null | undefined): number {
   if (d === null || d === undefined) return 0;
   return typeof d === "number" ? d : Number(d);
-}
-
-interface Rates {
-  hourly: number;
-  minute: number;
-}
-
-function computeRates(basicSalary: number, workingDays: number, workingHours: number): Rates {
-  const hourly = basicSalary / workingDays / workingHours;
-  return { hourly, minute: hourly / 60 };
-}
-
-async function getPayrollSettings(): Promise<{
-  workingDaysPerMonth: number;
-  workingHoursPerDay: number;
-  otMultiplier: number;
-}> {
-  const keys = [
-    "payroll.working_days_per_month",
-    "payroll.working_hours_per_day",
-    "payroll.overtime_multiplier",
-  ];
-  const rows = await prisma.systemSetting.findMany({ where: { key: { in: keys } } });
-  const map = new Map(rows.map((r) => [r.key, JSON.parse(r.value) as number]));
-  return {
-    workingDaysPerMonth: map.get("payroll.working_days_per_month") ?? DEFAULT_WORKING_DAYS,
-    workingHoursPerDay: map.get("payroll.working_hours_per_day") ?? DEFAULT_WORKING_HOURS,
-    otMultiplier: map.get("payroll.overtime_multiplier") ?? DEFAULT_OT_MULTIPLIER,
-  };
 }
 
 // --- Query helpers ---------------------------------------------------------
@@ -92,7 +58,6 @@ const payslipExportInclude = {
       firstName: true,
       lastName: true,
       position: true,
-      department: true,
       basicSalary: true,
       sssNumber: true,
       philhealthNumber: true,
@@ -123,7 +88,6 @@ const payslipInclude = {
       firstName: true,
       lastName: true,
       position: true,
-      department: true,
       basicSalary: true,
       sssNumber: true,
       philhealthNumber: true,
@@ -235,44 +199,17 @@ export async function cancelRun(id: string) {
   });
 }
 
-// --- Government bracket lookup --------------------------------------------
-
-/**
- * Returns the employee-share AMOUNT from GovernmentTable for the given type +
- * salary. Picks the most recent effective bracket on or before the run's
- * period start. Returns 0 when no matching bracket is configured — admin can
- * enter the amount manually on the payslip.
- */
-async function lookupContribution(
-  tx: Tx,
-  type: "SSS" | "PHILHEALTH" | "PAGIBIG" | "BIR",
-  basicSalary: number,
-  onOrBefore: Date
-): Promise<number> {
-  const row = await tx.governmentTable.findFirst({
-    where: {
-      type,
-      effectiveDate: { lte: onOrBefore },
-      rangeFrom: { lte: basicSalary },
-      rangeTo: { gte: basicSalary },
-    },
-    orderBy: { effectiveDate: "desc" },
-  });
-  return row ? toNum(row.employeeShare) : 0;
-}
-
 // --- Processing -----------------------------------------------------------
 
 /**
  * Process a DRAFT run: generate a payslip for every active employee in the
- * branch with basicSalary > 0. Auto-computes basic pay (bi-monthly = monthly
- * / 2), overtime pay, and late deduction from attendance in the window. All
- * government contributions are looked up as AMOUNTS from GovernmentTable —
- * never percentages. Other items (bonuses, cash advance, etc.) start at 0
- * and are added manually via the payslip editor.
+ * branch with basicSalary > 0. Basic pay = monthly / 2 (bi-monthly). Holiday
+ * pay uses the flat amount configured on the Holidays tab. Government
+ * deductions (SSS/PHILHEALTH/PAGIBIG/BIR_TAX) are pulled from the Deductions
+ * tab by type — not from GovernmentTable brackets. All amounts are adjustable
+ * per payslip after generation.
  *
- * Re-processing clears existing payslips in the run first so admins can
- * re-run after fixing attendance.
+ * Re-processing clears existing payslips in the run first.
  */
 export async function processRun(id: string) {
   const run = await prisma.payrollRun.findUnique({ where: { id } });
@@ -284,9 +221,6 @@ export async function processRun(id: string) {
     throw new AppError(409, "Cancelled runs cannot be reprocessed");
   }
 
-  const { workingDaysPerMonth, workingHoursPerDay, otMultiplier } =
-    await getPayrollSettings();
-
   const employees = await prisma.employee.findMany({
     where: {
       branchId: run.branchId,
@@ -297,113 +231,106 @@ export async function processRun(id: string) {
   });
 
   if (employees.length === 0) {
-    throw new AppError(
-      400,
-      "Branch has no active employees with a basic salary set"
+    throw new AppError(400, "Branch has no active employees with a basic salary set");
+  }
+
+  // Public holidays in the period — use the flat amount configured on the Holidays tab.
+  const periodHolidays = await prisma.publicHoliday.findMany({
+    where: { date: { gte: run.periodStart, lte: run.periodEnd } },
+    select: { name: true, amount: true },
+  });
+
+  // Government deduction amounts from the Deductions tab (grouped by type).
+  const govDeductionRows = await prisma.deduction.findMany({
+    where: { type: { in: ["SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX"] } },
+    select: { type: true, amount: true },
+  });
+
+  // Payroll settings: OT rate multiplier and working time basis.
+  const settingRows = await prisma.systemSetting.findMany({
+    where: { key: { in: ["payroll.regular_ot_rate"] } },
+    select: { key: true, value: true },
+  });
+
+  function getSetting(key: string, fallback: number): number {
+    const row = settingRows.find((r) => r.key === key);
+    if (!row) return fallback;
+    const v = JSON.parse(row.value);
+    return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  }
+
+  const otRatePerHour = getSetting("payroll.regular_ot_rate", 0);
+
+  // Attendance overtime hours for each employee in the period.
+  const employeeIds = employees.map((e) => e.id);
+  const attendanceRows = await prisma.attendance.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      date: { gte: run.periodStart, lte: run.periodEnd },
+    },
+    select: { employeeId: true, overtimeHours: true },
+  });
+
+  const otHoursMap = new Map<string, number>();
+  for (const rec of attendanceRows) {
+    otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + toNum(rec.overtimeHours));
+  }
+
+  function getGovAmount(type: string): number {
+    return round2(
+      govDeductionRows
+        .filter((d) => d.type === type)
+        .reduce((s, d) => s + toNum(d.amount), 0)
     );
   }
 
+  const sssAmt = getGovAmount("SSS");
+  const phicAmt = getGovAmount("PHILHEALTH");
+  const hdmfAmt = getGovAmount("PAGIBIG");
+  const birAmt = getGovAmount("BIR_TAX");
+
   const processed = await prisma.$transaction(async (tx) => {
-    // Clear any existing payslips so we can re-run the compute.
+    // Clear any existing payslips so we can re-run.
     await tx.payslip.deleteMany({ where: { payrollRunId: run.id } });
 
     for (const emp of employees) {
       const basicSalary = toNum(emp.basicSalary);
-      const rates = computeRates(basicSalary, workingDaysPerMonth, workingHoursPerDay);
-
-      // Sum attendance facts in [periodStart, periodEnd].
-      const atts = await tx.attendance.findMany({
-        where: {
-          employeeId: emp.id,
-          date: { gte: run.periodStart, lte: run.periodEnd },
-        },
-        select: { lateMinutes: true, overtimeHours: true },
-      });
-
-      const totalLateMinutes = atts.reduce(
-        (sum, a) => sum + (a.lateMinutes ?? 0),
-        0
-      );
-      const totalOvertimeHours = atts.reduce(
-        (sum, a) => sum + toNum(a.overtimeHours),
-        0
-      );
-
       const basicPay = round2(basicSalary / 2); // bi-monthly half
-      const overtimePay = round2(totalOvertimeHours * rates.hourly * otMultiplier);
-      const lateDeductions = round2(totalLateMinutes * rates.minute);
 
-      // Government contribution amounts (0 when no bracket configured).
-      const [sssAmt, phicAmt, hdmfAmt, birAmt] = await Promise.all([
-        lookupContribution(tx, "SSS", basicSalary, run.periodStart),
-        lookupContribution(tx, "PHILHEALTH", basicSalary, run.periodStart),
-        lookupContribution(tx, "PAGIBIG", basicSalary, run.periodStart),
-        lookupContribution(tx, "BIR", basicSalary, run.periodStart),
-      ]);
+      // Overtime pay: attendance OT hours × flat OT rate per hour from settings.
+      const totalOtHours = round2(otHoursMap.get(emp.id) ?? 0);
+      const overtimePay = totalOtHours > 0 ? round2(totalOtHours * otRatePerHour) : 0;
 
-      const grossPay = round2(basicPay + overtimePay);
-      const totalDeductions = round2(
-        lateDeductions + sssAmt + phicAmt + hdmfAmt + birAmt
-      );
-      const netPay = round2(grossPay - totalDeductions);
+      const overtimeEarnings: Array<{ type: "OVERTIME"; label: string; amount: number }> =
+        overtimePay > 0
+          ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs)`, amount: overtimePay }]
+          : [];
 
-      const earningRows: Array<{
-        type: "OVERTIME" | "BONUS" | "ALLOWANCE" | "HOLIDAY_PAY" | "OTHER";
-        label: string;
-        amount: number;
-      }> = [];
-      if (overtimePay > 0) {
-        earningRows.push({
-          type: "OVERTIME",
-          label: `Overtime (${totalOvertimeHours.toFixed(2)} hrs)`,
-          amount: overtimePay,
-        });
-      }
+      // Holiday pay: flat amount per holiday configured on the Holidays tab.
+      const holidayEarnings: Array<{ type: "HOLIDAY_PAY"; label: string; amount: number }> =
+        periodHolidays
+          .map((h) => ({
+            type: "HOLIDAY_PAY" as const,
+            label: h.name,
+            amount: round2(toNum(h.amount)),
+          }))
+          .filter((r) => r.amount > 0);
+
+      const holidayPayTotal = round2(holidayEarnings.reduce((s, r) => s + r.amount, 0));
 
       const deductionRows: Array<{
-        type:
-          | "LATE"
-          | "CASH_ADVANCE"
-          | "SALARY_LOAN"
-          | "SSS"
-          | "PHILHEALTH"
-          | "PAGIBIG"
-          | "BIR_TAX"
-          | "OTHER";
+        type: "SSS" | "PHILHEALTH" | "PAGIBIG" | "BIR_TAX";
         label: string;
         amount: number;
       }> = [];
-      if (lateDeductions > 0) {
-        deductionRows.push({
-          type: "LATE",
-          label: `Late (${totalLateMinutes} min)`,
-          amount: lateDeductions,
-        });
-      }
-      if (sssAmt > 0) {
-        deductionRows.push({ type: "SSS", label: "SSS", amount: sssAmt });
-      }
-      if (phicAmt > 0) {
-        deductionRows.push({
-          type: "PHILHEALTH",
-          label: "PhilHealth",
-          amount: phicAmt,
-        });
-      }
-      if (hdmfAmt > 0) {
-        deductionRows.push({
-          type: "PAGIBIG",
-          label: "Pag-IBIG",
-          amount: hdmfAmt,
-        });
-      }
-      if (birAmt > 0) {
-        deductionRows.push({
-          type: "BIR_TAX",
-          label: "Withholding Tax",
-          amount: birAmt,
-        });
-      }
+      if (sssAmt > 0) deductionRows.push({ type: "SSS", label: "SSS", amount: sssAmt });
+      if (phicAmt > 0) deductionRows.push({ type: "PHILHEALTH", label: "PhilHealth", amount: phicAmt });
+      if (hdmfAmt > 0) deductionRows.push({ type: "PAGIBIG", label: "Pag-IBIG", amount: hdmfAmt });
+      if (birAmt > 0) deductionRows.push({ type: "BIR_TAX", label: "Withholding Tax", amount: birAmt });
+
+      const grossPay = round2(basicPay + overtimePay + holidayPayTotal);
+      const totalDeductions = round2(sssAmt + phicAmt + hdmfAmt + birAmt);
+      const netPay = round2(grossPay - totalDeductions);
 
       await tx.payslip.create({
         data: {
@@ -413,20 +340,20 @@ export async function processRun(id: string) {
           overtimePay,
           bonuses: 0,
           allowances: 0,
-          holidayPay: 0,
+          holidayPay: holidayPayTotal,
           grossPay,
           sssContribution: sssAmt,
           philhealthContribution: phicAmt,
           pagibigContribution: hdmfAmt,
           withholdingTax: birAmt,
-          lateDeductions,
+          lateDeductions: 0,
           cashAdvance: 0,
           salaryLoan: 0,
           otherDeductions: 0,
           totalDeductions,
           netPay,
           status: "DRAFT",
-          earnings: { create: earningRows },
+          earnings: { create: [...overtimeEarnings, ...holidayEarnings] },
           deductions: { create: deductionRows },
         },
       });
@@ -659,8 +586,7 @@ export async function getRunForExport(id: string) {
               firstName: true,
               lastName: true,
               position: true,
-              department: true,
-              basicSalary: true,
+                      basicSalary: true,
               sssNumber: true,
               philhealthNumber: true,
               pagibigNumber: true,

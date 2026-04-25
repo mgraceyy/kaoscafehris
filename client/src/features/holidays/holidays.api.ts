@@ -7,7 +7,7 @@ export interface PublicHoliday {
   date: string;
   name: string;
   type: HolidayType;
-  payRatePct: number;
+  amount: number;
 }
 
 export async function listHolidays(year?: number): Promise<PublicHoliday[]> {

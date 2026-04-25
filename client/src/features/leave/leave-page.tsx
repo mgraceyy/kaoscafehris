@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Loader2, Settings } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
+import { exportToCsv } from "@/lib/export";
 import { useAuthStore } from "@/features/auth/auth.store";
 import { listBranches } from "@/features/branches/branches.api";
 import {
@@ -188,13 +189,30 @@ export default function LeavePage() {
     ? branchesQuery.data?.find((b) => b.id === branchId)?.name ?? "Selected Branch"
     : "All Branches";
 
+  function handleExport() {
+    const headers = ["Employee ID", "Name", "Position", "Leave Type", "From", "To", "Days", "Filed On", "Reason", "Status"];
+    const rows = filtered.map((r) => [
+      r.employee.employeeId,
+      `${r.employee.firstName} ${r.employee.lastName}`,
+      r.employee.position,
+      TYPE_LABEL[r.leaveType],
+      r.startDate.slice(0, 10),
+      r.endDate.slice(0, 10),
+      String(Number(r.totalDays)),
+      r.createdAt.slice(0, 10),
+      r.reason ?? "",
+      r.status,
+    ]);
+    const stamp = new Date().toISOString().slice(0, 10);
+    exportToCsv(`leave_requests_${stamp}.csv`, headers, rows);
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
       {/* Header */}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4 animate-fade-up">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Requests</p>
-          <h1 className="font-heading text-3xl text-gray-900">
+          <h1 className="font-heading text-3xl font-bold text-gray-900">
             {isEmployee ? "My Leave" : "Leave Management"}
           </h1>
           <p className="text-sm text-gray-400 mt-1">{monthLabel} · {selectedBranchName}</p>
@@ -237,7 +255,12 @@ export default function LeavePage() {
             </select>
           )}
           {/* Export button */}
-          <button className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm" style={{ backgroundColor: BRAND }}>
+          <button
+            onClick={handleExport}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm disabled:opacity-50"
+            style={{ backgroundColor: BRAND }}
+          >
             <Download className="h-4 w-4" /> Export
           </button>
           {/* Admin settings */}

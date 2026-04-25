@@ -5,6 +5,7 @@ import {
   createLeaveRequestSchema,
   reviewLeaveSchema,
   upsertLeaveBalanceSchema,
+  upsertBalanceForAllSchema,
 } from "./leave.schema.js";
 import * as leaveController from "./leave.controller.js";
 
@@ -33,6 +34,12 @@ router.put(
   authorize("ADMIN"),
   validate(upsertLeaveBalanceSchema),
   leaveController.upsertBalance
+);
+router.post(
+  "/balances/apply-all",
+  authorize("ADMIN"),
+  validate(upsertBalanceForAllSchema),
+  leaveController.upsertBalanceForAll
 );
 
 export default router;

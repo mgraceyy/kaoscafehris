@@ -19,7 +19,7 @@ import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listBranches } from "@/features/branches/branches.api";
-import { createRun } from "./payroll.api";
+import { createRun, processRun } from "./payroll.api";
 
 const schema = z
   .object({
@@ -44,7 +44,6 @@ function defaultPeriod() {
   const day = now.getUTCDate();
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
-  // First half if today <= 15, else second half.
   if (day <= 15) {
     return {
       periodStart: new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10),
@@ -89,10 +88,14 @@ export default function PayrollRunCreateDialog({ open, onOpenChange }: Props) {
   }, [open, reset, defaults]);
 
   const mutation = useMutation({
-    mutationFn: (values: Values) => createRun(values),
+    mutationFn: async (values: Values) => {
+      const run = await createRun(values);
+      await processRun(run.id);
+      return run;
+    },
     onSuccess: (run) => {
       qc.invalidateQueries({ queryKey: ["payroll-runs"] });
-      toast("Payroll run created", "success");
+      toast("Payroll run generated", "success");
       onOpenChange(false);
       navigate(`/payroll/${run.id}`);
     },
@@ -102,10 +105,9 @@ export default function PayrollRunCreateDialog({ open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
-        <DialogTitle>Create payroll run</DialogTitle>
+        <DialogTitle>New Payroll Run</DialogTitle>
         <DialogDescription>
-          Opens a bi-monthly payroll for a branch. You can process it after
-          creation to generate payslips for all active employees.
+          Select a branch and pay period. Payslips will be generated automatically for all active employees.
         </DialogDescription>
       </DialogHeader>
 
@@ -132,24 +134,16 @@ export default function PayrollRunCreateDialog({ open, onOpenChange }: Props) {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="periodStart">Period start</Label>
-            <Input
-              id="periodStart"
-              type="date"
-              {...register("periodStart")}
-            />
+            <Input id="periodStart" type="date" {...register("periodStart")} />
             {errors.periodStart && (
-              <p className="text-xs text-destructive">
-                {errors.periodStart.message}
-              </p>
+              <p className="text-xs text-destructive">{errors.periodStart.message}</p>
             )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="periodEnd">Period end</Label>
             <Input id="periodEnd" type="date" {...register("periodEnd")} />
             {errors.periodEnd && (
-              <p className="text-xs text-destructive">
-                {errors.periodEnd.message}
-              </p>
+              <p className="text-xs text-destructive">{errors.periodEnd.message}</p>
             )}
           </div>
         </div>
@@ -165,7 +159,7 @@ export default function PayrollRunCreateDialog({ open, onOpenChange }: Props) {
           </Button>
           <Button type="submit" disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Create
+            {mutation.isPending ? "Generating…" : "Generate Payroll"}
           </Button>
         </DialogFooter>
       </form>

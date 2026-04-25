@@ -20,16 +20,25 @@ const overtimeInclude = {
       firstName: true,
       lastName: true,
       position: true,
+      branchId: true,
+      branch: { select: { id: true, name: true } },
     },
   },
 } as const;
 
-export async function listRequests(query: ListOvertimeQuery, scopedEmployeeId?: string) {
+export async function listRequests(
+  query: ListOvertimeQuery,
+  scopedEmployeeId?: string,
+  scopedBranchId?: string
+) {
   const where: Prisma.OvertimeRequestWhereInput = {};
   if (scopedEmployeeId) {
     where.employeeId = scopedEmployeeId;
   } else if (query.employeeId) {
     where.employeeId = query.employeeId;
+  }
+  if (scopedBranchId) {
+    where.employee = { branchId: scopedBranchId };
   }
   if (query.status) where.status = query.status;
   if (query.startDate || query.endDate) {

@@ -28,14 +28,14 @@ interface FormState {
   date: string;
   name: string;
   type: HolidayType;
-  payRatePct: number;
+  amount: number;
 }
 
 const DEFAULT_FORM: FormState = {
   date: "",
   name: "",
   type: "REGULAR",
-  payRatePct: 100,
+  amount: 0,
 };
 
 export default function HolidaysPage() {
@@ -96,7 +96,7 @@ export default function HolidaysPage() {
         date: editing.date.slice(0, 10),
         name: editing.name,
         type: editing.type,
-        payRatePct: editing.payRatePct,
+        amount: editing.amount,
       });
       setShowForm(true);
     }
@@ -125,8 +125,7 @@ export default function HolidaysPage() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between animate-fade-up">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Calendar</p>
-          <h1 className="font-heading text-3xl text-gray-900">Holidays</h1>
+          <h1 className="font-heading text-3xl font-bold text-gray-900">Holidays</h1>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -203,15 +202,15 @@ export default function HolidaysPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="hol-pay">Pay Amount</Label>
+            <Label htmlFor="hol-pay">Holiday Pay Amount (₱)</Label>
             <Input
               id="hol-pay"
               type="number"
               required
               step="0.01"
               min="0"
-              value={form.payRatePct}
-              onChange={(e) => setForm((f) => ({ ...f, payRatePct: Number(e.target.value) }))}
+              value={form.amount}
+              onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))}
             />
           </div>
 
@@ -269,7 +268,7 @@ export default function HolidaysPage() {
                   {h.name}
                 </td>
                 <td className="px-5 py-4 tabular-nums font-medium text-gray-700">
-                  {h.payRatePct}
+                  ₱{Number(h.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Loader2, Pencil, Search } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
+import { exportToCsv } from "@/lib/export";
 import { listBranches } from "@/features/branches/branches.api";
 import {
   formatClockTime,
@@ -103,6 +104,21 @@ export default function AttendancePage() {
 
   const selectedBranch = branchesQuery.data?.find((b) => b.id === branchId);
 
+  function handleExport() {
+    const headers = ["Employee ID", "Name", "Position", "Date", "Clock In", "Clock Out", "Status"];
+    const rows = records.map((r) => [
+      r.employee.employeeId,
+      `${r.employee.firstName} ${r.employee.lastName}`,
+      r.employee.position ?? "",
+      r.clockIn.slice(0, 10),
+      formatClockTime(r.clockIn),
+      r.clockOut ? formatClockTime(r.clockOut) : "",
+      r.status,
+    ]);
+    const branch = selectedBranch ? `_${selectedBranch.name.replace(/\s+/g, "_")}` : "";
+    exportToCsv(`attendance${branch}_${startDate}_to_${todayIso()}.csv`, headers, rows);
+  }
+
   const summary = {
     present: records.filter(r => r.status === "PRESENT" && r.clockOut).length,
     late: records.filter(r => r.status === "LATE").length,
@@ -116,13 +132,14 @@ export default function AttendancePage() {
       {/* Header */}
       <div className="mb-8 flex items-start justify-between animate-fade-up">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Records</p>
-          <h1 className="font-heading text-3xl text-gray-900">Attendance</h1>
+          <h1 className="font-heading text-3xl font-bold text-gray-900">Attendance</h1>
           <p className="text-sm text-gray-400 mt-1">{todayLabel()}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-all hover:shadow-sm"
+            onClick={handleExport}
+            disabled={records.length === 0}
+            className="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-all hover:shadow-sm disabled:opacity-50"
             style={{ borderColor: BRAND, color: BRAND }}
           >
             <Download className="h-4 w-4" />

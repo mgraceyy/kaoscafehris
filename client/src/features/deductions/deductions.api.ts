@@ -4,6 +4,7 @@ export interface Deduction {
   id: string;
   name: string;
   amount: number;
+  type?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -11,6 +12,7 @@ export interface Deduction {
 export interface DeductionInput {
   name: string;
   amount: number;
+  type?: string | null;
 }
 
 export async function listDeductions(): Promise<Deduction[]> {

@@ -26,7 +26,6 @@ export interface PortalEmployee {
   emergencyPhone: string | null;
   emergencyRelation: string | null;
   position: string;
-  department: string | null;
   employmentStatus: "ACTIVE" | "INACTIVE" | "TERMINATED" | "ON_LEAVE";
   dateHired: string;
   basicSalary: string;
@@ -142,6 +141,51 @@ export async function getMyAttendance(
     "/portal/attendance",
     { params }
   );
+  return data.data;
+}
+
+export interface OvertimeRequest {
+  id: string;
+  date: string;
+  reason: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reviewNotes: string | null;
+  createdAt: string;
+  employee: {
+    id: string;
+    employeeId: string;
+    firstName: string;
+    lastName: string;
+    position: string;
+  };
+}
+
+export async function getMyOvertimeRequests(): Promise<OvertimeRequest[]> {
+  const { data } = await api.get<{ data: OvertimeRequest[] }>("/overtime");
+  return data.data;
+}
+
+export async function createOvertimeRequest(input: {
+  date: string;
+  reason: string;
+}): Promise<OvertimeRequest> {
+  const { data } = await api.post<{ data: OvertimeRequest }>("/overtime", input);
+  return data.data;
+}
+
+export interface PortalLeaveBalance {
+  id: string;
+  leaveType: string;
+  year: number;
+  totalDays: string;
+  usedDays: string;
+  remainingDays: string;
+}
+
+export async function getMyLeaveBalances(year?: number): Promise<PortalLeaveBalance[]> {
+  const params: Record<string, string> = {};
+  if (year) params.year = String(year);
+  const { data } = await api.get<{ data: PortalLeaveBalance[] }>("/leave/balances", { params });
   return data.data;
 }
 

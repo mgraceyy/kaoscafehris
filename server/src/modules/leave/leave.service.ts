@@ -8,6 +8,7 @@ import type {
   ListLeaveQuery,
   ReviewLeaveInput,
   UpsertLeaveBalanceInput,
+  UpsertBalanceForAllInput,
 } from "./leave.schema.js";
 
 const requestInclude = {
@@ -261,4 +262,56 @@ export async function upsertBalance(input: UpsertLeaveBalanceInput) {
     newValues: created,
   });
   return created;
+}
+
+export async function upsertBalanceForAll(input: UpsertBalanceForAllInput) {
+  const employees = await prisma.employee.findMany({
+    where: { employmentStatus: "ACTIVE" },
+    select: { id: true },
+  });
+
+  let count = 0;
+  for (const emp of employees) {
+    const existing = await prisma.leaveBalance.findUnique({
+      where: {
+        employeeId_leaveType_year: {
+          employeeId: emp.id,
+          leaveType: input.leaveType,
+          year: input.year,
+        },
+      },
+    });
+
+    if (existing) {
+      const used = Number(existing.usedDays);
+      await prisma.leaveBalance.update({
+        where: { id: existing.id },
+        data: {
+          totalDays: input.totalDays,
+          remainingDays: Math.max(0, input.totalDays - used),
+        },
+      });
+    } else {
+      await prisma.leaveBalance.create({
+        data: {
+          employeeId: emp.id,
+          leaveType: input.leaveType,
+          year: input.year,
+          totalDays: input.totalDays,
+          usedDays: 0,
+          remainingDays: input.totalDays,
+        },
+      });
+    }
+    count++;
+  }
+
+  await logAudit({
+    action: "CREATE",
+    tableName: "leave_balances",
+    recordId: "bulk",
+    newValues: { leaveType: input.leaveType, year: input.year, totalDays: input.totalDays, count },
+  });
+
+  return { message: `Updated ${count} employee(s)`, count };
 }

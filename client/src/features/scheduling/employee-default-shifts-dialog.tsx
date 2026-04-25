@@ -16,6 +16,12 @@ import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listEmployees, updateEmployee } from "@/features/employees/employees.api";
 import { listShiftTypes } from "./shift-types.api";
+
+function toHHMM(value: string): string {
+  if (/^\d{2}:\d{2}$/.test(value)) return value;
+  const d = new Date(value);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
 import { generateShifts } from "./generate-shifts.api";
 
 interface Props {
@@ -137,7 +143,7 @@ export default function EmployeeDefaultShiftsDialog({ open, onOpenChange, branch
             <option value="">-- No default shift --</option>
             {shiftTypesQuery.data?.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name} ({t.startTime} - {t.endTime})
+                {t.name} ({toHHMM(t.startTime)} - {toHHMM(t.endTime)})
               </option>
             ))}
           </Select>

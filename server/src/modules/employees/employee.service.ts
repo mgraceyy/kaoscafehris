@@ -41,7 +41,7 @@ export async function listEmployees(query: ListEmployeeQuery) {
   return prisma.employee.findMany({
     where,
     include: employeeInclude,
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    orderBy: [{ createdAt: "desc" }],
   });
 }
 
@@ -94,7 +94,6 @@ export async function createEmployee(input: CreateEmployeeInput) {
         emergencyPhone: input.emergencyPhone,
         emergencyRelation: input.emergencyRelation,
         position: input.position,
-        department: input.department,
         employmentStatus: input.employmentStatus,
         dateHired: input.dateHired,
         basicSalary: input.basicSalary,
@@ -155,7 +154,6 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
       "emergencyPhone",
       "emergencyRelation",
       "position",
-      "department",
       "employmentStatus",
       "dateHired",
       "basicSalary",
@@ -228,7 +226,7 @@ function parseCsvRow(line: string): string[] {
 /**
  * Expected CSV columns (header row required):
  * employeeId, firstName, lastName, email, password, role, branchId,
- * position, department, dateHired, basicSalary, employmentStatus
+ * position, dateHired, basicSalary, employmentStatus
  */
 export async function importEmployees(csvContent: string): Promise<ImportResult> {
   const lines = csvContent
@@ -295,6 +293,7 @@ export async function importEmployees(csvContent: string): Promise<ImportResult>
         employeeId: row["employeeid"],
         firstName: row["firstname"],
         lastName: row["lastname"],
+        middleName: row["middlename"] || undefined,
         email: row["email"],
         password: row["password"] || "ChangeMe@1234",
         role: (["ADMIN", "MANAGER", "EMPLOYEE"].includes(roleRaw)
@@ -302,12 +301,16 @@ export async function importEmployees(csvContent: string): Promise<ImportResult>
           : "EMPLOYEE") as "ADMIN" | "MANAGER" | "EMPLOYEE",
         branchId: resolvedBranchId,
         position: row["position"],
-        department: row["department"] || undefined,
         dateHired: new Date(row["datehired"]),
         basicSalary: parseFloat(row["basicsalary"]) || 0,
         employmentStatus: (["ACTIVE", "INACTIVE", "ON_LEAVE"].includes(statusRaw)
           ? statusRaw
           : "ACTIVE") as "ACTIVE" | "INACTIVE" | "ON_LEAVE",
+        phone: row["phone"] || undefined,
+        sssNumber: row["sssnumber"] || undefined,
+        philhealthNumber: row["philhealthnumber"] || undefined,
+        pagibigNumber: row["pagibignumber"] || undefined,
+        tinNumber: row["tinnumber"] || undefined,
       });
       result.created++;
     } catch (err) {
@@ -331,6 +334,116 @@ export async function importEmployees(csvContent: string): Promise<ImportResult>
   }
 
   return result;
+}
+
+// --- CSV import preview (dry-run, no writes) ---------------------------------
+
+export interface ImportPreviewRow {
+  row: number;
+  status: "ready" | "skipped" | "error";
+  reason?: string;
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  branch: string;
+  position: string;
+  role: string;
+  employmentStatus: string;
+  dateHired: string;
+  basicSalary: string;
+}
+
+export interface ImportPreview {
+  rows: ImportPreviewRow[];
+  readyCount: number;
+  skippedCount: number;
+  errorCount: number;
+}
+
+export async function previewImportEmployees(csvContent: string): Promise<ImportPreview> {
+  const lines = csvContent
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    throw new AppError(400, "CSV must contain a header row and at least one data row");
+  }
+
+  const headers = parseCsvRow(lines[0]).map((h) =>
+    h.toLowerCase().replace(/\s+/g, "")
+  );
+  const required = [
+    "employeeid", "firstname", "lastname", "email",
+    "branchid", "position", "datehired", "basicsalary",
+  ];
+  const missing = required.filter((r) => !headers.includes(r));
+  if (missing.length > 0) {
+    throw new AppError(400, `Missing required CSV columns: ${missing.join(", ")}`);
+  }
+
+  const rows: ImportPreviewRow[] = [];
+  let readyCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCsvRow(lines[i]);
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => { row[h] = values[idx] ?? ""; });
+
+    const rowNum = i + 1;
+    const employeeId = row["employeeid"] ?? "";
+    const firstName = row["firstname"] ?? "";
+    const lastName = row["lastname"] ?? "";
+    const email = row["email"] ?? "";
+    const position = row["position"] ?? "";
+    const dateHired = row["datehired"] ?? "";
+    const basicSalary = row["basicsalary"] ?? "";
+    const roleRaw = (row["role"] ?? "").toUpperCase();
+    const statusRaw = (row["employmentstatus"] ?? "").toUpperCase();
+    const role = ["ADMIN", "MANAGER", "EMPLOYEE"].includes(roleRaw) ? roleRaw : "EMPLOYEE";
+    const employmentStatus = ["ACTIVE", "INACTIVE", "ON_LEAVE"].includes(statusRaw) ? statusRaw : "ACTIVE";
+    const branchRaw = row["branchid"] ?? "";
+
+    const base = { row: rowNum, employeeId, firstName, lastName, email, branch: branchRaw, position, role, employmentStatus, dateHired, basicSalary };
+
+    try {
+      if (employeeId.toUpperCase().startsWith("EXAMPLE")) {
+        rows.push({ ...base, status: "skipped", reason: "Template example row" });
+        skippedCount++;
+        continue;
+      }
+
+      const existing = await prisma.employee.findUnique({ where: { employeeId } });
+      if (existing) {
+        rows.push({ ...base, status: "skipped", reason: "Employee ID already exists" });
+        skippedCount++;
+        continue;
+      }
+
+      const branchById = await prisma.branch.findUnique({ where: { id: branchRaw } });
+      if (branchById) {
+        rows.push({ ...base, branch: branchById.name, status: "ready" });
+      } else {
+        const branchByName = await prisma.branch.findFirst({
+          where: { name: { equals: branchRaw, mode: "insensitive" } },
+        });
+        if (!branchByName) throw new AppError(400, `Branch "${branchRaw}" does not exist`);
+        rows.push({ ...base, branch: branchByName.name, status: "ready" });
+      }
+      readyCount++;
+    } catch (err) {
+      let reason = "An unexpected error occurred";
+      if (err instanceof AppError) reason = err.message;
+      else if (err instanceof Error) reason = err.message;
+      rows.push({ ...base, status: "error", reason });
+      errorCount++;
+    }
+  }
+
+  return { rows, readyCount, skippedCount, errorCount };
 }
 
 /**

@@ -14,6 +14,7 @@ router.get("/", employeeController.list);
 router.get("/import/template", employeeController.csvTemplate);
 router.get("/:id", employeeController.getById);
 router.post("/", validate(createEmployeeSchema), employeeController.create);
+router.post("/import/preview", csvUpload.single("file"), employeeController.previewImportCsv);
 router.post("/import", csvUpload.single("file"), employeeController.importCsv);
 router.put("/:id", validate(updateEmployeeSchema), employeeController.update);
 router.delete("/:id", employeeController.deactivate);

@@ -5,12 +5,13 @@ import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2, Calendar, Camera, CreditCard,
-  Loader2, LogOut, Mail, MapPin, Phone, User, X,
+  KeyRound, Loader2, LogOut, Mail, MapPin, Phone, User, X,
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { useLogout } from "@/features/auth/use-login";
 import {
+  changePassword,
   getProfile,
   updateProfile,
   uploadProfilePhoto,
@@ -107,6 +108,77 @@ function EditProfileSheet({
   );
 }
 
+// ─── Change Password Sheet ───────────────────────────────────────────────────
+
+function ChangePasswordSheet({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const mut = useMutation({
+    mutationFn: () => changePassword({ currentPassword, newPassword }),
+    onSuccess: () => {
+      toast("Password changed successfully", "success");
+      onClose();
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentPassword) { toast("Enter your current password", "error"); return; }
+    if (newPassword.length < 6) { toast("New password must be at least 6 characters", "error"); return; }
+    if (newPassword !== confirmPassword) { toast("Passwords do not match", "error"); return; }
+    mut.mutate();
+  }
+
+  const inputClass = "w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700";
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      <div className="flex items-center justify-between px-5 pt-14 pb-5" style={{ backgroundColor: BRAND }}>
+        <h2 className="text-xl font-bold text-white">Change Password</h2>
+        <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex flex-col flex-1">
+        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4" style={{ backgroundColor: "#FAF0F0" }}>
+          {[
+            { label: "Current Password", value: currentPassword, setter: setCurrentPassword },
+            { label: "New Password", value: newPassword, setter: setNewPassword },
+            { label: "Confirm New Password", value: confirmPassword, setter: setConfirmPassword },
+          ].map(({ label, value, setter }) => (
+            <div key={label} className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">{label}</label>
+              <input
+                type="password"
+                value={value}
+                onChange={(e) => setter(e.target.value)}
+                className={inputClass}
+                autoComplete="new-password"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 pb-8 pt-3 bg-white border-t border-gray-100">
+          <button
+            type="submit"
+            disabled={mut.isPending}
+            className="w-full rounded-full py-3.5 text-sm font-semibold text-white"
+            style={{ backgroundColor: BRAND }}
+          >
+            {mut.isPending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Update Password"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ─── Info Row ────────────────────────────────────────────────────────────────
 
 function InfoRow({
@@ -138,6 +210,7 @@ export default function PortalProfilePage() {
   const qc = useQueryClient();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [changePwOpen, setChangePwOpen] = useState(false);
   const logoutMut = useLogout();
 
   const query = useQuery({ queryKey: ["portal-profile"], queryFn: getProfile });
@@ -246,6 +319,28 @@ export default function PortalProfilePage() {
           <InfoRow icon={Calendar} label="Join Date" value={emp?.dateHired ? fmtDate(emp.dateHired) : null} />
         </div>
 
+        {/* Change Password */}
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: "#FAF0F0" }}>
+                <KeyRound className="h-4 w-4" style={{ color: "#999" }} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">Password</p>
+                <p className="text-xs text-gray-400">Update your account password</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setChangePwOpen(true)}
+              className="text-sm font-medium"
+              style={{ color: BRAND }}
+            >
+              Change
+            </button>
+          </div>
+        </div>
+
         {/* Logout */}
         <button
           onClick={() => logoutMut.mutate()}
@@ -263,6 +358,10 @@ export default function PortalProfilePage() {
           )}
         </button>
       </div>
+
+      {changePwOpen && (
+        <ChangePasswordSheet onClose={() => setChangePwOpen(false)} />
+      )}
 
       {editOpen && emp && (
         <EditProfileSheet

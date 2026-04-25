@@ -10,15 +10,17 @@ import { listBranches } from "@/features/branches/branches.api";
 import {
   getImportTemplateUrl,
   importEmployeesCsv,
+  previewImportCsv,
   listEmployees,
   createEmployee,
   updateEmployee,
   type Employee,
   type EmploymentStatus,
-  type ImportResult,
+  type ImportPreview,
   type EmployeeCreateInput,
   type EmployeeUpdateInput,
 } from "./employees.api";
+import ImportPreviewDialog from "./import-preview-dialog";
 
 const BRAND = "#8C1515";
 
@@ -34,7 +36,6 @@ const baseSchema = {
   firstName: z.string().trim().min(1, "Required"),
   lastName: z.string().trim().min(1, "Required"),
   position: z.string().trim().min(1, "Required"),
-  department: z.string().trim().optional(),
   employmentStatus: z.enum(["ACTIVE", "INACTIVE", "TERMINATED", "ON_LEAVE"]),
   dateHired: z.string().min(1, "Required"),
   basicSalary: z
@@ -42,6 +43,10 @@ const baseSchema = {
     .transform((v) => (typeof v === "string" ? parseFloat(v) : v))
     .pipe(z.number().positive("Must be greater than zero")),
   phone: z.string().trim().optional(),
+  sssNumber: z.string().trim().optional(),
+  philhealthNumber: z.string().trim().optional(),
+  pagibigNumber: z.string().trim().optional(),
+  tinNumber: z.string().trim().optional(),
 } as const;
 
 const createSchema = z.object({
@@ -121,8 +126,9 @@ export default function EmployeesPage() {
     defaultValues: {
       email: "", password: "", role: "EMPLOYEE", employeeId: "",
       branchId: "", firstName: "", lastName: "", position: "",
-      department: "", employmentStatus: "ACTIVE", dateHired: "",
+      employmentStatus: "ACTIVE", dateHired: "",
       basicSalary: 0 as unknown as number, phone: "",
+      sssNumber: "", philhealthNumber: "", pagibigNumber: "", tinNumber: "",
     },
   });
 
@@ -138,18 +144,22 @@ export default function EmployeesPage() {
         firstName: detailEmployee.firstName,
         lastName: detailEmployee.lastName,
         position: detailEmployee.position,
-        department: detailEmployee.department ?? "",
         employmentStatus: detailEmployee.employmentStatus,
         dateHired: detailEmployee.dateHired.slice(0, 10),
         basicSalary: parseFloat(detailEmployee.basicSalary),
         phone: detailEmployee.phone ?? "",
+        sssNumber: detailEmployee.sssNumber ?? "",
+        philhealthNumber: detailEmployee.philhealthNumber ?? "",
+        pagibigNumber: detailEmployee.pagibigNumber ?? "",
+        tinNumber: detailEmployee.tinNumber ?? "",
       });
     } else {
       reset({
         email: "", password: "", role: "EMPLOYEE", employeeId: "",
         branchId: "", firstName: "", lastName: "", position: "",
-        department: "", employmentStatus: "ACTIVE", dateHired: "",
+        employmentStatus: "ACTIVE", dateHired: "",
         basicSalary: 0 as unknown as number, phone: "",
+        sssNumber: "", philhealthNumber: "", pagibigNumber: "", tinNumber: "",
       });
     }
   }, [isEditMode, detailEmployee, reset]);
@@ -161,9 +171,12 @@ export default function EmployeesPage() {
           email: values.email, role: values.role, employeeId: values.employeeId,
           branchId: values.branchId, firstName: values.firstName,
           lastName: values.lastName, position: values.position,
-          department: values.department || undefined,
           employmentStatus: values.employmentStatus, dateHired: values.dateHired,
           basicSalary: values.basicSalary, phone: values.phone || undefined,
+          sssNumber: values.sssNumber || undefined,
+          philhealthNumber: values.philhealthNumber || undefined,
+          pagibigNumber: values.pagibigNumber || undefined,
+          tinNumber: values.tinNumber || undefined,
         };
         if (values.password) payload.password = values.password;
         return updateEmployee(detailEmployee!.id, payload);
@@ -173,9 +186,12 @@ export default function EmployeesPage() {
         role: values.role, employeeId: values.employeeId,
         branchId: values.branchId, firstName: values.firstName,
         lastName: values.lastName, position: values.position,
-        department: values.department || undefined,
         employmentStatus: values.employmentStatus, dateHired: values.dateHired,
         basicSalary: values.basicSalary, phone: values.phone || undefined,
+        sssNumber: values.sssNumber || undefined,
+        philhealthNumber: values.philhealthNumber || undefined,
+        pagibigNumber: values.pagibigNumber || undefined,
+        tinNumber: values.tinNumber || undefined,
       };
       return createEmployee(payload);
     },
@@ -188,7 +204,8 @@ export default function EmployeesPage() {
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const branchesQuery = useQuery({
@@ -202,14 +219,31 @@ export default function EmployeesPage() {
   });
 
 
-  const importMutation = useMutation({
-    mutationFn: (file: File) => importEmployeesCsv(file),
-    onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ["employees"] });
-      setImportResult(result);
+  const previewMutation = useMutation({
+    mutationFn: (file: File) => previewImportCsv(file),
+    onSuccess: (preview) => {
+      setImportPreview(preview);
+    },
+    onError: (err) => {
+      toast(extractErrorMessage(err), "error");
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
-    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const importMutation = useMutation({
+    mutationFn: (file: File) => importEmployeesCsv(file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["employees"] });
+      toast("Employees imported successfully", "success");
+      setImportPreview(null);
+      setPendingFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    },
+    onError: (err) => {
+      toast(extractErrorMessage(err), "error");
+      setImportPreview(null);
+      setPendingFile(null);
+    },
   });
 
   // Filter by role client-side since API may not support it
@@ -232,9 +266,7 @@ export default function EmployeesPage() {
       {/* Header */}
       <div className="mb-8 flex items-start justify-between animate-fade-up">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">People</p>
-          <h1 className="font-heading text-3xl text-gray-900">Employees</h1>
-          <p className="text-sm text-gray-400 mt-1">{filtered.length} employees · {branchesQuery.data?.length ?? 0} branches</p>
+          <h1 className="font-heading text-3xl font-bold text-gray-900">Employees</h1>
         </div>
         <div className="flex items-center gap-2">
           <a href={getImportTemplateUrl()} download>
@@ -245,10 +277,10 @@ export default function EmployeesPage() {
           <button
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => fileInputRef.current?.click()}
-            disabled={importMutation.isPending || !hasBranches}
+            disabled={previewMutation.isPending || importMutation.isPending || !hasBranches}
             title={!hasBranches ? "Add at least one branch before importing employees" : ""}
           >
-            {importMutation.isPending ? (
+            {previewMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <FileUp className="h-4 w-4" />
@@ -262,7 +294,10 @@ export default function EmployeesPage() {
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) importMutation.mutate(file);
+              if (file) {
+                setPendingFile(file);
+                previewMutation.mutate(file);
+              }
             }}
           />
           <button
@@ -415,46 +450,19 @@ export default function EmployeesPage() {
         </table>
       </div>
 
-      {importResult && (
-        <div className="mt-4 rounded-2xl bg-white p-5 text-sm shadow-sm border border-gray-100">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-4">
-            <p className="font-semibold text-gray-800">Import Summary</p>
-            <button className="text-xs text-gray-400 hover:text-gray-600 underline shrink-0" onClick={() => setImportResult(null)}>Dismiss</button>
-          </div>
 
-          {/* Stats */}
-          <div className="mt-3 flex flex-wrap gap-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-              ✓ {importResult.created} added successfully
-            </span>
-            {importResult.skipped > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-700">
-                ⚠ {importResult.skipped} skipped — already exist in the system
-              </span>
-            )}
-            {importResult.failed.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                ✕ {importResult.failed.length} failed
-              </span>
-            )}
-          </div>
-
-          {/* Failed rows detail */}
-          {importResult.failed.length > 0 && (
-            <div className="mt-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Errors — please fix these rows and re-import</p>
-              <ul className="space-y-2">
-                {importResult.failed.map((f) => (
-                  <li key={f.row} className="flex gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
-                    <span className="font-semibold shrink-0">Row {f.row}:</span>
-                    <span>{f.reason}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+      {/* Import Preview Dialog */}
+      {importPreview && (
+        <ImportPreviewDialog
+          preview={importPreview}
+          isPending={importMutation.isPending}
+          onConfirm={() => pendingFile && importMutation.mutate(pendingFile)}
+          onCancel={() => {
+            setImportPreview(null);
+            setPendingFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          }}
+        />
       )}
 
       {/* Slide Panel (Add/Edit Form) */}
@@ -569,6 +577,29 @@ export default function EmployeesPage() {
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Basic Salary (PHP/Month) *</label>
                       <input {...register("basicSalary")} type="number" step="0.01" min="0" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
                       {errors.basicSalary && <p className="text-xs text-red-500 mt-1">{errors.basicSalary.message}</p>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* GOVERNMENT IDs */}
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: BRAND }}>Government IDs</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">SSS Number</label>
+                      <input {...register("sssNumber")} placeholder="XX-XXXXXXX-X" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">PhilHealth Number</label>
+                      <input {...register("philhealthNumber")} placeholder="XXXX-XXXXXXXX-X" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Pag-IBIG Number</label>
+                      <input {...register("pagibigNumber")} placeholder="XXXX-XXXX-XXXX" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">TIN Number</label>
+                      <input {...register("tinNumber")} placeholder="XXX-XXX-XXX" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
                     </div>
                   </div>
                 </div>
