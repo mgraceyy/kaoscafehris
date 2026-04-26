@@ -3,7 +3,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
-import { downloadPayslipPdf, formatCurrency, listMyPayslips } from "@/features/payroll/payroll.api";
+import { downloadPayslipPdf, listMyPayslips } from "@/features/payroll/payroll.api";
+import { PayslipPreview } from "@/features/payroll/payslip-view-dialog";
 import { getMyPayslipDetail } from "./portal.api";
 
 const BRAND = "#8C1515";
@@ -13,29 +14,10 @@ const MONTH_NAMES = [
   "July","August","September","October","November","December",
 ];
 
-function fmtPeriod(start: string, end: string) {
+function fmtPeriodLong(start: string, end: string) {
   const s = new Date(start.slice(0, 10) + "T00:00:00");
   const e = new Date(end.slice(0, 10) + "T00:00:00");
   return `${MONTH_NAMES[s.getMonth()]} ${s.getDate()}–${e.getDate()}, ${s.getFullYear()}`;
-}
-
-function Row({ label, value, bold, negative }: { label: string; value: string; bold?: boolean; negative?: boolean }) {
-  return (
-    <div className={`flex justify-between py-1.5 ${bold ? "font-semibold" : ""}`}>
-      <span className={`text-sm ${bold ? "text-gray-800" : "text-gray-600"}`}>{label}</span>
-      <span className={`text-sm tabular-nums ${negative ? "text-red-600" : bold ? "text-gray-800" : "text-gray-700"}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 pt-2 pb-1">
-      {title}
-    </p>
-  );
 }
 
 export default function PortalPayslipsPage() {
@@ -65,7 +47,7 @@ export default function PortalPayslipsPage() {
 
   return (
     <div>
-      {/* Header */}
+      {/* Page header */}
       <div className="rounded-b-[28px] px-6 pt-14 pb-6" style={{ backgroundColor: BRAND }}>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-white">Payslips</h1>
@@ -87,7 +69,7 @@ export default function PortalPayslipsPage() {
               {listQuery.isLoading && <option>Loading...</option>}
               {listQuery.data?.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {fmtPeriod(p.payrollRun.periodStart, p.payrollRun.periodEnd)} – {p.payrollRun.branch.name}
+                  {fmtPeriodLong(p.payrollRun.periodStart, p.payrollRun.periodEnd)} – {p.payrollRun.branch.name}
                 </option>
               ))}
               {!listQuery.isLoading && !listQuery.data?.length && (
@@ -109,97 +91,7 @@ export default function PortalPayslipsPage() {
             No payslip data available.
           </div>
         ) : (
-          <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-            {/* Payslip header */}
-            <div className="px-5 py-4" style={{ backgroundColor: BRAND }}>
-              <p className="text-white font-bold text-lg">KAOS HRIS</p>
-              <p className="text-white/80 text-sm mt-0.5">
-                Payslip for {fmtPeriod(payslip.payrollRun.periodStart, payslip.payrollRun.periodEnd)}
-              </p>
-            </div>
-
-            <div className="bg-white px-5 py-4 space-y-1">
-              {/* Employee Info */}
-              <SectionHeader title="Employee Information" />
-              <div className="grid grid-cols-2 gap-3 pb-1">
-                <div>
-                  <p className="text-xs text-gray-400">Name</p>
-                  <p className="text-sm font-semibold text-gray-800">
-                    {payslip.employee.firstName} {payslip.employee.lastName}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400">Employee ID</p>
-                  <p className="text-sm font-semibold text-gray-800">{payslip.employee.employeeId}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400">Position</p>
-                  <p className="text-sm font-semibold text-gray-800">{payslip.employee.position}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400">Branch</p>
-                  <p className="text-sm font-semibold text-gray-800">{payslip.employee.branch.name}</p>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-100" />
-
-              {/* Earnings */}
-              <SectionHeader title="Earnings" />
-              <Row label="Base Salary (bi-monthly)" value={formatCurrency(payslip.basicPay)} />
-              <Row label="Overtime Pay" value={formatCurrency(payslip.overtimePay)} />
-              <Row label="Bonuses" value={formatCurrency(payslip.bonuses)} />
-              {Number(payslip.allowances) > 0 && (
-                <Row label="Allowances" value={formatCurrency(payslip.allowances)} />
-              )}
-              {Number(payslip.holidayPay) > 0 && (
-                <Row label="Holiday Pay" value={formatCurrency(payslip.holidayPay)} />
-              )}
-              {payslip.earnings
-                .filter((e) => e.type === "OTHER")
-                .map((e) => (
-                  <Row key={e.id} label={e.label} value={formatCurrency(e.amount)} />
-                ))}
-              <Row label="Gross Pay" value={formatCurrency(payslip.grossPay)} bold />
-
-              <div className="border-t border-gray-100" />
-
-              {/* Deductions */}
-              <SectionHeader title="Deductions" />
-              <Row label="Late / Tardiness Deduction" value={formatCurrency(payslip.lateDeductions)} />
-              <Row label="Cash Advances" value={formatCurrency(payslip.cashAdvance)} />
-              <Row label="Salary Loans" value={formatCurrency(payslip.salaryLoan)} />
-              {payslip.deductions
-                .filter((d) => d.type === "OTHER")
-                .map((d) => (
-                  <Row key={d.id} label={d.label} value={formatCurrency(d.amount)} />
-                ))}
-
-              <div className="border-t border-gray-100" />
-
-              {/* Government Contributions */}
-              <SectionHeader title="Government Contributions" />
-              <Row label="SSS" value={formatCurrency(payslip.sssContribution)} />
-              <Row label="PhilHealth" value={formatCurrency(payslip.philhealthContribution)} />
-              <Row label="Pag-IBIG" value={formatCurrency(payslip.pagibigContribution)} />
-              <Row label="Withholding Tax" value={formatCurrency(payslip.withholdingTax)} />
-
-              <div className="border-t border-gray-100" />
-
-              {/* Summary */}
-              <SectionHeader title="Summary" />
-              <Row label="Gross Pay" value={formatCurrency(payslip.grossPay)} />
-              <Row label="Total Deductions" value={`– ${formatCurrency(payslip.totalDeductions)}`} negative />
-
-              {/* Net Pay */}
-              <div className="mt-3 flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-3">
-                <span className="font-semibold text-gray-800">Net Pay</span>
-                <span className="text-xl font-bold tabular-nums" style={{ color: BRAND }}>
-                  {formatCurrency(payslip.netPay)}
-                </span>
-              </div>
-            </div>
-          </div>
+          <PayslipPreview data={payslip} />
         )}
       </div>
 

@@ -82,7 +82,7 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
   });
 
   const shiftTypesQuery = useQuery({
-    queryKey: ["shift-types", selectedBranch],
+    queryKey: ["shift-types", { branchId: selectedBranch }],
     queryFn: () => listShiftTypes(selectedBranch),
     enabled: open && !!selectedBranch,
   });
@@ -91,6 +91,7 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
     queryKey: ["employees", { branchId: selectedBranch }],
     queryFn: () => listEmployees({ branchId: selectedBranch, status: "ACTIVE" }),
     enabled: open && !!selectedBranch,
+    select: (data) => data.filter((e) => e.position !== "Administrator"),
   });
 
   useEffect(() => {

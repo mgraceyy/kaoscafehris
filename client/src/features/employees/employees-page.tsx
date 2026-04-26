@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileUp, Loader2, Pencil, Search, X } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { FileUp, Loader2, Pencil, Search } from "lucide-react";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/components/ui/toast";
@@ -20,9 +20,22 @@ import {
   type EmployeeCreateInput,
   type EmployeeUpdateInput,
 } from "./employees.api";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import ImportPreviewDialog from "./import-preview-dialog";
+import EmployeeDeductionsTable, { type PendingDeduction } from "./employee-deductions-table";
+import { addEmployeeDeduction } from "./employee-deductions.api";
+import EmployeeEarningsTable, { type PendingEarning } from "./employee-earnings-table";
+import { addEmployeeEarning } from "./employee-earnings.api";
 
 const BRAND = "#8C1515";
+
+const toFloat = (v: string | number) => (typeof v === "string" ? parseFloat(v) : v);
 
 const baseSchema = {
   email: z.string().trim().email("Valid email required"),
@@ -38,10 +51,9 @@ const baseSchema = {
   position: z.string().trim().min(1, "Required"),
   employmentStatus: z.enum(["ACTIVE", "INACTIVE", "TERMINATED", "ON_LEAVE"]),
   dateHired: z.string().min(1, "Required"),
-  basicSalary: z
-    .union([z.string(), z.number()])
-    .transform((v) => (typeof v === "string" ? parseFloat(v) : v))
-    .pipe(z.number().positive("Must be greater than zero")),
+  payType: z.enum(["MONTHLY_FIXED", "HOURLY"]),
+  basicSalary: z.union([z.string(), z.number()]).transform(toFloat).pipe(z.number().min(0)),
+  hourlyRate: z.union([z.string(), z.number()]).transform(toFloat).pipe(z.number().min(0)).optional(),
   phone: z.string().trim().optional(),
   sssNumber: z.string().trim().optional(),
   philhealthNumber: z.string().trim().optional(),
@@ -49,18 +61,21 @@ const baseSchema = {
   tinNumber: z.string().trim().optional(),
 } as const;
 
-const createSchema = z.object({
-  ...baseSchema,
-  password: z.string().min(8, "At least 8 characters"),
-});
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const payRateRefine = (d: any) =>
+  d.payType === "HOURLY" ? (d.hourlyRate ?? 0) > 0 : (d.basicSalary ?? 0) > 0;
+const payRateIssue = { message: "Rate must be greater than zero", path: ["hourlyRate"] };
 
-const editSchema = z.object({
-  ...baseSchema,
-  password: z
-    .string()
-    .optional()
-    .refine((v) => !v || v.length >= 8, "At least 8 characters"),
-});
+const createSchema = z
+  .object({ ...baseSchema, password: z.string().min(8, "At least 8 characters") })
+  .refine(payRateRefine, payRateIssue);
+
+const editSchema = z
+  .object({
+    ...baseSchema,
+    password: z.string().optional().refine((v) => !v || v.length >= 8, "At least 8 characters"),
+  })
+  .refine(payRateRefine, payRateIssue);
 
 type CreateValues = z.infer<typeof createSchema>;
 type EditValues = z.infer<typeof editSchema>;
@@ -109,6 +124,8 @@ export default function EmployeesPage() {
   const [role, setRole] = useState("");
   const [detailEmployee, setDetailEmployee] = useState<Employee | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [pendingDeductions, setPendingDeductions] = useState<PendingDeduction[]>([]);
+  const [pendingEarnings, setPendingEarnings] = useState<PendingEarning[]>([]);
   const isEdit = !!detailEmployee;
 
   const resolver = useMemo(
@@ -120,6 +137,7 @@ export default function EmployeesPage() {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: resolver as never,
@@ -127,10 +145,15 @@ export default function EmployeesPage() {
       email: "", password: "", role: "EMPLOYEE", employeeId: "",
       branchId: "", firstName: "", lastName: "", position: "",
       employmentStatus: "ACTIVE", dateHired: "",
-      basicSalary: 0 as unknown as number, phone: "",
+      payType: "MONTHLY_FIXED",
+      basicSalary: 0 as unknown as number,
+      hourlyRate: undefined,
+      phone: "",
       sssNumber: "", philhealthNumber: "", pagibigNumber: "", tinNumber: "",
     },
   });
+
+  const payType = useWatch({ control, name: "payType" });
 
   useEffect(() => {
     if (!isEditMode) return;
@@ -146,7 +169,9 @@ export default function EmployeesPage() {
         position: detailEmployee.position,
         employmentStatus: detailEmployee.employmentStatus,
         dateHired: detailEmployee.dateHired.slice(0, 10),
+        payType: detailEmployee.payType,
         basicSalary: parseFloat(detailEmployee.basicSalary),
+        hourlyRate: detailEmployee.hourlyRate ? parseFloat(detailEmployee.hourlyRate) : undefined,
         phone: detailEmployee.phone ?? "",
         sssNumber: detailEmployee.sssNumber ?? "",
         philhealthNumber: detailEmployee.philhealthNumber ?? "",
@@ -158,7 +183,10 @@ export default function EmployeesPage() {
         email: "", password: "", role: "EMPLOYEE", employeeId: "",
         branchId: "", firstName: "", lastName: "", position: "",
         employmentStatus: "ACTIVE", dateHired: "",
-        basicSalary: 0 as unknown as number, phone: "",
+        payType: "MONTHLY_FIXED",
+        basicSalary: 0 as unknown as number,
+        hourlyRate: undefined,
+        phone: "",
         sssNumber: "", philhealthNumber: "", pagibigNumber: "", tinNumber: "",
       });
     }
@@ -172,7 +200,10 @@ export default function EmployeesPage() {
           branchId: values.branchId, firstName: values.firstName,
           lastName: values.lastName, position: values.position,
           employmentStatus: values.employmentStatus, dateHired: values.dateHired,
-          basicSalary: values.basicSalary, phone: values.phone || undefined,
+          payType: values.payType,
+          basicSalary: values.payType === "MONTHLY_FIXED" ? values.basicSalary : 0,
+          hourlyRate: values.payType === "HOURLY" ? values.hourlyRate : undefined,
+          phone: values.phone || undefined,
           sssNumber: values.sssNumber || undefined,
           philhealthNumber: values.philhealthNumber || undefined,
           pagibigNumber: values.pagibigNumber || undefined,
@@ -187,7 +218,10 @@ export default function EmployeesPage() {
         branchId: values.branchId, firstName: values.firstName,
         lastName: values.lastName, position: values.position,
         employmentStatus: values.employmentStatus, dateHired: values.dateHired,
-        basicSalary: values.basicSalary, phone: values.phone || undefined,
+        payType: values.payType,
+        basicSalary: values.payType === "MONTHLY_FIXED" ? values.basicSalary : 0,
+        hourlyRate: values.payType === "HOURLY" ? values.hourlyRate : undefined,
+        phone: values.phone || undefined,
         sssNumber: values.sssNumber || undefined,
         philhealthNumber: values.philhealthNumber || undefined,
         pagibigNumber: values.pagibigNumber || undefined,
@@ -195,12 +229,38 @@ export default function EmployeesPage() {
       };
       return createEmployee(payload);
     },
-    onSuccess: () => {
+    onSuccess: async (created) => {
       qc.invalidateQueries({ queryKey: ["employees"] });
       qc.invalidateQueries({ queryKey: ["branches"] });
-      toast(isEdit ? "Employee updated" : "Employee created", "success");
-      setIsEditMode(false);
-      setDetailEmployee(null);
+      if (isEdit) {
+        toast("Employee updated", "success");
+        setIsEditMode(false);
+        setDetailEmployee(null);
+      } else {
+        if (pendingDeductions.length > 0) {
+          for (const d of pendingDeductions) {
+            await addEmployeeDeduction(created.id, {
+              deductionId: d.deductionId,
+              amount: d.amount,
+              totalBalance: d.totalBalance,
+            });
+          }
+          setPendingDeductions([]);
+        }
+        if (pendingEarnings.length > 0) {
+          for (const e of pendingEarnings) {
+            await addEmployeeEarning(created.id, {
+              type: e.type,
+              label: e.label,
+              amount: e.amount,
+            });
+          }
+          setPendingEarnings([]);
+        }
+        toast("Employee created", "success");
+        setIsEditMode(false);
+        setDetailEmployee(null);
+      }
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
@@ -302,7 +362,7 @@ export default function EmployeesPage() {
             }}
           />
           <button
-            onClick={() => { setDetailEmployee(null); setIsEditMode(true); }}
+            onClick={() => { setDetailEmployee(null); setPendingDeductions([]); setPendingEarnings([]); setIsEditMode(true); }}
             className="flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ backgroundColor: BRAND }}
             disabled={!hasBranches}
@@ -466,23 +526,21 @@ export default function EmployeesPage() {
         />
       )}
 
-      {/* Slide Panel (Add/Edit Form) */}
-      {isEditMode && (
-        <div className="fixed inset-0 z-40 flex">
-          <div className="flex-1 bg-black/30" onClick={() => { setDetailEmployee(null); setIsEditMode(false); }} />
-          <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">{isEdit ? "Edit Employee" : "Add New Employee"}</h2>
-                <p className="text-sm text-gray-500 mt-0.5">{isEdit ? "Update profile and account details." : "Create the user login and employee profile."}</p>
-              </div>
-              <button onClick={() => { setIsEditMode(false); setDetailEmployee(null); }} className="text-gray-400 hover:text-gray-600 transition-colors">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      {/* Add / Edit Employee Dialog */}
+      <Dialog
+        open={isEditMode}
+        onOpenChange={(open) => { if (!open) { setDetailEmployee(null); setIsEditMode(false); } }}
+        className="max-w-2xl"
+      >
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit Employee" : "Add New Employee"}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? "Update profile and account details." : "Create the user login and employee profile."}
+          </DialogDescription>
+        </DialogHeader>
 
-            <form onSubmit={handleSubmit((v) => formMutation.mutate(v))} noValidate className="flex flex-col flex-1 overflow-hidden">
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <form onSubmit={handleSubmit((v) => formMutation.mutate(v))} noValidate>
+          <div className="max-h-[65vh] overflow-y-auto pr-1 space-y-6 mt-4">
 
                 {/* ACCOUNT */}
                 <div>
@@ -564,21 +622,36 @@ export default function EmployeesPage() {
                       </select>
                       {errors.branchId && <p className="text-xs text-red-500 mt-1">{errors.branchId.message}</p>}
                     </div>
-                    <div className="col-span-2">
+                    <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Position / Job Title *</label>
                       <input {...register("position")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
                       {errors.position && <p className="text-xs text-red-500 mt-1">{errors.position.message}</p>}
                     </div>
-                    <div className="col-span-2">
+                    <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Date Hired *</label>
                       <input {...register("dateHired")} type="date" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
                       {errors.dateHired && <p className="text-xs text-red-500 mt-1">{errors.dateHired.message}</p>}
                     </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Basic Salary (PHP/Month) *</label>
-                      <input {...register("basicSalary")} type="number" step="0.01" min="0" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
-                      {errors.basicSalary && <p className="text-xs text-red-500 mt-1">{errors.basicSalary.message}</p>}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Pay Type *</label>
+                      <select {...register("payType")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400 bg-white">
+                        <option value="MONTHLY_FIXED">Monthly Fixed</option>
+                        <option value="HOURLY">Hourly</option>
+                      </select>
                     </div>
+                    {payType === "HOURLY" ? (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Hourly Rate (PHP/hr) *</label>
+                        <input {...register("hourlyRate")} type="number" step="0.01" min="0" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
+                        {errors.hourlyRate && <p className="text-xs text-red-500 mt-1">{errors.hourlyRate.message}</p>}
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Basic Salary (PHP/mo) *</label>
+                        <input {...register("basicSalary")} type="number" step="0.01" min="0" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
+                        {errors.basicSalary && <p className="text-xs text-red-500 mt-1">{errors.basicSalary.message}</p>}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -605,22 +678,48 @@ export default function EmployeesPage() {
                   </div>
                 </div>
 
-              </div>
+                {/* DEDUCTIONS */}
+                {detailEmployee ? (
+                  <EmployeeDeductionsTable employeeId={detailEmployee.id} />
+                ) : (
+                  <EmployeeDeductionsTable
+                    pendingDeductions={pendingDeductions}
+                    onPendingChange={setPendingDeductions}
+                  />
+                )}
 
-              {/* Footer */}
-              <div className="border-t border-gray-100 px-6 py-4 flex gap-3">
-                <button type="button" onClick={() => { setIsEditMode(false); setDetailEmployee(null); }} className="flex-1 py-2.5 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
-                  Cancel
-                </button>
-                <button type="submit" disabled={formMutation.isPending} className="flex-1 py-2.5 rounded-lg font-medium text-white flex items-center justify-center gap-2 transition-colors disabled:opacity-60" style={{ backgroundColor: BRAND }}>
-                  {formMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
-                  {isEdit ? "Save Changes" : "Create Employee"}
-                </button>
-              </div>
-            </form>
+                {/* RECURRING EARNINGS */}
+                {detailEmployee ? (
+                  <EmployeeEarningsTable employeeId={detailEmployee.id} />
+                ) : (
+                  <EmployeeEarningsTable
+                    pendingEarnings={pendingEarnings}
+                    onPendingChange={setPendingEarnings}
+                  />
+                )}
+
           </div>
-        </div>
-      )}
+
+          <DialogFooter className="mt-6">
+            <button
+              type="button"
+              onClick={() => { setIsEditMode(false); setDetailEmployee(null); }}
+              className="px-4 py-2 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={formMutation.isPending}
+              className="px-5 py-2 rounded-lg font-medium text-white flex items-center gap-2 transition-colors disabled:opacity-60"
+              style={{ backgroundColor: BRAND }}
+            >
+              {formMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+              {isEdit ? "Save Changes" : "Create Employee"}
+            </button>
+          </DialogFooter>
+        </form>
+      </Dialog>
 
     </div>
   );

@@ -16,6 +16,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -34,6 +41,7 @@ import {
   formatCurrency,
   getRun,
   processRun,
+  type FullyPaidDeduction,
   type PayrollStatus,
 } from "./payroll.api";
 import PayslipEditDialog from "./payslip-edit-dialog";
@@ -70,6 +78,7 @@ export default function PayrollRunDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [settledDeductions, setSettledDeductions] = useState<FullyPaidDeduction[]>([]);
   const exportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,11 +110,14 @@ export default function PayrollRunDetailPage() {
 
   const finalize = useMutation({
     mutationFn: () => completeRun(runId!),
-    onSuccess: () => {
+    onSuccess: ({ fullyPaidDeductions }) => {
       qc.invalidateQueries({ queryKey: ["payroll-run", runId] });
       qc.invalidateQueries({ queryKey: ["payroll-runs"] });
       toast("Payroll run finalized", "success");
       setFinalizeOpen(false);
+      if (fullyPaidDeductions.length > 0) {
+        setSettledDeductions(fullyPaidDeductions);
+      }
     },
     onError: (err) => {
       toast(extractErrorMessage(err), "error");
@@ -435,6 +447,48 @@ export default function PayrollRunDetailPage() {
         loading={cancel.isPending}
         onConfirm={() => cancel.mutate()}
       />
+
+      {/* Settled deductions notification */}
+      <Dialog
+        open={settledDeductions.length > 0}
+        onOpenChange={(open) => { if (!open) setSettledDeductions([]); }}
+      >
+        <DialogHeader>
+          <DialogTitle>Deductions Fully Paid</DialogTitle>
+          <DialogDescription>
+            The following deductions have reached their total balance and were fully settled
+            in this payroll run. Remove them from the employee profiles so they won't be
+            included in the next cycle.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="mt-4 space-y-2">
+          {settledDeductions.map((d) => (
+            <div
+              key={d.employeeDeductionId}
+              className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2"
+            >
+              <div>
+                <div className="text-sm font-medium">{d.employeeName}</div>
+                <div className="text-xs text-muted-foreground">
+                  {d.deductionName} — ₱{d.totalBalance.toLocaleString()} fully paid
+                </div>
+              </div>
+              <Link
+                to="/employees"
+                className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                onClick={() => setSettledDeductions([])}
+              >
+                Go to Employees
+              </Link>
+            </div>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button onClick={() => setSettledDeductions([])}>Got it</Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }

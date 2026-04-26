@@ -41,7 +41,7 @@ export const assignEmployeesSchema = z.object({
 });
 
 export const listShiftsQuerySchema = z.object({
-  branchId: z.string().uuid().optional(),
+  branchIds: z.string().optional(), // comma-separated UUIDs
   startDate: isoDate.optional(),
   endDate: isoDate.optional(),
   status: z.enum(["DRAFT", "PUBLISHED"]).optional(),

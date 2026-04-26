@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Eye, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -16,13 +17,22 @@ import {
   formatCurrency,
   listMyPayslips,
 } from "./payroll.api";
+import { getMyPayslipDetail } from "@/features/portal/portal.api";
+import { PayslipPreview } from "./payslip-view-dialog";
 
 export default function MyPayslipsPage() {
   const { toast } = useToast();
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["my-payslips"],
     queryFn: listMyPayslips,
+  });
+
+  const previewQuery = useQuery({
+    queryKey: ["my-payslip-detail", previewId],
+    queryFn: () => getMyPayslipDetail(previewId!),
+    enabled: !!previewId,
   });
 
   const download = useMutation({
@@ -62,20 +72,14 @@ export default function MyPayslipsPage() {
             )}
             {query.isError && (
               <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="py-10 text-center text-destructive"
-                >
+                <TableCell colSpan={6} className="py-10 text-center text-destructive">
                   {extractErrorMessage(query.error, "Failed to load payslips")}
                 </TableCell>
               </TableRow>
             )}
             {query.data && query.data.length === 0 && (
               <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="py-10 text-center text-muted-foreground"
-                >
+                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   No released payslips yet.
                 </TableCell>
               </TableRow>
@@ -97,26 +101,62 @@ export default function MyPayslipsPage() {
                   {formatCurrency(p.netPay)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      download.mutate({
-                        id: p.id,
-                        filename: `payslip_${p.payrollRun.periodStart.slice(0, 10)}.pdf`,
-                      })
-                    }
-                    disabled={download.isPending}
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    PDF
-                  </Button>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setPreviewId(p.id)}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        download.mutate({
+                          id: p.id,
+                          filename: `payslip_${p.payrollRun.periodStart.slice(0, 10)}.pdf`,
+                        })
+                      }
+                      disabled={download.isPending}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      PDF
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+
+      {/* Payslip preview panel */}
+      {previewId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl">
+            <button
+              onClick={() => setPreviewId(null)}
+              className="absolute top-3 right-3 z-10 rounded-full bg-white/80 p-1.5 shadow hover:bg-white transition-colors"
+            >
+              <X className="h-4 w-4 text-gray-600" />
+            </button>
+
+            {previewQuery.isLoading ? (
+              <div className="flex justify-center py-16 bg-white rounded-2xl">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+              </div>
+            ) : previewQuery.data ? (
+              <PayslipPreview data={previewQuery.data} />
+            ) : (
+              <div className="flex justify-center py-16 bg-white rounded-2xl text-sm text-destructive">
+                {extractErrorMessage(previewQuery.error, "Failed to load payslip")}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

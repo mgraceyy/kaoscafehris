@@ -22,6 +22,7 @@ export interface PayrollBranch {
   id: string;
   name: string;
   city: string;
+  address?: string;
 }
 
 export interface PayrollRunSummary {
@@ -93,6 +94,9 @@ export interface PayslipDeduction extends PayslipLineItem {
 export interface PayslipDetail extends PayslipSummary {
   employee: PayslipSummary["employee"] & {
     basicSalary: string;
+    payType: "MONTHLY_FIXED" | "HOURLY";
+    hourlyRate: string | null;
+    employmentStatus: "ACTIVE" | "INACTIVE" | "TERMINATED" | "ON_LEAVE";
     sssNumber: string | null;
     philhealthNumber: string | null;
     pagibigNumber: string | null;
@@ -181,11 +185,25 @@ export async function processRun(id: string): Promise<PayrollRunDetail> {
   return data.data;
 }
 
-export async function completeRun(id: string): Promise<PayrollRunDetail> {
-  const { data } = await api.patch<{ data: PayrollRunDetail }>(
+export interface FullyPaidDeduction {
+  employeeDeductionId: string;
+  employeeId: string;
+  employeeName: string;
+  deductionName: string;
+  totalBalance: number;
+  paidAmount: number;
+}
+
+export interface CompleteRunResult {
+  run: PayrollRunDetail;
+  fullyPaidDeductions: FullyPaidDeduction[];
+}
+
+export async function completeRun(id: string): Promise<CompleteRunResult> {
+  const { data } = await api.patch<{ data: PayrollRunDetail; fullyPaidDeductions: FullyPaidDeduction[] }>(
     `/payroll/runs/${id}/complete`
   );
-  return data.data;
+  return { run: data.data, fullyPaidDeductions: data.fullyPaidDeductions ?? [] };
 }
 
 export async function cancelRun(id: string): Promise<void> {

@@ -30,6 +30,7 @@ export default function AssignEmployeesDialog({ open, onOpenChange, shift }: Pro
     queryFn: () =>
       listEmployees({ branchId: shift!.branchId, status: "ACTIVE" }),
     enabled: open && !!shift,
+    select: (data) => data.filter((e) => e.position !== "Administrator"),
   });
 
   useEffect(() => {

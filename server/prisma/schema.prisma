@@ -95,6 +95,11 @@ enum EarningType {
   OTHER
 }
 
+enum PayType {
+  MONTHLY_FIXED
+  HOURLY
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -145,7 +150,7 @@ model Branch {
 
   employees         Employee[]
   shifts             Shift[]
-  shiftTypes        ShiftType[]
+  shiftTypeBranches ShiftTypeBranch[]
   attendanceRecords  Attendance[]
   payrollRuns        PayrollRun[]
 
@@ -192,7 +197,9 @@ model Employee {
   employmentStatus EmploymentStatus @default(ACTIVE)
   dateHired        DateTime
   dateTerminated   DateTime?
-  basicSalary      Decimal          @db.Decimal(12, 2) // monthly basic salary
+  payType          PayType          @default(MONTHLY_FIXED)
+  basicSalary      Decimal          @default(0) @db.Decimal(12, 2) // monthly basic salary (used when payType = MONTHLY_FIXED)
+  hourlyRate       Decimal?         @db.Decimal(12, 2)             // used when payType = HOURLY
   defaultShiftTypeId String?        // default shift template for this employee
 
   // Government IDs — used for payroll deductions
@@ -205,12 +212,14 @@ model Employee {
   branch           Branch           @relation(fields: [branchId], references: [id])
   defaultShiftType ShiftType?       @relation(fields: [defaultShiftTypeId], references: [id], onDelete: SetNull)
 
-  shiftAssignments  ShiftAssignment[]
-  attendanceRecords Attendance[]
-  leaveRequests     LeaveRequest[]
-  leaveBalances     LeaveBalance[]
-  payslips          Payslip[]
-  overtimeRequests  OvertimeRequest[]
+  shiftAssignments    ShiftAssignment[]
+  attendanceRecords   Attendance[]
+  leaveRequests       LeaveRequest[]
+  leaveBalances       LeaveBalance[]
+  payslips            Payslip[]
+  overtimeRequests    OvertimeRequest[]
+  employeeDeductions  EmployeeDeduction[]
+  employeeEarnings    EmployeeEarning[]
 
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -225,23 +234,31 @@ model Employee {
 // ============================================================================
 
 model ShiftType {
-  id        String  @id @default(uuid())
-  branchId  String
-  name      String  // e.g., "1st Shift", "2nd Shift"
+  id        String   @id @default(uuid())
+  name      String   @unique
   startTime DateTime @db.Time()
   endTime   DateTime @db.Time()
-  isActive  Boolean @default(true)
+  isActive  Boolean  @default(true)
 
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  shifts Shift[]
+  branches             ShiftTypeBranch[]
+  shifts               Shift[]
   employeesWithDefault Employee[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([branchId, name])
-  @@index([branchId])
   @@map("shift_types")
+}
+
+model ShiftTypeBranch {
+  shiftTypeId String
+  branchId    String
+
+  shiftType ShiftType @relation(fields: [shiftTypeId], references: [id], onDelete: Cascade)
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([shiftTypeId, branchId])
+  @@map("shift_type_branches")
 }
 
 model Shift {
@@ -525,13 +542,51 @@ model GovernmentTable {
 
 model Deduction {
   id        String   @id @default(uuid())
-  type      String?  // "SSS" | "PHILHEALTH" | "PAGIBIG" | "BIR_TAX" — links to payroll auto-apply; null = custom/manual only
+  type      String?  // "SSS" | "PHILHEALTH" | "PAGIBIG" | "BIR_TAX" | null
   name      String
   amount    Decimal  @db.Decimal(10, 2)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  employeeDeductions EmployeeDeduction[]
+
   @@map("deductions")
+}
+
+model EmployeeDeduction {
+  id           String   @id @default(uuid())
+  employeeId   String
+  deductionId  String
+
+  amount       Decimal? @db.Decimal(12, 2) // per-payroll override; null = use Deduction.amount
+  totalBalance Decimal? @db.Decimal(12, 2) // null = recurring (no end); set = tracks payoff
+  paidAmount   Decimal  @db.Decimal(12, 2) @default(0)
+
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  deduction Deduction @relation(fields: [deductionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, deductionId])
+  @@index([employeeId])
+  @@map("employee_deductions")
+}
+
+model EmployeeEarning {
+  id         String      @id @default(uuid())
+  employeeId String
+  type       EarningType // BONUS | ALLOWANCE | OTHER only (OVERTIME and HOLIDAY_PAY are auto-computed)
+  label      String      // e.g., "Transportation Allowance"
+  amount     Decimal     @db.Decimal(12, 2)
+
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@map("employee_earnings")
 }
 
 // ============================================================================

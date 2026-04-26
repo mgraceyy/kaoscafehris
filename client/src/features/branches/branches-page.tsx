@@ -61,6 +61,7 @@ export default function BranchesPage() {
     queryKey: ["employees", {}],
     queryFn: () => listEmployees(),
     enabled: panelOpen,
+    select: (data) => data.filter((e) => e.position !== "Administrator"),
   });
 
   const branches = query.data ?? [];

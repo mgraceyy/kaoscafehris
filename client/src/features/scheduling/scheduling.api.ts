@@ -54,7 +54,7 @@ export interface ShiftUpdateInput {
 }
 
 export interface ListShiftsParams {
-  branchId?: string;
+  branchIds?: string[];
   startDate?: string;
   endDate?: string;
   status?: ShiftStatus;
@@ -81,7 +81,7 @@ export function formatShiftDate(dt: string): string {
 
 export async function listShifts(params: ListShiftsParams = {}): Promise<Shift[]> {
   const query: Record<string, string> = {};
-  if (params.branchId) query.branchId = params.branchId;
+  if (params.branchIds && params.branchIds.length > 0) query.branchIds = params.branchIds.join(",");
   if (params.startDate) query.startDate = params.startDate;
   if (params.endDate) query.endDate = params.endDate;
   if (params.status) query.status = params.status;

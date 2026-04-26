@@ -44,7 +44,10 @@ function dateOnly(isoDate: string): Date {
 
 export async function listShifts(query: ListShiftsQuery) {
   const where: Prisma.ShiftWhereInput = {};
-  if (query.branchId) where.branchId = query.branchId;
+  if (query.branchIds) {
+    const ids = query.branchIds.split(",").filter(Boolean);
+    if (ids.length > 0) where.branchId = { in: ids };
+  }
   if (query.status) where.status = query.status;
   if (query.startDate || query.endDate) {
     where.date = {};
@@ -103,7 +106,10 @@ export async function createShift(input: CreateShiftInput) {
       where: { id: input.shiftTypeId },
     });
     if (!shiftType) throw new AppError(400, "Shift type not found");
-    if (shiftType.branchId !== input.branchId) {
+    const stBranch = await prisma.shiftTypeBranch.findUnique({
+      where: { shiftTypeId_branchId: { shiftTypeId: input.shiftTypeId!, branchId: input.branchId } },
+    });
+    if (!stBranch) {
       throw new AppError(400, "Shift type does not belong to this branch");
     }
     startTime = shiftType.startTime;

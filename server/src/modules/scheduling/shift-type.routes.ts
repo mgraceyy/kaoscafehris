@@ -18,14 +18,11 @@ const router = Router();
 
 router.use(authenticate, authorize("ADMIN", "MANAGER"));
 
-// List shift types for a branch
+// List shift types (optionally filtered by branchId)
 router.get("/", async (req, res, next) => {
   try {
     const query = listShiftTypesQuerySchema.parse(req.query);
-    if (!query.branchId) {
-      return res.status(400).json({ error: "branchId query parameter is required" });
-    }
-    const shiftTypes = await listShiftTypes(query.branchId);
+    const shiftTypes = await listShiftTypes(query);
     res.json({ data: shiftTypes });
   } catch (err) {
     next(err);

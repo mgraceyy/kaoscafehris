@@ -67,7 +67,8 @@ export default function ImportPreviewDialog({ preview, isPending, onConfirm, onC
                 <th className="pb-2 pr-3">Role</th>
                 <th className="pb-2 pr-3">Status</th>
                 <th className="pb-2 pr-3">Date Hired</th>
-                <th className="pb-2">Salary</th>
+                <th className="pb-2 pr-3">Pay Type</th>
+                <th className="pb-2">Pay Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -97,10 +98,14 @@ export default function ImportPreviewDialog({ preview, isPending, onConfirm, onC
                     <td className="py-2 pr-3 text-gray-600 capitalize">{r.role.toLowerCase()}</td>
                     <td className="py-2 pr-3 text-gray-600 capitalize">{r.employmentStatus.replace("_", " ").toLowerCase()}</td>
                     <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{r.dateHired}</td>
-                    <td className="py-2 text-gray-600 whitespace-nowrap">{r.basicSalary}</td>
-                    {r.reason && (
-                      <td colSpan={0} className="hidden" />
-                    )}
+                    <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">
+                      {r.payType === "HOURLY" ? "Hourly" : "Monthly"}
+                    </td>
+                    <td className="py-2 text-gray-600 whitespace-nowrap tabular-nums">
+                      {r.rate
+                        ? `₱${r.rate}${r.payType === "HOURLY" ? "/hr" : "/mo"}`
+                        : "—"}
+                    </td>
                   </tr>
                 );
               })}
@@ -110,7 +115,7 @@ export default function ImportPreviewDialog({ preview, isPending, onConfirm, onC
                 return (
                   <tr key={`note-${r.row}`} style={{ backgroundColor: s.bg, borderBottom: `1px solid ${s.border}` }}>
                     <td />
-                    <td colSpan={10} className="pb-2 pr-3 text-[10px] italic" style={{ color: s.badge }}>
+                    <td colSpan={11} className="pb-2 pr-3 text-[10px] italic" style={{ color: s.badge }}>
                       → {r.reason}
                     </td>
                   </tr>

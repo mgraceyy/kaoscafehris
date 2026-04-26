@@ -2,6 +2,7 @@ import api from "@/lib/api";
 import type { Role } from "@/features/auth/auth.api";
 
 export type EmploymentStatus = "ACTIVE" | "INACTIVE" | "TERMINATED" | "ON_LEAVE";
+export type PayType = "MONTHLY_FIXED" | "HOURLY";
 
 export interface EmployeeUser {
   id: string;
@@ -42,7 +43,9 @@ export interface Employee {
   employmentStatus: EmploymentStatus;
   dateHired: string;
   dateTerminated: string | null;
+  payType: PayType;
   basicSalary: string; // Prisma Decimal is serialized as string
+  hourlyRate: string | null;
   sssNumber: string | null;
   philhealthNumber: string | null;
   pagibigNumber: string | null;
@@ -66,7 +69,9 @@ export interface EmployeeCreateInput {
   position: string;
   employmentStatus?: EmploymentStatus;
   dateHired: string; // ISO date
-  basicSalary: number;
+  payType?: PayType;
+  basicSalary?: number;
+  hourlyRate?: number;
   phone?: string;
   address?: string;
   city?: string;
@@ -142,7 +147,8 @@ export interface ImportPreviewRow {
   role: string;
   employmentStatus: string;
   dateHired: string;
-  basicSalary: string;
+  payType: string;
+  rate: string;
 }
 
 export interface ImportPreview {

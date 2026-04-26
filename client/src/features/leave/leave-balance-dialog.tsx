@@ -30,6 +30,7 @@ import {
   listBalances,
   upsertBalance,
   upsertBalanceForAllEmployees,
+  type LeaveBalance,
   type LeaveType,
 } from "./leave.api";
 
@@ -83,6 +84,7 @@ export default function LeaveBalanceDialog({ open, onOpenChange }: Props) {
     queryKey: ["employees", { status: "ACTIVE" }],
     queryFn: () => listEmployees({ status: "ACTIVE" }),
     enabled: open,
+    select: (data) => data.filter((e) => e.position !== "Administrator"),
   });
 
   const balancesQuery = useQuery({
@@ -124,7 +126,7 @@ export default function LeaveBalanceDialog({ open, onOpenChange }: Props) {
   }, [open, reset, defaults]);
 
   const mutation = useMutation({
-    mutationFn: (values: Values) => {
+    mutationFn: (values: Values): Promise<LeaveBalance | { message: string; count: number }> => {
       if (values.applyToAll) {
         return upsertBalanceForAllEmployees({
           leaveType: values.leaveType,

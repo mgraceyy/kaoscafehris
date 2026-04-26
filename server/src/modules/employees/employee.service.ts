@@ -96,7 +96,9 @@ export async function createEmployee(input: CreateEmployeeInput) {
         position: input.position,
         employmentStatus: input.employmentStatus,
         dateHired: input.dateHired,
+        payType: input.payType,
         basicSalary: input.basicSalary,
+        hourlyRate: input.hourlyRate,
         sssNumber: input.sssNumber,
         philhealthNumber: input.philhealthNumber,
         pagibigNumber: input.pagibigNumber,
@@ -156,7 +158,9 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
       "position",
       "employmentStatus",
       "dateHired",
+      "payType",
       "basicSalary",
+      "hourlyRate",
       "sssNumber",
       "philhealthNumber",
       "pagibigNumber",
@@ -243,7 +247,7 @@ export async function importEmployees(csvContent: string): Promise<ImportResult>
   );
   const required = [
     "employeeid", "firstname", "lastname", "email",
-    "branchid", "position", "datehired", "basicsalary",
+    "branchid", "position", "datehired", "rate",
   ];
   const missing = required.filter((r) => !headers.includes(r));
   if (missing.length > 0) {
@@ -289,6 +293,18 @@ export async function importEmployees(csvContent: string): Promise<ImportResult>
         resolvedBranchId = branchByName.id;
       }
 
+      const payTypeRaw = row["paytype"]?.toUpperCase();
+      const resolvedPayType = (["MONTHLY_FIXED", "HOURLY"].includes(payTypeRaw)
+        ? payTypeRaw
+        : "MONTHLY_FIXED") as "MONTHLY_FIXED" | "HOURLY";
+
+      const parseRate = (v: string): number => {
+        if (!v || v.trim().toUpperCase() === "NULL") return 0;
+        const n = parseFloat(v);
+        return Number.isFinite(n) ? n : 0;
+      };
+
+      const rateValue = parseRate(row["rate"]);
       await createEmployee({
         employeeId: row["employeeid"],
         firstName: row["firstname"],
@@ -302,7 +318,9 @@ export async function importEmployees(csvContent: string): Promise<ImportResult>
         branchId: resolvedBranchId,
         position: row["position"],
         dateHired: new Date(row["datehired"]),
-        basicSalary: parseFloat(row["basicsalary"]) || 0,
+        payType: resolvedPayType,
+        basicSalary: resolvedPayType === "MONTHLY_FIXED" ? rateValue : 0,
+        hourlyRate: resolvedPayType === "HOURLY" ? rateValue : undefined,
         employmentStatus: (["ACTIVE", "INACTIVE", "ON_LEAVE"].includes(statusRaw)
           ? statusRaw
           : "ACTIVE") as "ACTIVE" | "INACTIVE" | "ON_LEAVE",
@@ -351,7 +369,8 @@ export interface ImportPreviewRow {
   role: string;
   employmentStatus: string;
   dateHired: string;
-  basicSalary: string;
+  payType: string;
+  rate: string;
 }
 
 export interface ImportPreview {
@@ -376,7 +395,7 @@ export async function previewImportEmployees(csvContent: string): Promise<Import
   );
   const required = [
     "employeeid", "firstname", "lastname", "email",
-    "branchid", "position", "datehired", "basicsalary",
+    "branchid", "position", "datehired", "rate",
   ];
   const missing = required.filter((r) => !headers.includes(r));
   if (missing.length > 0) {
@@ -400,14 +419,17 @@ export async function previewImportEmployees(csvContent: string): Promise<Import
     const email = row["email"] ?? "";
     const position = row["position"] ?? "";
     const dateHired = row["datehired"] ?? "";
-    const basicSalary = row["basicsalary"] ?? "";
+    const rate = row["rate"] ?? "";
     const roleRaw = (row["role"] ?? "").toUpperCase();
     const statusRaw = (row["employmentstatus"] ?? "").toUpperCase();
     const role = ["ADMIN", "MANAGER", "EMPLOYEE"].includes(roleRaw) ? roleRaw : "EMPLOYEE";
     const employmentStatus = ["ACTIVE", "INACTIVE", "ON_LEAVE"].includes(statusRaw) ? statusRaw : "ACTIVE";
     const branchRaw = row["branchid"] ?? "";
 
-    const base = { row: rowNum, employeeId, firstName, lastName, email, branch: branchRaw, position, role, employmentStatus, dateHired, basicSalary };
+    const payTypeRaw = (row["paytype"] ?? "").toUpperCase();
+    const payType = ["MONTHLY_FIXED", "HOURLY"].includes(payTypeRaw) ? payTypeRaw : "MONTHLY_FIXED";
+
+    const base = { row: rowNum, employeeId, firstName, lastName, email, branch: branchRaw, position, role, employmentStatus, dateHired, payType, rate };
 
     try {
       if (employeeId.toUpperCase().startsWith("EXAMPLE")) {

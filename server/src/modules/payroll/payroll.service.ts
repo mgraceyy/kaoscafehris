@@ -59,12 +59,15 @@ const payslipExportInclude = {
       lastName: true,
       position: true,
       basicSalary: true,
+      payType: true,
+      hourlyRate: true,
+      employmentStatus: true,
       sssNumber: true,
       philhealthNumber: true,
       pagibigNumber: true,
       tinNumber: true,
       userId: true,
-      branch: { select: { id: true, name: true, city: true } },
+      branch: { select: { id: true, name: true, city: true, address: true } },
     },
   },
   payrollRun: {
@@ -73,7 +76,7 @@ const payslipExportInclude = {
       periodStart: true,
       periodEnd: true,
       status: true,
-      branch: { select: { id: true, name: true, city: true } },
+      branch: { select: { id: true, name: true, city: true, address: true } },
     },
   },
   earnings: { orderBy: { type: "asc" } },
@@ -89,11 +92,14 @@ const payslipInclude = {
       lastName: true,
       position: true,
       basicSalary: true,
+      payType: true,
+      hourlyRate: true,
+      employmentStatus: true,
       sssNumber: true,
       philhealthNumber: true,
       pagibigNumber: true,
       tinNumber: true,
-      branch: { select: { id: true, name: true, city: true } },
+      branch: { select: { id: true, name: true, city: true, address: true } },
     },
   },
   payrollRun: {
@@ -102,7 +108,7 @@ const payslipInclude = {
       periodStart: true,
       periodEnd: true,
       status: true,
-      branch: { select: { id: true, name: true, city: true } },
+      branch: { select: { id: true, name: true, city: true, address: true } },
     },
   },
   earnings: { orderBy: { type: "asc" } },
@@ -201,13 +207,31 @@ export async function cancelRun(id: string) {
 
 // --- Processing -----------------------------------------------------------
 
+type DeductionTypeKey =
+  | "SSS" | "PHILHEALTH" | "PAGIBIG" | "BIR_TAX"
+  | "LATE" | "CASH_ADVANCE" | "SALARY_LOAN" | "OTHER";
+
+function toDeductionType(type: string | null | undefined): DeductionTypeKey {
+  const valid: DeductionTypeKey[] = [
+    "SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX",
+    "LATE", "CASH_ADVANCE", "SALARY_LOAN", "OTHER",
+  ];
+  return valid.includes(type as DeductionTypeKey) ? (type as DeductionTypeKey) : "OTHER";
+}
+
+function sumByDeductionType(
+  rows: Array<{ type: DeductionTypeKey; amount: number }>,
+  type: DeductionTypeKey
+): number {
+  return round2(rows.filter((r) => r.type === type).reduce((s, r) => s + r.amount, 0));
+}
+
 /**
  * Process a DRAFT run: generate a payslip for every active employee in the
- * branch with basicSalary > 0. Basic pay = monthly / 2 (bi-monthly). Holiday
- * pay uses the flat amount configured on the Holidays tab. Government
- * deductions (SSS/PHILHEALTH/PAGIBIG/BIR_TAX) are pulled from the Deductions
- * tab by type — not from GovernmentTable brackets. All amounts are adjustable
- * per payslip after generation.
+ * branch. Basic pay is computed from attendance (HOURLY) or salary / 2
+ * (MONTHLY_FIXED). Deductions are pulled from each employee's assigned
+ * deductions (set on the employee profile) — nothing is hardcoded. All amounts
+ * are adjustable per payslip after generation.
  *
  * Re-processing clears existing payslips in the run first.
  */
@@ -225,28 +249,27 @@ export async function processRun(id: string) {
     where: {
       branchId: run.branchId,
       employmentStatus: "ACTIVE",
-      basicSalary: { gt: 0 },
+      OR: [
+        { payType: "MONTHLY_FIXED", basicSalary: { gt: 0 } },
+        { payType: "HOURLY", hourlyRate: { not: null } },
+      ],
     },
-    select: { id: true, basicSalary: true },
+    select: { id: true, payType: true, basicSalary: true, hourlyRate: true },
   });
 
   if (employees.length === 0) {
-    throw new AppError(400, "Branch has no active employees with a basic salary set");
+    throw new AppError(400, "Branch has no active employees with a pay rate set");
   }
 
-  // Public holidays in the period — use the flat amount configured on the Holidays tab.
+  const employeeIds = employees.map((e) => e.id);
+
+  // Public holidays in the period.
   const periodHolidays = await prisma.publicHoliday.findMany({
     where: { date: { gte: run.periodStart, lte: run.periodEnd } },
     select: { name: true, amount: true },
   });
 
-  // Government deduction amounts from the Deductions tab (grouped by type).
-  const govDeductionRows = await prisma.deduction.findMany({
-    where: { type: { in: ["SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX"] } },
-    select: { type: true, amount: true },
-  });
-
-  // Payroll settings: OT rate multiplier and working time basis.
+  // OT rate setting.
   const settingRows = await prisma.systemSetting.findMany({
     where: { key: { in: ["payroll.regular_ot_rate"] } },
     select: { key: true, value: true },
@@ -261,76 +284,112 @@ export async function processRun(id: string) {
 
   const otRatePerHour = getSetting("payroll.regular_ot_rate", 0);
 
-  // Attendance overtime hours for each employee in the period.
-  const employeeIds = employees.map((e) => e.id);
+  // Attendance for the period.
   const attendanceRows = await prisma.attendance.findMany({
     where: {
       employeeId: { in: employeeIds },
       date: { gte: run.periodStart, lte: run.periodEnd },
     },
-    select: { employeeId: true, overtimeHours: true },
+    select: { employeeId: true, hoursWorked: true, overtimeHours: true },
   });
 
   const otHoursMap = new Map<string, number>();
+  const hoursWorkedMap = new Map<string, number>();
   for (const rec of attendanceRows) {
     otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + toNum(rec.overtimeHours));
+    hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + toNum(rec.hoursWorked));
   }
 
-  function getGovAmount(type: string): number {
-    return round2(
-      govDeductionRows
-        .filter((d) => d.type === type)
-        .reduce((s, d) => s + toNum(d.amount), 0)
-    );
+  // Pre-fetch all employee deduction assignments for this batch.
+  const allEmpDeductions = await prisma.employeeDeduction.findMany({
+    where: { employeeId: { in: employeeIds } },
+    include: { deduction: { select: { name: true, type: true, amount: true } } },
+  });
+
+  const empDeductionMap = new Map<string, typeof allEmpDeductions>();
+  for (const ed of allEmpDeductions) {
+    const arr = empDeductionMap.get(ed.employeeId) ?? [];
+    arr.push(ed);
+    empDeductionMap.set(ed.employeeId, arr);
   }
 
-  const sssAmt = getGovAmount("SSS");
-  const phicAmt = getGovAmount("PHILHEALTH");
-  const hdmfAmt = getGovAmount("PAGIBIG");
-  const birAmt = getGovAmount("BIR_TAX");
+  // Pre-fetch all employee profile earnings (BONUS, ALLOWANCE, OTHER) for this batch.
+  const allEmpEarnings = await prisma.employeeEarning.findMany({
+    where: { employeeId: { in: employeeIds } },
+  });
+
+  const empEarningMap = new Map<string, typeof allEmpEarnings>();
+  for (const ee of allEmpEarnings) {
+    const arr = empEarningMap.get(ee.employeeId) ?? [];
+    arr.push(ee);
+    empEarningMap.set(ee.employeeId, arr);
+  }
 
   const processed = await prisma.$transaction(async (tx) => {
-    // Clear any existing payslips so we can re-run.
     await tx.payslip.deleteMany({ where: { payrollRunId: run.id } });
 
     for (const emp of employees) {
-      const basicSalary = toNum(emp.basicSalary);
-      const basicPay = round2(basicSalary / 2); // bi-monthly half
-
-      // Overtime pay: attendance OT hours × flat OT rate per hour from settings.
       const totalOtHours = round2(otHoursMap.get(emp.id) ?? 0);
-      const overtimePay = totalOtHours > 0 ? round2(totalOtHours * otRatePerHour) : 0;
+      const totalHoursWorked = round2(hoursWorkedMap.get(emp.id) ?? 0);
+
+      let basicPay: number;
+      let overtimePay: number;
+
+      if (emp.payType === "HOURLY") {
+        const rate = toNum(emp.hourlyRate);
+        const regularHours = round2(Math.max(0, totalHoursWorked - totalOtHours));
+        basicPay = round2(rate * regularHours);
+        overtimePay = totalOtHours > 0 ? round2(rate * 1.25 * totalOtHours) : 0;
+      } else {
+        basicPay = round2(toNum(emp.basicSalary) / 2);
+        overtimePay = totalOtHours > 0 ? round2(totalOtHours * otRatePerHour) : 0;
+      }
 
       const overtimeEarnings: Array<{ type: "OVERTIME"; label: string; amount: number }> =
         overtimePay > 0
           ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs)`, amount: overtimePay }]
           : [];
 
-      // Holiday pay: flat amount per holiday configured on the Holidays tab.
       const holidayEarnings: Array<{ type: "HOLIDAY_PAY"; label: string; amount: number }> =
         periodHolidays
-          .map((h) => ({
-            type: "HOLIDAY_PAY" as const,
-            label: h.name,
-            amount: round2(toNum(h.amount)),
-          }))
+          .map((h) => ({ type: "HOLIDAY_PAY" as const, label: h.name, amount: round2(toNum(h.amount)) }))
           .filter((r) => r.amount > 0);
 
       const holidayPayTotal = round2(holidayEarnings.reduce((s, r) => s + r.amount, 0));
 
-      const deductionRows: Array<{
-        type: "SSS" | "PHILHEALTH" | "PAGIBIG" | "BIR_TAX";
-        label: string;
-        amount: number;
-      }> = [];
-      if (sssAmt > 0) deductionRows.push({ type: "SSS", label: "SSS", amount: sssAmt });
-      if (phicAmt > 0) deductionRows.push({ type: "PHILHEALTH", label: "PhilHealth", amount: phicAmt });
-      if (hdmfAmt > 0) deductionRows.push({ type: "PAGIBIG", label: "Pag-IBIG", amount: hdmfAmt });
-      if (birAmt > 0) deductionRows.push({ type: "BIR_TAX", label: "Withholding Tax", amount: birAmt });
+      // Build profile earnings (BONUS, ALLOWANCE, OTHER) from this employee's assigned earnings.
+      const empEarnings = empEarningMap.get(emp.id) ?? [];
+      const profileEarningRows = empEarnings.map((ee) => ({
+        type: ee.type as "BONUS" | "ALLOWANCE" | "OTHER",
+        label: ee.label,
+        amount: round2(toNum(ee.amount)),
+      }));
 
-      const grossPay = round2(basicPay + overtimePay + holidayPayTotal);
-      const totalDeductions = round2(sssAmt + phicAmt + hdmfAmt + birAmt);
-      const netPay = round2(grossPay - totalDeductions);
+      const bonuses    = round2(profileEarningRows.filter((r) => r.type === "BONUS").reduce((s, r) => s + r.amount, 0));
+      const allowances = round2(profileEarningRows.filter((r) => r.type === "ALLOWANCE").reduce((s, r) => s + r.amount, 0));
+      const otherEarningsTotal = round2(profileEarningRows.filter((r) => r.type === "OTHER").reduce((s, r) => s + r.amount, 0));
+
+      // Build deductions from this employee's assigned deductions profile.
+      const empDeductions = empDeductionMap.get(emp.id) ?? [];
+      const deductionRows = empDeductions.map((ed) => ({
+        type: toDeductionType(ed.deduction.type),
+        label: ed.deduction.name,
+        amount: round2(toNum(ed.amount ?? ed.deduction.amount)),
+      }));
+
+      // Fold into denormalized columns.
+      const sssContribution        = sumByDeductionType(deductionRows, "SSS");
+      const philhealthContribution = sumByDeductionType(deductionRows, "PHILHEALTH");
+      const pagibigContribution    = sumByDeductionType(deductionRows, "PAGIBIG");
+      const withholdingTax         = sumByDeductionType(deductionRows, "BIR_TAX");
+      const lateDeductions         = sumByDeductionType(deductionRows, "LATE");
+      const cashAdvance            = sumByDeductionType(deductionRows, "CASH_ADVANCE");
+      const salaryLoan             = sumByDeductionType(deductionRows, "SALARY_LOAN");
+      const otherDeductions        = sumByDeductionType(deductionRows, "OTHER");
+      const totalDeductions        = round2(deductionRows.reduce((s, r) => s + r.amount, 0));
+
+      const grossPay = round2(basicPay + overtimePay + holidayPayTotal + bonuses + allowances + otherEarningsTotal);
+      const netPay   = round2(grossPay - totalDeductions);
 
       await tx.payslip.create({
         data: {
@@ -338,22 +397,22 @@ export async function processRun(id: string) {
           employeeId: emp.id,
           basicPay,
           overtimePay,
-          bonuses: 0,
-          allowances: 0,
+          bonuses,
+          allowances,
           holidayPay: holidayPayTotal,
           grossPay,
-          sssContribution: sssAmt,
-          philhealthContribution: phicAmt,
-          pagibigContribution: hdmfAmt,
-          withholdingTax: birAmt,
-          lateDeductions: 0,
-          cashAdvance: 0,
-          salaryLoan: 0,
-          otherDeductions: 0,
+          sssContribution,
+          philhealthContribution,
+          pagibigContribution,
+          withholdingTax,
+          lateDeductions,
+          cashAdvance,
+          salaryLoan,
+          otherDeductions,
           totalDeductions,
           netPay,
           status: "DRAFT",
-          earnings: { create: [...overtimeEarnings, ...holidayEarnings] },
+          earnings: { create: [...overtimeEarnings, ...holidayEarnings, ...profileEarningRows] },
           deductions: { create: deductionRows },
         },
       });
@@ -371,25 +430,28 @@ export async function processRun(id: string) {
     tableName: "payroll_runs",
     recordId: run.id,
     oldValues: { status: run.status },
-    newValues: {
-      status: "PROCESSING",
-      generatedPayslips: processed.payslips.length,
-    },
+    newValues: { status: "PROCESSING", generatedPayslips: processed.payslips.length },
   });
   return processed;
+}
+
+export interface FullyPaidDeduction {
+  employeeDeductionId: string;
+  employeeId: string;
+  employeeName: string;
+  deductionName: string;
+  totalBalance: number;
+  paidAmount: number;
 }
 
 export async function completeRun(id: string, userId: string) {
   const run = await prisma.payrollRun.findUnique({
     where: { id },
-    include: { payslips: { select: { id: true } } },
+    include: { payslips: { select: { id: true, employeeId: true } } },
   });
   if (!run) throw new AppError(404, "Payroll run not found");
   if (run.status !== "PROCESSING") {
-    throw new AppError(
-      409,
-      "Only PROCESSING runs can be completed. Process the run first."
-    );
+    throw new AppError(409, "Only PROCESSING runs can be completed. Process the run first.");
   }
   if (run.payslips.length === 0) {
     throw new AppError(400, "Run has no payslips to finalize");
@@ -402,27 +464,49 @@ export async function completeRun(id: string, userId: string) {
     });
     return tx.payrollRun.update({
       where: { id },
-      data: {
-        status: "COMPLETED",
-        processedBy: userId,
-        processedAt: new Date(),
-      },
+      data: { status: "COMPLETED", processedBy: userId, processedAt: new Date() },
       include: runInclude,
     });
   });
+
+  // Update paidAmount for balance-tracked deductions and collect fully-paid ones.
+  const employeeIds = run.payslips.map((p) => p.employeeId);
+  const trackedDeductions = await prisma.employeeDeduction.findMany({
+    where: { employeeId: { in: employeeIds }, totalBalance: { not: null } },
+    include: {
+      employee: { select: { firstName: true, lastName: true } },
+      deduction: { select: { name: true, amount: true } },
+    },
+  });
+
+  const fullyPaid: FullyPaidDeduction[] = [];
+  for (const ed of trackedDeductions) {
+    const amountPerPayroll = round2(toNum(ed.amount ?? ed.deduction.amount));
+    const newPaidAmount = round2(toNum(ed.paidAmount) + amountPerPayroll);
+    await prisma.employeeDeduction.update({
+      where: { id: ed.id },
+      data: { paidAmount: newPaidAmount },
+    });
+    if (newPaidAmount >= toNum(ed.totalBalance!)) {
+      fullyPaid.push({
+        employeeDeductionId: ed.id,
+        employeeId: ed.employeeId,
+        employeeName: `${ed.employee.firstName} ${ed.employee.lastName}`,
+        deductionName: ed.deduction.name,
+        totalBalance: toNum(ed.totalBalance!),
+        paidAmount: newPaidAmount,
+      });
+    }
+  }
 
   await logAudit({
     action: "UPDATE",
     tableName: "payroll_runs",
     recordId: id,
     oldValues: { status: run.status },
-    newValues: {
-      status: "COMPLETED",
-      processedBy: userId,
-      processedAt: completed.processedAt,
-    },
+    newValues: { status: "COMPLETED", processedBy: userId, processedAt: completed.processedAt },
   });
-  return completed;
+  return { run: completed, fullyPaidDeductions: fullyPaid };
 }
 
 // --- Payslip CRUD ----------------------------------------------------------
@@ -586,13 +670,16 @@ export async function getRunForExport(id: string) {
               firstName: true,
               lastName: true,
               position: true,
-                      basicSalary: true,
+              basicSalary: true,
+              payType: true,
+              hourlyRate: true,
+              employmentStatus: true,
               sssNumber: true,
               philhealthNumber: true,
               pagibigNumber: true,
               tinNumber: true,
               userId: true,
-              branch: { select: { id: true, name: true, city: true } },
+              branch: { select: { id: true, name: true, city: true, address: true } },
             },
           },
           payrollRun: {
@@ -601,7 +688,7 @@ export async function getRunForExport(id: string) {
               periodStart: true,
               periodEnd: true,
               status: true,
-              branch: { select: { id: true, name: true, city: true } },
+              branch: { select: { id: true, name: true, city: true, address: true } },
             },
           },
           earnings: { orderBy: { type: "asc" } },

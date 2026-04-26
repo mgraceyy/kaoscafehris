@@ -1,32 +1,38 @@
 import api from "@/lib/api";
 
+export interface ShiftTypeBranch {
+  branchId: string;
+  branch: { id: string; name: string };
+}
+
 export interface ShiftType {
   id: string;
-  branchId: string;
   name: string;
-  startTime: string; // "HH:MM" format
-  endTime: string;   // "HH:MM" format
+  startTime: string;
+  endTime: string;
   isActive: boolean;
+  branches: ShiftTypeBranch[];
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateShiftTypeInput {
-  branchId: string;
+  branchIds: string[];
   name: string;
   startTime: string;
   endTime: string;
 }
 
 export interface UpdateShiftTypeInput {
+  branchIds?: string[];
   name?: string;
   startTime?: string;
   endTime?: string;
 }
 
-export async function listShiftTypes(branchId: string): Promise<ShiftType[]> {
+export async function listShiftTypes(branchId?: string): Promise<ShiftType[]> {
   const { data } = await api.get<{ data: ShiftType[] }>("/scheduling/shift-types", {
-    params: { branchId },
+    params: branchId ? { branchId } : {},
   });
   return data.data;
 }

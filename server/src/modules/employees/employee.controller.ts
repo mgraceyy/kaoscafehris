@@ -2,6 +2,8 @@ import type { Request, Response, NextFunction } from "express";
 import ExcelJS from "exceljs";
 import { listEmployeeQuerySchema } from "./employee.schema.js";
 import * as employeeService from "./employee.service.js";
+import * as edService from "./employee-deductions.service.js";
+import * as eeService from "./employee-earnings.service.js";
 import prisma from "../../config/db.js";
 
 type IdParams = { id: string };
@@ -64,6 +66,114 @@ export async function deactivate(
   }
 }
 
+// --- Employee Deductions ----------------------------------------------------
+
+type EdParams = { id: string; edId: string };
+
+export async function listDeductions(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    const data = await edService.listEmployeeDeductions(req.params.id);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function addDeduction(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    const data = await edService.addEmployeeDeduction(req.params.id, req.body);
+    res.status(201).json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateDeduction(req: Request<EdParams>, res: Response, next: NextFunction) {
+  try {
+    const data = await edService.updateEmployeeDeduction(req.params.id, req.params.edId, req.body);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function removeDeduction(req: Request<EdParams>, res: Response, next: NextFunction) {
+  try {
+    await edService.removeEmployeeDeduction(req.params.id, req.params.edId);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// --- Employee Earnings ------------------------------------------------------
+
+type EeParams = { id: string; eeId: string };
+
+export async function listEarnings(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    const data = await eeService.listEmployeeEarnings(req.params.id);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function addEarning(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    const data = await eeService.addEmployeeEarning(req.params.id, req.body);
+    res.status(201).json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateEarning(req: Request<EeParams>, res: Response, next: NextFunction) {
+  try {
+    const data = await eeService.updateEmployeeEarning(req.params.id, req.params.eeId, req.body);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function removeEarning(req: Request<EeParams>, res: Response, next: NextFunction) {
+  try {
+    await eeService.removeEmployeeEarning(req.params.id, req.params.eeId);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function xlsxToCsv(buffer: Buffer): Promise<string> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer as any);
+  const ws = wb.worksheets.find((s) => s.state !== "veryHidden" && s.state !== "hidden");
+  if (!ws) throw new Error("No readable sheet found in the uploaded file");
+
+  const rows: string[] = [];
+  ws.eachRow((row) => {
+    const cells = (row.values as (ExcelJS.CellValue | undefined)[])
+      .slice(1) // exceljs uses 1-based index; index 0 is always undefined
+      .map((v) => {
+        let str: string;
+        if (v instanceof Date) {
+          // Serialize date cells as YYYY-MM-DD to avoid timezone-dependent toString output
+          const y = v.getUTCFullYear();
+          const m = String(v.getUTCMonth() + 1).padStart(2, "0");
+          const d = String(v.getUTCDate()).padStart(2, "0");
+          str = `${y}-${m}-${d}`;
+        } else {
+          str = v == null ? "" : String(v);
+        }
+        return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+      });
+    rows.push(cells.join(","));
+  });
+  return rows.join("\n");
+}
+
 export async function importCsv(req: Request, res: Response, next: NextFunction) {
   try {
     if (!req.file) {
@@ -71,33 +181,13 @@ export async function importCsv(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    let csvContent: string;
-
     const isXlsx =
       req.file.originalname.endsWith(".xlsx") ||
       req.file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-    if (isXlsx) {
-      // Convert the first visible sheet to CSV so the existing import logic stays unchanged.
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(req.file.buffer as any);
-      const ws = wb.worksheets.find((s) => s.state !== "veryHidden" && s.state !== "hidden");
-      if (!ws) throw new Error("No readable sheet found in the uploaded file");
-
-      const rows: string[] = [];
-      ws.eachRow((row) => {
-        const cells = (row.values as (ExcelJS.CellValue | undefined)[])
-          .slice(1) // exceljs uses 1-based index; index 0 is always undefined
-          .map((v) => {
-            const str = v == null ? "" : String(v);
-            return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
-          });
-        rows.push(cells.join(","));
-      });
-      csvContent = rows.join("\n");
-    } else {
-      csvContent = req.file.buffer.toString("utf-8");
-    }
+    const csvContent = isXlsx
+      ? await xlsxToCsv(req.file.buffer)
+      : req.file.buffer.toString("utf-8");
 
     const data = await employeeService.importEmployees(csvContent);
     res.json({ data });
@@ -113,32 +203,13 @@ export async function previewImportCsv(req: Request, res: Response, next: NextFu
       return;
     }
 
-    let csvContent: string;
-
     const isXlsx =
       req.file.originalname.endsWith(".xlsx") ||
       req.file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-    if (isXlsx) {
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(req.file.buffer as any);
-      const ws = wb.worksheets.find((s) => s.state !== "veryHidden" && s.state !== "hidden");
-      if (!ws) throw new Error("No readable sheet found in the uploaded file");
-
-      const rows: string[] = [];
-      ws.eachRow((row) => {
-        const cells = (row.values as (ExcelJS.CellValue | undefined)[])
-          .slice(1)
-          .map((v) => {
-            const str = v == null ? "" : String(v);
-            return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
-          });
-        rows.push(cells.join(","));
-      });
-      csvContent = rows.join("\n");
-    } else {
-      csvContent = req.file.buffer.toString("utf-8");
-    }
+    const csvContent = isXlsx
+      ? await xlsxToCsv(req.file.buffer)
+      : req.file.buffer.toString("utf-8");
 
     const data = await employeeService.previewImportEmployees(csvContent);
     res.json({ data });
@@ -179,7 +250,8 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
       { header: "branchId",         key: "branchId",         width: 24 },
       { header: "position",         key: "position",         width: 18 },
       { header: "dateHired",        key: "dateHired",        width: 14 },
-      { header: "basicSalary",      key: "basicSalary",      width: 14 },
+      { header: "payType",          key: "payType",          width: 16 },
+      { header: "rate",             key: "rate",             width: 16 },
       { header: "employmentStatus", key: "employmentStatus", width: 18 },
       // Contact
       { header: "phone",            key: "phone",            width: 16 },
@@ -200,6 +272,9 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
     });
     headerRow.height = 20;
 
+    // Note on the rate column
+    ws.getCell(1, 12).note = "Enter the monthly salary if payType is MONTHLY_FIXED, or the hourly rate if payType is HOURLY.";
+
     // Example row — styled gray/italic so users know to delete it before importing
     const exampleRow = ws.addRow({
       employeeId: "EXAMPLE-001",
@@ -212,7 +287,8 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
       branchId: branchNames[0] ?? "",
       position: "Barista",
       dateHired: "2024-01-15",
-      basicSalary: 18000,
+      payType: "MONTHLY_FIXED",
+      rate: 18000,
       employmentStatus: "ACTIVE",
       phone: "09171234567",
       sssNumber: "12-3456789-0",
@@ -230,7 +306,14 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
     noteCell.font = { italic: true, color: { argb: "FFCC0000" } };
 
     const MAX_ROWS = 500;
-    const branchCol = 8; // column H (branchId moved to col 8 after middleName was inserted)
+    // Column positions (1-based):
+    // 1=employeeId 2=firstName 3=lastName 4=middleName 5=email 6=password
+    // 7=role 8=branchId 9=position 10=dateHired 11=payType 12=rate
+    // 13=employmentStatus 14=phone 15=sssNumber ...
+    const branchCol = 8;
+    const roleCol = 7;
+    const payTypeCol = 11;
+    const statusCol = 13;
 
     if (branchNames.length > 0) {
       const branchFormula = `_branches!$A$1:$A$${branchNames.length}`;
@@ -245,16 +328,22 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
       }
     }
 
-    // role dropdown (col 7) and employmentStatus dropdown (col 13)
     for (let r = 2; r <= MAX_ROWS; r++) {
-      ws.getCell(r, 7).dataValidation = {
+      ws.getCell(r, roleCol).dataValidation = {
         type: "list",
         formulae: ['"EMPLOYEE,MANAGER,ADMIN"'],
         showErrorMessage: true,
         errorTitle: "Invalid role",
         error: "Choose EMPLOYEE, MANAGER, or ADMIN.",
       };
-      ws.getCell(r, 13).dataValidation = {
+      ws.getCell(r, payTypeCol).dataValidation = {
+        type: "list",
+        formulae: ['"MONTHLY_FIXED,HOURLY"'],
+        showErrorMessage: true,
+        errorTitle: "Invalid pay type",
+        error: "Choose MONTHLY_FIXED or HOURLY.",
+      };
+      ws.getCell(r, statusCol).dataValidation = {
         type: "list",
         formulae: ['"ACTIVE,INACTIVE,ON_LEAVE"'],
         showErrorMessage: true,
@@ -262,6 +351,7 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
         error: "Choose ACTIVE, INACTIVE, or ON_LEAVE.",
       };
     }
+
 
     const buf = await wb.xlsx.writeBuffer();
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

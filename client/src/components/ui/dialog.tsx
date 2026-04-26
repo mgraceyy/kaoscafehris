@@ -7,9 +7,10 @@ interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
+  className?: string;
 }
 
-export function Dialog({ open, onOpenChange, children }: DialogProps) {
+export function Dialog({ open, onOpenChange, children, className }: DialogProps) {
   React.useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -37,7 +38,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 w-full max-w-lg rounded-lg border bg-card p-6 text-card-foreground shadow-xl"
+        className={cn("relative z-10 w-full max-w-lg rounded-lg border bg-card p-6 text-card-foreground shadow-xl", className)}
         onClick={(e) => e.stopPropagation()}
       >
         <button

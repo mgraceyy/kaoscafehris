@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, format, getDay, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, format, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
@@ -44,7 +44,9 @@ export default function SchedulingPage() {
   const [view, setView] = useState<"weekly" | "monthly">("weekly");
   const [calendarWeek, setCalendarWeek] = useState<Date>(new Date());
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
-  const [branchId, setBranchId] = useState<string>("");
+  const [branchIds, setBranchIds] = useState<string[]>([]);
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+  const branchDropdownRef = useRef<HTMLDivElement>(null);
   const [assignShiftDialogOpen, setAssignShiftDialogOpen] = useState(false);
   const [assignShiftInitialDate, setAssignShiftInitialDate] = useState<string | undefined>();
   const [dialogShift, setDialogShift] = useState<Shift | null>(null);
@@ -63,10 +65,21 @@ export default function SchedulingPage() {
 
   // Auto-select when there's only one branch
   useEffect(() => {
-    if (branchesQuery.data?.length === 1 && !branchId) {
-      setBranchId(branchesQuery.data[0].id);
+    if (branchesQuery.data?.length === 1 && branchIds.length === 0) {
+      setBranchIds([branchesQuery.data[0].id]);
     }
-  }, [branchesQuery.data, branchId]);
+  }, [branchesQuery.data, branchIds]);
+
+  // Close branch dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
+        setBranchDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const calWeekStart = startOfWeek(calendarWeek, { weekStartsOn: 1 });
   const calMonthStart = startOfMonth(calendarMonth);
@@ -75,11 +88,11 @@ export default function SchedulingPage() {
   const filters = useMemo(() => {
     const isWeekly = view === "weekly";
     return {
-      branchId: branchId || undefined,
+      branchIds: branchIds.length > 0 ? branchIds : undefined,
       startDate: format(isWeekly ? calWeekStart : calMonthStart, "yyyy-MM-dd"),
       endDate: format(isWeekly ? addWeeks(calWeekStart, 1) : calMonthEnd, "yyyy-MM-dd"),
     };
-  }, [branchId, view, calWeekStart, calMonthStart, calMonthEnd]);
+  }, [branchIds, view, calWeekStart, calMonthStart, calMonthEnd]);
 
   const query = useQuery({
     queryKey: ["shifts", filters],
@@ -87,12 +100,11 @@ export default function SchedulingPage() {
   });
 
   const shiftTypesQuery = useQuery({
-    queryKey: ["shift-types", branchId],
-    queryFn: () => listShiftTypes(branchId),
-    enabled: !!branchId,
+    queryKey: ["shift-types"],
+    queryFn: () => listShiftTypes(),
   });
 
-  const hasNoShiftTypes = !!branchId && !shiftTypesQuery.isLoading && (shiftTypesQuery.data?.length ?? 0) === 0;
+  const hasNoShiftTypes = !shiftTypesQuery.isLoading && (shiftTypesQuery.data?.length ?? 0) === 0;
 
   const remove = useMutation({
     mutationFn: (id: string) => deleteShift(id),
@@ -187,16 +199,55 @@ export default function SchedulingPage() {
             </button>
           </div>
           {branchesQuery.data && branchesQuery.data.length > 1 && (
-            <select
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-            >
-              <option value="">All Branches</option>
-              {branchesQuery.data.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
+            <div className="relative" ref={branchDropdownRef}>
+              <button
+                onClick={() => setBranchDropdownOpen((o) => !o)}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                {branchIds.length === 0
+                  ? "All Branches"
+                  : branchIds.length === 1
+                  ? branchesQuery.data.find((b) => b.id === branchIds[0])?.name ?? "1 Branch"
+                  : `${branchIds.length} Branches`}
+                <ChevronDown className="h-4 w-4 text-gray-400" />
+              </button>
+              {branchDropdownOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-gray-200 bg-white shadow-lg">
+                  <div className="p-1">
+                    <label className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5"
+                        checked={branchIds.length === 0}
+                        onChange={() => setBranchIds([])}
+                      />
+                      <span className="font-medium">All Branches</span>
+                    </label>
+                    <div className="my-1 border-t border-gray-100" />
+                    {branchesQuery.data.map((b) => (
+                      <label
+                        key={b.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5"
+                          checked={branchIds.includes(b.id)}
+                          onChange={(e) =>
+                            setBranchIds((prev) =>
+                              e.target.checked
+                                ? [...prev, b.id]
+                                : prev.filter((id) => id !== b.id)
+                            )
+                          }
+                        />
+                        {b.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           <button
             onClick={() => setTemplateDialogOpen(true)}
@@ -464,7 +515,7 @@ export default function SchedulingPage() {
       <AssignShiftDialog open={assignShiftDialogOpen} onOpenChange={setAssignShiftDialogOpen} initialDate={assignShiftInitialDate} />
       <ShiftFormDialog open={dialogOpen} onOpenChange={setDialogOpen} shift={dialogShift} />
       <AssignEmployeesDialog open={!!assignShift} onOpenChange={(o) => !o && setAssignShift(null)} shift={assignShift} />
-      <ShiftTypesDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} branchId={branchId} />
+      <ShiftTypesDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} />
 
       <ConfirmDialog
         open={!!confirmDelete}

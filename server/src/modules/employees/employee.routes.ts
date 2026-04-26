@@ -19,4 +19,16 @@ router.post("/import", csvUpload.single("file"), employeeController.importCsv);
 router.put("/:id", validate(updateEmployeeSchema), employeeController.update);
 router.delete("/:id", employeeController.deactivate);
 
+// Employee deduction assignments
+router.get("/:id/deductions", employeeController.listDeductions);
+router.post("/:id/deductions", employeeController.addDeduction);
+router.patch("/:id/deductions/:edId", employeeController.updateDeduction);
+router.delete("/:id/deductions/:edId", employeeController.removeDeduction);
+
+// Employee earning assignments
+router.get("/:id/earnings", employeeController.listEarnings);
+router.post("/:id/earnings", employeeController.addEarning);
+router.patch("/:id/earnings/:eeId", employeeController.updateEarning);
+router.delete("/:id/earnings/:eeId", employeeController.removeEarning);
+
 export default router;

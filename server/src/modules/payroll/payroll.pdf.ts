@@ -1,5 +1,24 @@
 import PDFDocument from "pdfkit";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+import { createRequire } from "module";
 import type { Prisma } from "@prisma/client";
+
+const _require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SVGtoPDF = _require("svg-to-pdfkit") as (doc: any, svg: string, x: number, y: number, options?: Record<string, unknown>) => void;
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Load the logo SVG once at module init; fall back to null if unavailable
+const LOGO_SVG = (() => {
+  try {
+    return readFileSync(join(__dirname, "../../../../client/public/kaos-logo.svg"), "utf-8");
+  } catch {
+    return null;
+  }
+})();
 
 type PayslipWithRelations = Prisma.PayslipGetPayload<{
   include: {
@@ -11,11 +30,14 @@ type PayslipWithRelations = Prisma.PayslipGetPayload<{
         lastName: true;
         position: true;
         basicSalary: true;
+        payType: true;
+        hourlyRate: true;
+        employmentStatus: true;
         sssNumber: true;
         philhealthNumber: true;
         pagibigNumber: true;
         tinNumber: true;
-        branch: { select: { id: true; name: true; city: true } };
+        branch: { select: { id: true; name: true; city: true; address: true } };
       };
     };
     payrollRun: {
@@ -24,7 +46,7 @@ type PayslipWithRelations = Prisma.PayslipGetPayload<{
         periodStart: true;
         periodEnd: true;
         status: true;
-        branch: { select: { id: true; name: true; city: true } };
+        branch: { select: { id: true; name: true; city: true; address: true } };
       };
     };
     earnings: true;
@@ -33,9 +55,8 @@ type PayslipWithRelations = Prisma.PayslipGetPayload<{
 }>;
 
 const BRAND = "#8C1515";
-const GOV_TYPES = new Set(["SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX"]);
 
-// Helvetica (WinAnsi) cannot render the peso glyph (U+20B1) — use "P" prefix.
+// Helvetica (WinAnsi) cannot render U+20B1 — use "P" prefix.
 const PHP = (n: Prisma.Decimal | number | string): string => {
   const v = typeof n === "number" ? n : Number(n);
   const num = Number.isFinite(v) ? v : 0;
@@ -48,16 +69,148 @@ const PHP = (n: Prisma.Decimal | number | string): string => {
   );
 };
 
-function fmtPeriod(start: Date, end: Date): string {
-  const opts: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
+function fmtShort(d: Date): string {
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${String(d.getUTCFullYear()).slice(-2)}`;
+}
+
+function fmtEmploymentStatus(s: string): string {
+  const map: Record<string, string> = {
+    ACTIVE: "Full Time",
+    ON_LEAVE: "On Leave",
+    INACTIVE: "Inactive",
+    TERMINATED: "Terminated",
   };
-  const s = start.toLocaleDateString("en-US", opts);
-  const e = end.toLocaleDateString("en-US", { ...opts, year: "numeric" });
-  // en-dash U+2013 is in WinAnsi; safe for Helvetica
-  return `Payslip for ${s} – ${e}`;
+  return map[s] ?? s;
+}
+
+interface TableRow {
+  label: string;
+  units?: string;
+  amount: string;
+  amountColor?: string;
+}
+
+function drawSection(
+  doc: InstanceType<typeof PDFDocument>,
+  title: string,
+  rows: TableRow[],
+  totalAmount: string,
+  totalAmountColor: string,
+  startY: number,
+  margin: number,
+  pageW: number
+): number {
+  const ROW_H = 17;
+  const rightX = margin + pageW;
+  const descW = 272;
+  const hoursW = 105;
+  const totalW = pageW - descW - hoursW;
+  const hoursX = margin + descW;
+  const totalX = hoursX + hoursW;
+
+  let y = startY;
+
+  // Section title row
+  doc.rect(margin, y, pageW, ROW_H).fill(BRAND);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(8.5)
+    .fillColor("white")
+    .text(title.toUpperCase(), margin + 8, y + 5, { lineBreak: false });
+  y += ROW_H;
+
+  // Column header row
+  doc.rect(margin, y, pageW, ROW_H).fill("#F0F0F0");
+  doc.font("Helvetica").fontSize(7.5).fillColor("#888888");
+  doc.text("Description", margin + 8, y + 5, { lineBreak: false });
+
+  const hdrHours = "Hours / units";
+  const hdrHoursW = doc.widthOfString(hdrHours);
+  doc.text(hdrHours, hoursX + (hoursW - hdrHoursW) / 2, y + 5, { lineBreak: false });
+
+  const hdrTotal = "Total";
+  const hdrTotalW = doc.widthOfString(hdrTotal);
+  doc.text(hdrTotal, rightX - hdrTotalW - 8, y + 5, { lineBreak: false });
+
+  doc
+    .moveTo(hoursX, y)
+    .lineTo(hoursX, y + ROW_H)
+    .strokeColor("#D0D0D0")
+    .lineWidth(0.5)
+    .stroke();
+  doc.moveTo(totalX, y).lineTo(totalX, y + ROW_H).stroke();
+  doc.moveTo(margin, y + ROW_H).lineTo(rightX, y + ROW_H).stroke();
+  y += ROW_H;
+
+  // Data rows
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    doc.rect(margin, y, pageW, ROW_H).fill(i % 2 === 0 ? "white" : "#FAFAFA");
+
+    doc
+      .font("Helvetica")
+      .fontSize(8.5)
+      .fillColor("#374151")
+      .text(row.label, margin + 8, y + 4, { lineBreak: false });
+
+    if (row.units) {
+      const uw = doc.widthOfString(row.units);
+      doc
+        .font("Helvetica")
+        .fontSize(8.5)
+        .fillColor("#374151")
+        .text(row.units, hoursX + (hoursW - uw) / 2, y + 4, { lineBreak: false });
+    }
+
+    const amtColor = row.amountColor ?? BRAND;
+    const aw = doc.widthOfString(row.amount);
+    doc
+      .font("Helvetica")
+      .fontSize(8.5)
+      .fillColor(amtColor)
+      .text(row.amount, rightX - aw - 8, y + 4, { lineBreak: false });
+
+    doc
+      .moveTo(hoursX, y)
+      .lineTo(hoursX, y + ROW_H)
+      .strokeColor("#E5E7EB")
+      .lineWidth(0.5)
+      .stroke();
+    doc.moveTo(totalX, y).lineTo(totalX, y + ROW_H).stroke();
+    doc.moveTo(margin, y + ROW_H).lineTo(rightX, y + ROW_H).stroke();
+    y += ROW_H;
+  }
+
+  // Total row
+  doc.rect(margin, y, pageW, ROW_H).fill("#F5F5F5");
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(8.5)
+    .fillColor("#111827")
+    .text("Total", margin + 8, y + 4, { lineBreak: false });
+  const taw = doc.widthOfString(totalAmount);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(8.5)
+    .fillColor(totalAmountColor)
+    .text(totalAmount, rightX - taw - 8, y + 4, { lineBreak: false });
+  doc
+    .moveTo(hoursX, y)
+    .lineTo(hoursX, y + ROW_H)
+    .strokeColor("#E5E7EB")
+    .lineWidth(0.5)
+    .stroke();
+  doc.moveTo(totalX, y).lineTo(totalX, y + ROW_H).stroke();
+  y += ROW_H;
+
+  // Outer border
+  doc
+    .rect(margin, startY, pageW, y - startY)
+    .strokeColor("#CCCCCC")
+    .lineWidth(0.5)
+    .stroke();
+
+  return y;
 }
 
 export function renderPayslip(
@@ -69,186 +222,208 @@ export function renderPayslip(
   const pageW = doc.page.width - margin * 2;
   const rightX = margin + pageW;
 
-  // ── Header bar ─────────────────────────────────────────────────────────────
-  const headerH = 60;
-  doc.rect(0, 0, doc.page.width, headerH).fill(BRAND);
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(17)
-    .fillColor("white")
-    .text("KAOS HRIS", margin, 13);
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .fillColor("white")
-    .text(fmtPeriod(payrollRun.periodStart, payrollRun.periodEnd), margin, 33);
+  // Branch address (use payrollRun branch as the authoritative source)
+  const branch = payrollRun.branch;
+  const branchAddress = branch.address ?? "";
+  const branchCity = branch.city ?? "";
 
-  let y = headerH + 18;
-  doc.fillColor("black");
+  // Pay rate helpers
+  const hourlyRate =
+    employee.payType === "HOURLY"
+      ? Number(employee.hourlyRate ?? 0)
+      : Number(employee.basicSalary) / 26 / 8;
+  const dailyRate = hourlyRate * 8;
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  const numHours = (amount: Prisma.Decimal | number | string): string => {
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n === 0 || hourlyRate <= 0) return "";
+    return (n / hourlyRate).toFixed(2);
+  };
 
-  /** Small uppercase section heading. Advances y via doc.y. */
-  const sectionLabel = (title: string) => {
-    y += 4;
+  // Pay date = period end + 5 calendar days
+  const payDate = new Date(payrollRun.periodEnd);
+  payDate.setUTCDate(payDate.getUTCDate() + 5);
+
+  let y = margin;
+
+  // ── HEADER BOX ────────────────────────────────────────────────────────────────
+  const headerH = 70;
+  doc.rect(margin, y, pageW, headerH).strokeColor("#CCCCCC").lineWidth(0.5).stroke();
+
+  // Logo: render SVG if available, otherwise a styled "K" monogram
+  const logoSz = 40;
+  const logoX = margin + 14;
+  const logoY = y + (headerH - logoSz) / 2;
+
+  if (LOGO_SVG) {
+    SVGtoPDF(doc, LOGO_SVG, logoX, logoY, { width: logoSz, height: logoSz });
+  } else {
+    doc.roundedRect(logoX, logoY, logoSz, logoSz, 5).fill(BRAND);
     doc
       .font("Helvetica-Bold")
-      .fontSize(7)
-      .fillColor("#9CA3AF")
-      .text(title.toUpperCase(), margin, y, { characterSpacing: 0.8 });
-    y = doc.y + 5;
-    doc.fillColor("black");
-  };
-
-  const divider = (color = "#E5E7EB") => {
-    doc
-      .moveTo(margin, y)
-      .lineTo(rightX, y)
-      .strokeColor(color)
-      .lineWidth(0.5)
-      .stroke();
-    y += 8;
-  };
-
-  /**
-   * One label + right-aligned amount row.
-   *
-   * Key: render label WITHOUT lineBreak:false so doc.y advances correctly;
-   * capture nextY after label; render amount at the ORIGINAL y so it sits on
-   * the same baseline; advance y to nextY + gap.
-   */
-  const rowLine = (
-    label: string,
-    amount: string,
-    opts?: { bold?: boolean; red?: boolean }
-  ) => {
-    const bold = opts?.bold ?? false;
-    const red = opts?.red ?? false;
-    const rowY = y;
-
-    // Measure amount width while font is set correctly
-    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(9.5);
-    const amtW = doc.widthOfString(amount);
-
-    // Render label — this call advances doc.y
-    doc
-      .fillColor(bold ? "#111827" : "#6B7280")
-      .text(label, margin, rowY, { width: pageW * 0.65 });
-    const nextY = doc.y;
-
-    // Render amount at same row baseline — lineBreak:false prevents wrapping
-    doc
-      .font(bold ? "Helvetica-Bold" : "Helvetica")
-      .fontSize(9.5)
-      .fillColor(red ? "#DC2626" : "#111827")
-      .text(amount, rightX - amtW, rowY, { lineBreak: false });
-
-    doc.fillColor("black");
-    y = nextY + 3;
-  };
-
-  // ── Employee Information ────────────────────────────────────────────────────
-  sectionLabel("Employee Information");
-
-  const halfW = pageW / 2;
-  const rx = margin + halfW;
-  const iY = y;
-
-  // Left column — fixed offsets so both columns share the same y grid
-  doc.font("Helvetica").fontSize(7).fillColor("#9CA3AF").text("Name", margin, iY);
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(10)
-    .fillColor("#111827")
-    .text(`${employee.firstName} ${employee.lastName}`, margin, iY + 10, {
-      width: halfW - 8,
-    });
-  doc.font("Helvetica").fontSize(7).fillColor("#9CA3AF").text("Position", margin, iY + 26);
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(10)
-    .fillColor("#111827")
-    .text(employee.position, margin, iY + 36, { width: halfW - 8 });
-
-  // Right column
-  doc.font("Helvetica").fontSize(7).fillColor("#9CA3AF").text("Employee ID", rx, iY);
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(10)
-    .fillColor("#111827")
-    .text(employee.employeeId, rx, iY + 10, { width: halfW });
-  doc.font("Helvetica").fontSize(7).fillColor("#9CA3AF").text("Branch", rx, iY + 26);
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(10)
-    .fillColor("#111827")
-    .text(payrollRun.branch.name, rx, iY + 36, { width: halfW });
-
-  doc.fillColor("black");
-  y = iY + 54;
-  divider();
-
-  // ── Earnings ───────────────────────────────────────────────────────────────
-  sectionLabel("Earnings");
-  rowLine("Base Salary (bi-monthly)", PHP(payslip.basicPay));
-  for (const e of earnings) rowLine(e.label, PHP(e.amount));
-  divider("#D1D5DB");
-  rowLine("Gross Pay", PHP(payslip.grossPay), { bold: true });
-  y += 6;
-
-  // ── Deductions ─────────────────────────────────────────────────────────────
-  const regularDeductions = deductions.filter((d) => !GOV_TYPES.has(d.type));
-  if (regularDeductions.length > 0) {
-    sectionLabel("Deductions");
-    for (const d of regularDeductions) rowLine(d.label, PHP(d.amount));
-    y += 4;
+      .fontSize(22)
+      .fillColor("white")
+      .text("K", logoX, logoY + 9, { width: logoSz, align: "center", lineBreak: false });
   }
 
-  // ── Government Contributions ───────────────────────────────────────────────
-  const govDeductions = deductions.filter((d) => GOV_TYPES.has(d.type));
-  if (govDeductions.length > 0) {
-    sectionLabel("Government Contributions");
-    for (const d of govDeductions) rowLine(d.label, PHP(d.amount));
-    y += 4;
-  }
-
-  // ── Summary ────────────────────────────────────────────────────────────────
-  divider();
-  sectionLabel("Summary");
-  rowLine("Gross Pay", PHP(payslip.grossPay));
-  rowLine("Total Deductions", `- ${PHP(payslip.totalDeductions)}`, { red: true });
-  y += 6;
-
-  // Net Pay box
-  const netBoxH = 40;
-  const boxY = y;
-  doc.roundedRect(margin, boxY, pageW, netBoxH, 4).fill("#FDF5F5");
-
+  // Title text (right of logo)
+  const titleAreaX = logoX + logoSz + 12;
+  const titleAreaW = rightX - titleAreaX;
   doc
     .font("Helvetica-Bold")
-    .fontSize(10.5)
+    .fontSize(18)
     .fillColor("#111827")
-    .text("Net Pay", margin + 14, boxY + 12);
-
-  const netStr = PHP(payslip.netPay);
-  doc.font("Helvetica-Bold").fontSize(15);
-  const netW = doc.widthOfString(netStr);
+    .text("Payslip", titleAreaX, y + 14, { width: titleAreaW, align: "center", lineBreak: false });
   doc
+    .font("Helvetica-Bold")
+    .fontSize(10)
     .fillColor(BRAND)
-    .text(netStr, rightX - netW - 14, boxY + 10);
+    .text("KAOS Cafe", titleAreaX, y + 39, { width: titleAreaW, align: "center", lineBreak: false });
 
-  doc.fillColor("black");
-  y = boxY + netBoxH + 16;
+  y += headerH + 6;
 
-  // ── Footer ─────────────────────────────────────────────────────────────────
+  // ── ADDRESS ───────────────────────────────────────────────────────────────────
+  doc.font("Helvetica").fontSize(7.5).fillColor("#6B7280");
+  if (branchAddress) {
+    doc.text(branchAddress, margin, y, { width: pageW, align: "center", lineBreak: false });
+    y += 11;
+  }
+  if (branchCity) {
+    doc.text(branchCity, margin, y, { width: pageW, align: "center", lineBreak: false });
+    y += 11;
+  }
+  y += 5;
+
+  // Separator
+  doc.moveTo(margin, y).lineTo(rightX, y).strokeColor("#E5E7EB").lineWidth(0.5).stroke();
+  y += 10;
+
+  // ── EMPLOYEE INFO ─────────────────────────────────────────────────────────────
+  const col2X = margin + pageW * 0.5;
+
+  const infoLbl = (text: string, x: number, iy: number) => {
+    doc
+      .font("Helvetica")
+      .fontSize(7.5)
+      .fillColor("#6B7280")
+      .text(text, x, iy, { lineBreak: false });
+  };
+  const infoVal = (text: string, x: number, iy: number, color = "#111827") => {
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8.5)
+      .fillColor(color)
+      .text(text, x, iy, { lineBreak: false });
+  };
+
+  // Row 1: Employee name | Pay period
+  infoLbl("Employee name:", margin, y);
+  infoVal(`${employee.firstName} ${employee.lastName}`, margin + 82, y);
+  infoLbl("Pay period:", col2X, y);
+  infoVal(
+    `${fmtShort(payrollRun.periodStart)} - ${fmtShort(payrollRun.periodEnd)}`,
+    col2X + 57,
+    y
+  );
+  y += 14;
+
+  // Row 2: Employment status | Pay date
+  infoLbl("Employment status:", margin, y);
+  infoVal(fmtEmploymentStatus(employee.employmentStatus), margin + 96, y, BRAND);
+  infoLbl("Pay date:", col2X, y);
+  infoVal(fmtShort(payDate), col2X + 53, y);
+  y += 14;
+
+  // Row 3: Daily rate
+  infoLbl("Daily rate:", margin, y);
+  infoVal(PHP(dailyRate), margin + 57, y);
+  y += 18;
+
+  // Separator
+  doc.moveTo(margin, y).lineTo(rightX, y).strokeColor("#E5E7EB").lineWidth(0.5).stroke();
+  y += 10;
+
+  // ── ENTITLEMENTS TABLE ────────────────────────────────────────────────────────
+  const entRows: TableRow[] = [
+    {
+      label: "Regular Hours",
+      units: numHours(payslip.basicPay),
+      amount: PHP(payslip.basicPay),
+      amountColor: BRAND,
+    },
+    ...earnings.map((e) => ({
+      label: e.label,
+      units:
+        e.type === "OVERTIME"
+          ? numHours(e.amount)
+          : e.type === "HOLIDAY_PAY"
+          ? "0"
+          : "",
+      amount: PHP(e.amount),
+      amountColor: BRAND,
+    })),
+  ];
+  y = drawSection(doc, "Entitlements", entRows, PHP(payslip.grossPay), BRAND, y, margin, pageW);
+  y += 10;
+
+  // ── DEDUCTIONS TABLE ──────────────────────────────────────────────────────────
+  const dedRows: TableRow[] = deductions.map((d) => ({
+    label: d.label,
+    units: d.type === "LATE" ? numHours(d.amount) : "",
+    amount: PHP(d.amount),
+    amountColor: "#DC2626",
+  }));
+  y = drawSection(
+    doc,
+    "Deductions",
+    dedRows,
+    PHP(payslip.totalDeductions),
+    "#DC2626",
+    y,
+    margin,
+    pageW
+  );
+  y += 10;
+
+  // ── NET PAY ───────────────────────────────────────────────────────────────────
+  const netH = 24;
+  doc.rect(margin, y, pageW, netH).fill("white");
+  doc.rect(margin, y, pageW, netH).strokeColor("#CCCCCC").lineWidth(0.5).stroke();
+
   doc
     .font("Helvetica")
-    .fontSize(7.5)
+    .fontSize(8.5)
+    .fillColor("#6B7280")
+    .text("Net pay", margin + 8, y + 8, { lineBreak: false });
+
+  const netAmtStr = PHP(payslip.netPay);
+  doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND);
+  const netAmtW = doc.widthOfString(netAmtStr);
+
+  const totalNetLabel = "Total net pay:";
+  doc.font("Helvetica").fontSize(8.5).fillColor("#374151");
+  const totalNetLabelW = doc.widthOfString(totalNetLabel);
+  doc.text(totalNetLabel, rightX - netAmtW - totalNetLabelW - 14, y + 8, {
+    lineBreak: false,
+  });
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(11)
+    .fillColor(BRAND)
+    .text(netAmtStr, rightX - netAmtW - 8, y + 6, { lineBreak: false });
+
+  y += netH + 12;
+
+  // ── FOOTER ───────────────────────────────────────────────────────────────────
+  doc
+    .font("Helvetica")
+    .fontSize(7)
     .fillColor("#9CA3AF")
     .text(
       `Status: ${payslip.status}  ·  Generated: ${new Date().toLocaleString("en-PH")}`,
       margin,
-      y
+      y,
+      { lineBreak: false }
     );
   doc.fillColor("black");
 }

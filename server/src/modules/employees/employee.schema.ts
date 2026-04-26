@@ -56,10 +56,17 @@ export const createEmployeeSchema = z.object({
   position: z.string().trim().min(1).max(100),
   employmentStatus: employmentStatusEnum.default("ACTIVE"),
   dateHired: requiredDate,
+  payType: z.enum(["MONTHLY_FIXED", "HOURLY"]).default("MONTHLY_FIXED"),
   basicSalary: z
     .union([z.number(), z.string()])
     .transform((v) => (typeof v === "string" ? Number(v) : v))
-    .pipe(z.number().positive("Salary must be greater than zero").max(10_000_000)),
+    .pipe(z.number().min(0).max(10_000_000))
+    .default(0),
+  hourlyRate: z
+    .union([z.number(), z.string()])
+    .transform((v) => (typeof v === "string" ? Number(v) : v))
+    .pipe(z.number().min(0).max(10_000_000))
+    .optional(),
 
   sssNumber: emptyToUndef(z.string().trim().max(30)),
   philhealthNumber: emptyToUndef(z.string().trim().max(30)),

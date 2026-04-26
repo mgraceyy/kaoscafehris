@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,11 +13,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
+import { listDeductions } from "@/features/deductions/deductions.api";
 import {
   adjustPayslip,
   formatCurrency,
   getPayslip,
   type AdjustPayslipInput,
+  type EarningType,
+  type DeductionType,
 } from "./payroll.api";
 
 interface Props {
@@ -26,35 +29,42 @@ interface Props {
   payslipId: string | null;
 }
 
-interface FormState {
-  basicPay: string;
-  overtimePay: string;
-  bonus: string;
-  allowance: string;
-  holidayPay: string;
-  sss: string;
-  philhealth: string;
-  pagibig: string;
-  withholdingTax: string;
-  lateDeduction: string;
-  cashAdvance: string;
-  salaryLoan: string;
+interface EarningRow {
+  _id: string;
+  type: EarningType;
+  label: string;
+  amount: string;
 }
 
-const ZERO_FORM: FormState = {
-  basicPay: "0",
-  overtimePay: "0",
-  bonus: "0",
-  allowance: "0",
-  holidayPay: "0",
-  sss: "0",
-  philhealth: "0",
-  pagibig: "0",
-  withholdingTax: "0",
-  lateDeduction: "0",
-  cashAdvance: "0",
-  salaryLoan: "0",
-};
+// selectedTabId = tab deduction id, "custom" for manual entry, or "" (unselected)
+interface DeductionRow {
+  _id: string;
+  selectedTabId: string;
+  type: DeductionType;
+  label: string;
+  amount: string;
+}
+
+const EARNING_TYPES: { value: EarningType; label: string }[] = [
+  { value: "OVERTIME", label: "Overtime" },
+  { value: "BONUS", label: "Bonus" },
+  { value: "ALLOWANCE", label: "Allowance" },
+  { value: "HOLIDAY_PAY", label: "Holiday Pay" },
+  { value: "OTHER", label: "Other" },
+];
+
+function defaultEarningLabel(type: EarningType): string {
+  return EARNING_TYPES.find((t) => t.value === type)?.label ?? type;
+}
+
+function tabTypeToDeductionType(type: string | null | undefined): DeductionType {
+  const valid: DeductionType[] = ["SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX", "LATE", "CASH_ADVANCE", "SALARY_LOAN", "OTHER"];
+  return valid.includes(type as DeductionType) ? (type as DeductionType) : "OTHER";
+}
+
+function uid(): string {
+  return Math.random().toString(36).slice(2);
+}
 
 function toAmount(v: string): number {
   const n = parseFloat(v);
@@ -64,7 +74,9 @@ function toAmount(v: string): number {
 export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [form, setForm] = useState<FormState>(ZERO_FORM);
+  const [basicPay, setBasicPay] = useState("0");
+  const [earnings, setEarnings] = useState<EarningRow[]>([]);
+  const [deductions, setDeductions] = useState<DeductionRow[]>([]);
 
   const payslipQuery = useQuery({
     queryKey: ["payslip", payslipId],
@@ -72,49 +84,49 @@ export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Pro
     enabled: open && !!payslipId,
   });
 
+  const deductionsQuery = useQuery({
+    queryKey: ["deductions"],
+    queryFn: listDeductions,
+    enabled: open,
+  });
+
   useEffect(() => {
     if (!payslipQuery.data) return;
     const d = payslipQuery.data;
-    const earn = (type: string) =>
-      String(Number(d.earnings.find((e) => e.type === type)?.amount ?? 0));
-    const deduct = (type: string) =>
-      String(Number(d.deductions.find((x) => x.type === type)?.amount ?? 0));
-    setForm({
-      basicPay: String(Number(d.basicPay)),
-      overtimePay: earn("OVERTIME"),
-      bonus: earn("BONUS"),
-      allowance: earn("ALLOWANCE"),
-      holidayPay: earn("HOLIDAY_PAY"),
-      sss: deduct("SSS"),
-      philhealth: deduct("PHILHEALTH"),
-      pagibig: deduct("PAGIBIG"),
-      withholdingTax: deduct("BIR_TAX"),
-      lateDeduction: deduct("LATE"),
-      cashAdvance: deduct("CASH_ADVANCE"),
-      salaryLoan: deduct("SALARY_LOAN"),
-    });
+    const templates = deductionsQuery.data ?? [];
+    setBasicPay(String(Number(d.basicPay)));
+    setEarnings(
+      d.earnings.map((e) => ({
+        _id: uid(),
+        type: e.type as EarningType,
+        label: e.label,
+        amount: String(Number(e.amount)),
+      }))
+    );
+    setDeductions(
+      d.deductions.map((x) => {
+        const match = templates.find((t) => t.name === x.label);
+        return {
+          _id: uid(),
+          selectedTabId: match ? match.id : "custom",
+          type: x.type as DeductionType,
+          label: x.label,
+          amount: String(Number(x.amount)),
+        };
+      })
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payslipQuery.data]);
 
   const locked = payslipQuery.data?.payrollRun.status === "COMPLETED";
 
   const totals = useMemo(() => {
-    const bp = toAmount(form.basicPay);
-    const gross =
-      bp +
-      toAmount(form.overtimePay) +
-      toAmount(form.bonus) +
-      toAmount(form.allowance) +
-      toAmount(form.holidayPay);
-    const dedTotal =
-      toAmount(form.sss) +
-      toAmount(form.philhealth) +
-      toAmount(form.pagibig) +
-      toAmount(form.withholdingTax) +
-      toAmount(form.lateDeduction) +
-      toAmount(form.cashAdvance) +
-      toAmount(form.salaryLoan);
+    const bp = toAmount(basicPay);
+    const earnTotal = earnings.reduce((s, r) => s + toAmount(r.amount), 0);
+    const dedTotal = deductions.reduce((s, r) => s + toAmount(r.amount), 0);
+    const gross = bp + earnTotal;
     return { gross, deductions: dedTotal, net: gross - dedTotal };
-  }, [form]);
+  }, [basicPay, earnings, deductions]);
 
   const mutation = useMutation({
     mutationFn: (input: AdjustPayslipInput) => adjustPayslip(payslipId!, input),
@@ -128,43 +140,45 @@ export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Pro
   });
 
   function submit() {
-    const allEarnings: AdjustPayslipInput["earnings"] = [
-      { type: "OVERTIME", label: "Overtime", amount: toAmount(form.overtimePay) },
-      { type: "BONUS", label: "Bonus", amount: toAmount(form.bonus) },
-      { type: "ALLOWANCE", label: "Allowance", amount: toAmount(form.allowance) },
-      { type: "HOLIDAY_PAY", label: "Holiday Pay", amount: toAmount(form.holidayPay) },
-    ];
-    const allDeductions: AdjustPayslipInput["deductions"] = [
-      { type: "SSS", label: "SSS", amount: toAmount(form.sss) },
-      { type: "PHILHEALTH", label: "PhilHealth", amount: toAmount(form.philhealth) },
-      { type: "PAGIBIG", label: "Pag-IBIG", amount: toAmount(form.pagibig) },
-      { type: "BIR_TAX", label: "Withholding Tax", amount: toAmount(form.withholdingTax) },
-      { type: "LATE", label: "Late Deduction", amount: toAmount(form.lateDeduction) },
-      { type: "CASH_ADVANCE", label: "Cash Advance", amount: toAmount(form.cashAdvance) },
-      { type: "SALARY_LOAN", label: "Salary Loan", amount: toAmount(form.salaryLoan) },
-    ];
     mutation.mutate({
-      basicPay: toAmount(form.basicPay),
-      earnings: allEarnings.filter((e) => e.amount > 0),
-      deductions: allDeductions.filter((d) => d.amount > 0),
+      basicPay: toAmount(basicPay),
+      earnings: earnings.map((r) => ({
+        type: r.type,
+        label: r.label || defaultEarningLabel(r.type),
+        amount: toAmount(r.amount),
+      })),
+      deductions: deductions
+        .filter((r) => r.selectedTabId !== "") // exclude unselected rows
+        .map((r) => ({
+          type: r.type,
+          label: r.label,
+          amount: toAmount(r.amount),
+        })),
     });
   }
 
-  function numField(label: string, key: keyof FormState) {
-    return (
-      <div className="space-y-1.5">
-        <Label className="text-xs text-gray-600">{label}</Label>
-        <Input
-          type="number"
-          step="0.01"
-          min="0"
-          inputMode="decimal"
-          value={form[key]}
-          onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-          disabled={locked}
-          className="text-right tabular-nums"
-        />
-      </div>
+
+  function updateEarning(_id: string, patch: Partial<Omit<EarningRow, "_id">>) {
+    setEarnings((prev) =>
+      prev.map((r) => (r._id === _id ? { ...r, ...patch } : r))
+    );
+  }
+
+  function selectTabDeduction(_id: string, tabId: string) {
+    const tabItem = deductionsQuery.data?.find((d) => d.id === tabId);
+    if (!tabItem) return;
+    setDeductions((prev) =>
+      prev.map((r) =>
+        r._id === _id
+          ? {
+              ...r,
+              selectedTabId: tabId,
+              type: tabTypeToDeductionType(tabItem.type),
+              label: tabItem.name,
+              amount: String(Number(tabItem.amount)),
+            }
+          : r
+      )
     );
   }
 
@@ -203,36 +217,146 @@ export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Pro
               type="number"
               step="0.01"
               min="0"
-              value={form.basicPay}
-              onChange={(e) => setForm({ ...form, basicPay: e.target.value })}
+              value={basicPay}
+              onChange={(e) => setBasicPay(e.target.value)}
               disabled={locked}
               className="text-right tabular-nums"
             />
             <p className="text-xs text-muted-foreground">
-              Monthly salary: {formatCurrency(payslipQuery.data.employee.basicSalary)} · default is half for bi-monthly
+              Auto-computed from attendance and pay rate. Override only if needed.
             </p>
           </div>
 
-          {/* Earnings | Deductions side by side */}
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-700 border-b pb-1">Earnings</h3>
-              {numField("Overtime Pay", "overtimePay")}
-              {numField("Bonus", "bonus")}
-              {numField("Allowance", "allowance")}
-              {numField("Holiday Pay", "holidayPay")}
+          {/* Earnings */}
+          <div className="space-y-2">
+            <div className="border-b pb-1">
+              <h3 className="text-sm font-semibold text-gray-700">Earnings</h3>
             </div>
 
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-700 border-b pb-1">Deductions</h3>
-              {numField("SSS", "sss")}
-              {numField("PhilHealth", "philhealth")}
-              {numField("Pag-IBIG", "pagibig")}
-              {numField("Withholding Tax", "withholdingTax")}
-              {numField("Late Deduction", "lateDeduction")}
-              {numField("Cash Advance", "cashAdvance")}
-              {numField("Salary Loan", "salaryLoan")}
+            {earnings.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic py-1">No additional earnings.</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[130px_1fr_100px_32px] gap-2 px-0.5">
+                  <span className="text-xs text-muted-foreground">Type</span>
+                  <span className="text-xs text-muted-foreground">Label</span>
+                  <span className="text-xs text-muted-foreground text-right">Amount</span>
+                  <span />
+                </div>
+                {earnings.map((row) => (
+                  <div key={row._id} className="grid grid-cols-[130px_1fr_100px_32px] gap-2 items-center">
+                    <select
+                      value={row.type}
+                      disabled={locked}
+                      onChange={(e) => {
+                        const type = e.target.value as EarningType;
+                        updateEarning(row._id, { type, label: defaultEarningLabel(type) });
+                      }}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-sm w-full"
+                    >
+                      {EARNING_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                    <Input
+                      value={row.label}
+                      disabled={locked}
+                      onChange={(e) => updateEarning(row._id, { label: e.target.value })}
+                      placeholder="Label"
+                      className="text-sm"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={row.amount}
+                      disabled={locked}
+                      onChange={(e) => updateEarning(row._id, { amount: e.target.value })}
+                      className="text-right tabular-nums"
+                    />
+                    {!locked ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setEarnings((prev) => prev.filter((r) => r._id !== row._id))}
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : <span />}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Deductions */}
+          <div className="space-y-2">
+            <div className="border-b pb-1">
+              <h3 className="text-sm font-semibold text-gray-700">Deductions</h3>
             </div>
+
+            {deductions.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic py-1">No deductions added.</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_100px_32px] gap-2 px-0.5">
+                  <span className="text-xs text-muted-foreground">Deduction</span>
+                  <span className="text-xs text-muted-foreground text-right">Amount</span>
+                  <span />
+                </div>
+                {deductions.map((row) => (
+                  <div key={row._id} className="space-y-1.5">
+                    <div className="grid grid-cols-[1fr_100px_32px] gap-2 items-center">
+                      {row.selectedTabId === "custom" ? (
+                        /* Auto-populated deduction whose template no longer exists — show label as read-only */
+                        <div className="h-9 rounded-md border border-input bg-muted/50 px-2 text-sm flex items-center text-gray-700 truncate">
+                          {row.label}
+                        </div>
+                      ) : (
+                        /* Dropdown populated from Deductions tab */
+                        <select
+                          value={row.selectedTabId}
+                          disabled={locked}
+                          onChange={(e) => selectTabDeduction(row._id, e.target.value)}
+                          className="h-9 rounded-md border border-input bg-background px-2 text-sm w-full"
+                        >
+                          <option value="" disabled>— select deduction —</option>
+                          {(deductionsQuery.data ?? []).map((d) => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={row.amount}
+                        disabled={locked}
+                        onChange={(e) =>
+                          setDeductions((prev) =>
+                            prev.map((r) => (r._id === row._id ? { ...r, amount: e.target.value } : r))
+                          )
+                        }
+                        className="text-right tabular-nums"
+                      />
+                      {!locked ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setDeductions((prev) => prev.filter((r) => r._id !== row._id))}
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : <span />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Summary */}

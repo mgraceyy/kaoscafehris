@@ -71,6 +71,7 @@ export default function LeaveRequestDialog({ open, onOpenChange }: Props) {
     queryKey: ["employees", { status: "ACTIVE" }],
     queryFn: () => listEmployees({ status: "ACTIVE" }),
     enabled: open && !isEmployee,
+    select: (data) => data.filter((e) => e.position !== "Administrator"),
   });
 
   const defaults = useMemo<Values>(

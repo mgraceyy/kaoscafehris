@@ -59,8 +59,8 @@ export async function completeRun(
 ) {
   try {
     if (!req.user) throw new AppError(401, "Authentication required");
-    const data = await payrollService.completeRun(req.params.id, req.user.userId);
-    res.json({ data });
+    const { run, fullyPaidDeductions } = await payrollService.completeRun(req.params.id, req.user.userId);
+    res.json({ data: run, fullyPaidDeductions });
   } catch (err) {
     next(err);
   }

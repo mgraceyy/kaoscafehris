@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
+import { listBranches } from "@/features/branches/branches.api";
 import {
   createShiftType,
   deleteShiftType,
@@ -24,19 +25,20 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  branchId: string;
 }
 
 interface FormState {
   name: string;
   startTime: string;
   endTime: string;
+  branchIds: string[];
 }
 
 const DEFAULT_FORM: FormState = {
   name: "",
   startTime: "08:00",
   endTime: "17:00",
+  branchIds: [],
 };
 
 function toHHMM(value: string): string {
@@ -45,26 +47,39 @@ function toHHMM(value: string): string {
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props) {
+export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ShiftType | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
 
-  const query = useQuery({
-    queryKey: ["shift-types", branchId],
-    queryFn: () => listShiftTypes(branchId),
-    enabled: open && !!branchId,
+  const branchesQuery = useQuery({
+    queryKey: ["branches", { active: true }],
+    queryFn: () => listBranches({ isActive: true }),
+    enabled: open,
   });
 
+  const query = useQuery({
+    queryKey: ["shift-types"],
+    queryFn: () => listShiftTypes(),
+    enabled: open,
+  });
+
+  // Auto-select all branches when branches load (for new template)
+  useEffect(() => {
+    if (branchesQuery.data && !editing && form.branchIds.length === 0) {
+      setForm((f) => ({ ...f, branchIds: branchesQuery.data!.map((b) => b.id) }));
+    }
+  }, [branchesQuery.data, editing, form.branchIds.length]);
+
   const createMut = useMutation({
-    mutationFn: (input: typeof form) =>
+    mutationFn: () =>
       createShiftType({
-        branchId,
-        name: input.name,
-        startTime: input.startTime,
-        endTime: input.endTime,
+        branchIds: form.branchIds,
+        name: form.name,
+        startTime: form.startTime,
+        endTime: form.endTime,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shift-types"] });
@@ -75,8 +90,13 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
   });
 
   const updateMut = useMutation({
-    mutationFn: (input: { id: string; data: Partial<typeof form> }) =>
-      updateShiftType(input.id, input.data),
+    mutationFn: (id: string) =>
+      updateShiftType(id, {
+        branchIds: form.branchIds,
+        name: form.name,
+        startTime: form.startTime,
+        endTime: form.endTime,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shift-types"] });
       toast("Shift template updated", "success");
@@ -100,15 +120,26 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
         name: editing.name,
         startTime: toHHMM(editing.startTime),
         endTime: toHHMM(editing.endTime),
+        branchIds: editing.branches.map((b) => b.branchId),
       });
       setShowForm(true);
     }
   }, [editing]);
 
   function resetForm() {
-    setForm(DEFAULT_FORM);
+    setForm({
+      ...DEFAULT_FORM,
+      branchIds: branchesQuery.data?.map((b) => b.id) ?? [],
+    });
     setEditing(null);
     setShowForm(false);
+  }
+
+  function toggleBranch(id: string, checked: boolean) {
+    setForm((f) => ({
+      ...f,
+      branchIds: checked ? [...f.branchIds, id] : f.branchIds.filter((x) => x !== id),
+    }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -118,25 +149,30 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
       toast("Start and end times cannot be the same", "error");
       return;
     }
+    if (form.branchIds.length === 0) {
+      toast("Select at least one branch", "error");
+      return;
+    }
     if (editing) {
-      updateMut.mutate({ id: editing.id, data: form });
+      updateMut.mutate(editing.id);
     } else {
-      createMut.mutate(form);
+      createMut.mutate();
     }
   }
 
   const saving = createMut.isPending || updateMut.isPending;
+  const branches = branchesQuery.data ?? [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
         <DialogTitle>Shift Templates</DialogTitle>
         <DialogDescription>
-          Manage reusable shift templates for your branch. Use these templates to quickly schedule shifts.
+          Manage reusable shift templates. Each template can apply to one or more branches.
         </DialogDescription>
       </DialogHeader>
 
-      <div className="max-h-96 space-y-4 overflow-y-auto pt-4 pr-1">
+      <div className="max-h-[70vh] space-y-4 overflow-y-auto pt-4 pr-1">
         {/* Form */}
         {showForm && (
           <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border bg-muted/30 p-4" noValidate>
@@ -175,6 +211,29 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
               </div>
             </div>
 
+            {/* Branch multi-select */}
+            {branches.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Applies to Branch</Label>
+                <div className="rounded-md border p-2 space-y-1">
+                  {branches.map((b) => (
+                    <label
+                      key={b.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/50"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5"
+                        checked={form.branchIds.includes(b.id)}
+                        onChange={(e) => toggleBranch(b.id, e.target.checked)}
+                      />
+                      {b.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Button type="submit" disabled={saving} className="flex-1">
                 {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
@@ -198,12 +257,7 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
           {!query.isLoading && (!query.data || query.data.length === 0) && !showForm && (
             <div className="rounded-lg border border-dashed bg-muted/30 p-6 text-center">
               <p className="text-sm text-muted-foreground">No shift templates yet.</p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowForm(true)}
-                className="mt-2"
-              >
+              <Button size="sm" variant="outline" onClick={() => setShowForm(true)} className="mt-2">
                 <Plus className="h-4 w-4 mr-1" />
                 Create Template
               </Button>
@@ -213,11 +267,7 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
           {!query.isLoading && query.data && query.data.length > 0 && (
             <>
               {!showForm && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowForm(true)}
-                  className="w-full"
-                >
+                <Button size="sm" onClick={() => setShowForm(true)} className="w-full">
                   <Plus className="h-4 w-4 mr-1" />
                   Add Template
                 </Button>
@@ -227,25 +277,21 @@ export default function ShiftTypesDialog({ open, onOpenChange, branchId }: Props
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/30">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
-                        Name
-                      </th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
-                        Time
-                      </th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">
-                        Actions
-                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Name</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Time</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Branches</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {query.data.map((template) => (
                       <tr key={template.id} className="hover:bg-muted/20">
-                        <td className="px-3 py-2 font-medium text-gray-800">
-                          {template.name}
-                        </td>
+                        <td className="px-3 py-2 font-medium text-gray-800">{template.name}</td>
                         <td className="px-3 py-2 text-gray-600 tabular-nums">
                           {toHHMM(template.startTime)} - {toHHMM(template.endTime)}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500 text-xs">
+                          {template.branches.map((b) => b.branch.name).join(", ") || "—"}
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-2">

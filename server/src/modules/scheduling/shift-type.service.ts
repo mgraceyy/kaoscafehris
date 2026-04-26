@@ -1,41 +1,34 @@
 import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { logAudit } from "../../lib/audit.js";
-import { CreateShiftTypeInput, UpdateShiftTypeInput } from "./shift-type.schema.js";
+import { CreateShiftTypeInput, ListShiftTypesQuery, UpdateShiftTypeInput } from "./shift-type.schema.js";
 
 function timeToDate(time: string): Date {
   const [h, m] = time.split(":").map(Number);
   return new Date(Date.UTC(1970, 0, 1, h, m, 0));
 }
 
-export async function createShiftType(input: CreateShiftTypeInput, userId?: string) {
-  const branch = await prisma.branch.findUnique({
-    where: { id: input.branchId },
-  });
-  if (!branch) {
-    throw new AppError(404, "Branch not found");
-  }
+const shiftTypeInclude = {
+  branches: { select: { branchId: true, branch: { select: { id: true, name: true } } } },
+} as const;
 
-  // Check for duplicate name in the branch
-  const existing = await prisma.shiftType.findUnique({
-    where: {
-      branchId_name: {
-        branchId: input.branchId,
-        name: input.name,
-      },
-    },
-  });
+export async function createShiftType(input: CreateShiftTypeInput, userId?: string) {
+  // Check for duplicate name globally
+  const existing = await prisma.shiftType.findUnique({ where: { name: input.name } });
   if (existing) {
-    throw new AppError(400, `Shift type "${input.name}" already exists for this branch`);
+    throw new AppError(400, `Shift type "${input.name}" already exists`);
   }
 
   const shiftType = await prisma.shiftType.create({
     data: {
-      branchId: input.branchId,
       name: input.name,
       startTime: timeToDate(input.startTime),
       endTime: timeToDate(input.endTime),
+      branches: {
+        create: input.branchIds.map((branchId) => ({ branchId })),
+      },
     },
+    include: shiftTypeInclude,
   });
 
   await logAudit({
@@ -49,12 +42,15 @@ export async function createShiftType(input: CreateShiftTypeInput, userId?: stri
   return shiftType;
 }
 
-export async function listShiftTypes(branchId: string) {
+export async function listShiftTypes(query: ListShiftTypesQuery) {
   return prisma.shiftType.findMany({
     where: {
-      branchId,
       isActive: true,
+      ...(query.branchId
+        ? { branches: { some: { branchId: query.branchId } } }
+        : {}),
     },
+    include: shiftTypeInclude,
     orderBy: { createdAt: "asc" },
   });
 }
@@ -62,6 +58,7 @@ export async function listShiftTypes(branchId: string) {
 export async function getShiftTypeById(id: string) {
   const shiftType = await prisma.shiftType.findUnique({
     where: { id },
+    include: shiftTypeInclude,
   });
   if (!shiftType) {
     throw new AppError(404, "Shift type not found");
@@ -78,16 +75,9 @@ export async function updateShiftType(
 
   // If updating name, check for duplicate
   if (input.name && input.name !== shiftType.name) {
-    const existing = await prisma.shiftType.findUnique({
-      where: {
-        branchId_name: {
-          branchId: shiftType.branchId,
-          name: input.name,
-        },
-      },
-    });
+    const existing = await prisma.shiftType.findUnique({ where: { name: input.name } });
     if (existing) {
-      throw new AppError(400, `Shift type "${input.name}" already exists for this branch`);
+      throw new AppError(400, `Shift type "${input.name}" already exists`);
     }
   }
 
@@ -97,7 +87,16 @@ export async function updateShiftType(
       name: input.name,
       startTime: input.startTime ? timeToDate(input.startTime) : undefined,
       endTime: input.endTime ? timeToDate(input.endTime) : undefined,
+      ...(input.branchIds
+        ? {
+            branches: {
+              deleteMany: {},
+              create: input.branchIds.map((branchId) => ({ branchId })),
+            },
+          }
+        : {}),
     },
+    include: shiftTypeInclude,
   });
 
   await logAudit({
@@ -115,11 +114,7 @@ export async function updateShiftType(
 export async function deleteShiftType(id: string, userId?: string) {
   const shiftType = await getShiftTypeById(id);
 
-  // Check if any shifts reference this type
-  const shiftsCount = await prisma.shift.count({
-    where: { shiftTypeId: id },
-  });
-
+  const shiftsCount = await prisma.shift.count({ where: { shiftTypeId: id } });
   if (shiftsCount > 0) {
     throw new AppError(
       400,
@@ -127,9 +122,7 @@ export async function deleteShiftType(id: string, userId?: string) {
     );
   }
 
-  const deleted = await prisma.shiftType.delete({
-    where: { id },
-  });
+  const deleted = await prisma.shiftType.delete({ where: { id } });
 
   await logAudit({
     userId,
