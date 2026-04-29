@@ -42,9 +42,12 @@ const DEFAULT_FORM: FormState = {
 };
 
 function toHHMM(value: string): string {
-  if (/^\d{2}:\d{2}$/.test(value)) return value;
   const d = new Date(value);
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 export default function ShiftTypesDialog({ open, onOpenChange }: Props) {

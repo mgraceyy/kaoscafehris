@@ -59,8 +59,16 @@ export const syncBatchSchema = z.object({
   records: z.array(syncRecordSchema).min(1).max(200),
 });
 
+export const manualCreateSchema = z.object({
+  employeeId: z.string().uuid(),
+  clockIn: isoDateTime,
+  clockOut: isoDateTime.nullable().optional(),
+  remarks: z.string().max(500).nullable().optional(),
+});
+
 export type ClockInInput = z.infer<typeof clockInSchema>;
 export type ClockOutInput = z.infer<typeof clockOutSchema>;
 export type ManualAdjustInput = z.infer<typeof manualAdjustSchema>;
+export type ManualCreateInput = z.infer<typeof manualCreateSchema>;
 export type ListAttendanceQuery = z.infer<typeof listAttendanceQuerySchema>;
 export type SyncBatchInput = z.infer<typeof syncBatchSchema>;

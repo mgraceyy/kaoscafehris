@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Camera, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -57,6 +57,7 @@ interface Props {
 export default function AttendanceAdjustDialog({ open, onOpenChange, record }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const {
     register,
@@ -74,7 +75,8 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
   });
 
   useEffect(() => {
-    if (!open || !record) return;
+    if (!open) { setLightbox(null); return; }
+    if (!record) return;
     reset({
       clockIn: toLocalInput(record.clockIn),
       clockOut: toLocalInput(record.clockOut),
@@ -113,11 +115,56 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
         </DialogDescription>
       </DialogHeader>
 
+      {/* Selfie lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm"
+          onClick={() => setLightbox(null)}
+        >
+          <div className="relative mx-4 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setLightbox(null)}
+              className="absolute -top-3 -right-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow text-gray-600 hover:text-gray-900"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <img src={lightbox} alt="Selfie" className="w-full rounded-2xl object-contain shadow-2xl max-h-[75vh]" />
+          </div>
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit((v) => mutation.mutate(v))}
         className="space-y-4 pt-4"
         noValidate
       >
+        {/* Selfie previews */}
+        {(record?.selfieIn || record?.selfieOut) && (
+          <div className="flex gap-4">
+            {[
+              { url: record?.selfieIn, label: "Clock In" },
+              { url: record?.selfieOut, label: "Clock Out" },
+            ].map(({ url, label }) => (
+              <div key={label} className="flex flex-col items-center gap-1">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{label}</p>
+                {url ? (
+                  <button type="button" onClick={() => setLightbox(url)} className="focus:outline-none">
+                    <img
+                      src={url}
+                      alt={label}
+                      className="h-20 w-20 rounded-xl object-cover shadow ring-2 ring-gray-100 hover:ring-red-400 transition-all cursor-zoom-in"
+                    />
+                  </button>
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-gray-100">
+                    <Camera className="h-6 w-6 text-gray-300" />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="clockIn">Clock in</Label>

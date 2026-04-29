@@ -54,6 +54,64 @@ export async function reviewOvertimeRequest(
   return data.data;
 }
 
+// ─── Overtime Schedules (admin/manager pre-assigned) ─────────────────────────
+
+export interface OvertimeSchedule {
+  id: string;
+  employeeId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  notes: string | null;
+  createdById: string;
+  createdAt: string;
+  employee: {
+    id: string;
+    employeeId: string;
+    firstName: string;
+    lastName: string;
+    position: string;
+    branch: { id: string; name: string } | null;
+  };
+}
+
+export interface ListSchedulesFilters {
+  employeeId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export async function listOvertimeSchedules(filters: ListSchedulesFilters = {}): Promise<OvertimeSchedule[]> {
+  const params = Object.fromEntries(
+    Object.entries(filters).filter(([, v]) => v !== undefined && v !== "")
+  );
+  const { data } = await api.get<{ data: OvertimeSchedule[] }>("/overtime/schedules", { params });
+  return data.data;
+}
+
+export async function createOvertimeSchedule(body: {
+  employeeId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+}): Promise<OvertimeSchedule> {
+  const { data } = await api.post<{ data: OvertimeSchedule }>("/overtime/schedules", body);
+  return data.data;
+}
+
+export async function updateOvertimeSchedule(
+  id: string,
+  body: { date?: string; startTime?: string; endTime?: string; notes?: string }
+): Promise<OvertimeSchedule> {
+  const { data } = await api.patch<{ data: OvertimeSchedule }>(`/overtime/schedules/${id}`, body);
+  return data.data;
+}
+
+export async function deleteOvertimeSchedule(id: string): Promise<void> {
+  await api.delete(`/overtime/schedules/${id}`);
+}
+
 export async function setShiftOvertimeApproval(
   shiftId: string,
   employeeId: string,

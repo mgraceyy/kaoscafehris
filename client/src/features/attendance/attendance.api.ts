@@ -44,6 +44,13 @@ export interface AdjustAttendanceInput {
   undertimeMinutes?: number | null;
 }
 
+export interface ManualCreateInput {
+  employeeId: string;
+  clockIn: string; // ISO datetime
+  clockOut?: string | null;
+  remarks?: string | null;
+}
+
 export interface ListAttendanceParams {
   branchId?: string;
   employeeId?: string;
@@ -80,11 +87,17 @@ export async function adjustAttendance(
   return data.data;
 }
 
+export async function createAttendance(input: ManualCreateInput): Promise<AttendanceRecord> {
+  const { data } = await api.post<{ data: AttendanceRecord }>("/attendance/manual", input);
+  return data.data;
+}
+
 export function formatClockTime(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleTimeString(undefined, {
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
+    hour12: true,
   });
 }

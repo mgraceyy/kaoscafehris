@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { logAudit } from "../../lib/audit.js";
+import { sendMail } from "../../lib/email.js";
 import type {
   CreateLeaveRequestInput,
   ListLeaveBalancesQuery,
@@ -10,6 +11,15 @@ import type {
   UpsertLeaveBalanceInput,
   UpsertBalanceForAllInput,
 } from "./leave.schema.js";
+
+const LEAVE_LABEL: Record<string, string> = {
+  VACATION: "Vacation",
+  SICK: "Sick",
+  EMERGENCY: "Emergency",
+  MATERNITY: "Maternity",
+  PATERNITY: "Paternity",
+  UNPAID: "Unpaid",
+};
 
 const requestInclude = {
   employee: {
@@ -65,6 +75,29 @@ export async function createRequest(input: CreateLeaveRequestInput) {
     throw new AppError(400, "Terminated employees cannot file leave requests");
   }
 
+  // Block filing if no leave balance has been set for this type/year (except UNPAID)
+  if (input.leaveType !== "UNPAID") {
+    const year = new Date(input.startDate).getUTCFullYear();
+    const balance = await prisma.leaveBalance.findUnique({
+      where: {
+        employeeId_leaveType_year: {
+          employeeId: input.employeeId,
+          leaveType: input.leaveType,
+          year,
+        },
+      },
+    });
+    if (!balance) {
+      throw new AppError(
+        400,
+        `No leave credits have been set for ${LEAVE_LABEL[input.leaveType] ?? input.leaveType} leave. Please contact your administrator.`
+      );
+    }
+    if (Number(balance.remainingDays) <= 0) {
+      throw new AppError(400, `You have no remaining ${LEAVE_LABEL[input.leaveType] ?? input.leaveType} leave credits.`);
+    }
+  }
+
   const created = await prisma.leaveRequest.create({
     data: {
       employeeId: input.employeeId,
@@ -82,6 +115,34 @@ export async function createRequest(input: CreateLeaveRequestInput) {
     recordId: created.id,
     newValues: created,
   });
+
+  // Notify admins/managers
+  const managers = await prisma.user.findMany({
+    where: { role: { in: ["ADMIN", "MANAGER"] }, isActive: true },
+    select: { email: true },
+  });
+  const managerEmails = managers.map((u) => u.email);
+  if (managerEmails.length > 0) {
+    const empName = `${created.employee.firstName} ${created.employee.lastName}`;
+    const leaveLabel = LEAVE_LABEL[created.leaveType] ?? created.leaveType;
+    const start = created.startDate.toISOString().slice(0, 10);
+    const end = created.endDate.toISOString().slice(0, 10);
+    sendMail({
+      to: managerEmails,
+      subject: `Leave Request — ${empName} (${leaveLabel})`,
+      html: `
+        <p>A new leave request has been filed and is awaiting your review.</p>
+        <table style="border-collapse:collapse;font-size:14px">
+          <tr><td style="padding:4px 12px 4px 0;color:#666">Employee</td><td><strong>${empName}</strong></td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#666">Leave Type</td><td>${leaveLabel}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#666">Dates</td><td>${start} → ${end} (${created.totalDays} day${Number(created.totalDays) !== 1 ? "s" : ""})</td></tr>
+          ${created.reason ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Reason</td><td>${created.reason}</td></tr>` : ""}
+        </table>
+        <p style="margin-top:16px">Please log in to the HRIS to review this request.</p>
+      `,
+    }).catch(console.error);
+  }
+
   return created;
 }
 
@@ -153,6 +214,34 @@ export async function reviewRequest(
     oldValues: request,
     newValues: updated,
   });
+
+  // Notify the employee of the outcome
+  const employeeUser = await prisma.user.findFirst({
+    where: { employee: { id: updated.employee.id } },
+    select: { email: true },
+  });
+  if (employeeUser) {
+    const empName = `${updated.employee.firstName} ${updated.employee.lastName}`;
+    const leaveLabel = LEAVE_LABEL[updated.leaveType] ?? updated.leaveType;
+    const start = updated.startDate.toISOString().slice(0, 10);
+    const end = updated.endDate.toISOString().slice(0, 10);
+    const isApproved = input.status === "APPROVED";
+    sendMail({
+      to: employeeUser.email,
+      subject: `Your leave request has been ${isApproved ? "approved" : "rejected"}`,
+      html: `
+        <p>Hi ${updated.employee.firstName},</p>
+        <p>Your leave request has been <strong>${isApproved ? "✅ approved" : "❌ rejected"}</strong>.</p>
+        <table style="border-collapse:collapse;font-size:14px">
+          <tr><td style="padding:4px 12px 4px 0;color:#666">Leave Type</td><td>${leaveLabel}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#666">Dates</td><td>${start} → ${end} (${updated.totalDays} day${Number(updated.totalDays) !== 1 ? "s" : ""})</td></tr>
+          ${input.reviewNotes ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Notes</td><td>${input.reviewNotes}</td></tr>` : ""}
+        </table>
+        <p style="margin-top:16px">Please log in to the HRIS portal for details.</p>
+      `,
+    }).catch(console.error);
+  }
+
   return updated;
 }
 

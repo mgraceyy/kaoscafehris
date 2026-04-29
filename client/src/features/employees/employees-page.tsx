@@ -48,6 +48,7 @@ const baseSchema = {
   branchId: z.string().uuid("Select a branch"),
   firstName: z.string().trim().min(1, "Required"),
   lastName: z.string().trim().min(1, "Required"),
+  dateOfBirth: z.string().optional(),
   position: z.string().trim().min(1, "Required"),
   employmentStatus: z.enum(["ACTIVE", "INACTIVE", "TERMINATED", "ON_LEAVE"]),
   dateHired: z.string().min(1, "Required"),
@@ -166,6 +167,7 @@ export default function EmployeesPage() {
         branchId: detailEmployee.branchId,
         firstName: detailEmployee.firstName,
         lastName: detailEmployee.lastName,
+        dateOfBirth: detailEmployee.dateOfBirth ? detailEmployee.dateOfBirth.slice(0, 10) : "",
         position: detailEmployee.position,
         employmentStatus: detailEmployee.employmentStatus,
         dateHired: detailEmployee.dateHired.slice(0, 10),
@@ -181,7 +183,7 @@ export default function EmployeesPage() {
     } else {
       reset({
         email: "", password: "", role: "EMPLOYEE", employeeId: "",
-        branchId: "", firstName: "", lastName: "", position: "",
+        branchId: "", firstName: "", lastName: "", dateOfBirth: "", position: "",
         employmentStatus: "ACTIVE", dateHired: "",
         payType: "MONTHLY_FIXED",
         basicSalary: 0 as unknown as number,
@@ -198,7 +200,8 @@ export default function EmployeesPage() {
         const payload: EmployeeUpdateInput = {
           email: values.email, role: values.role, employeeId: values.employeeId,
           branchId: values.branchId, firstName: values.firstName,
-          lastName: values.lastName, position: values.position,
+          lastName: values.lastName, dateOfBirth: values.dateOfBirth || undefined,
+          position: values.position,
           employmentStatus: values.employmentStatus, dateHired: values.dateHired,
           payType: values.payType,
           basicSalary: values.payType === "MONTHLY_FIXED" ? values.basicSalary : 0,
@@ -216,7 +219,8 @@ export default function EmployeesPage() {
         email: values.email, password: values.password!,
         role: values.role, employeeId: values.employeeId,
         branchId: values.branchId, firstName: values.firstName,
-        lastName: values.lastName, position: values.position,
+        lastName: values.lastName, dateOfBirth: values.dateOfBirth || undefined,
+        position: values.position,
         employmentStatus: values.employmentStatus, dateHired: values.dateHired,
         payType: values.payType,
         basicSalary: values.payType === "MONTHLY_FIXED" ? values.basicSalary : 0,
@@ -401,7 +405,7 @@ export default function EmployeesPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
           <input
-            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm focus:border-primary focus:outline-none"
+            className="w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none"
             placeholder="Search by name or ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -600,6 +604,10 @@ export default function EmployeesPage() {
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Last Name *</label>
                       <input {...register("lastName")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
                       {errors.lastName && <p className="text-xs text-red-500 mt-1">{errors.lastName.message}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Birthdate</label>
+                      <input type="date" {...register("dateOfBirth")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Phone Number</label>

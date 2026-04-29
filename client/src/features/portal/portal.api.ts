@@ -47,6 +47,7 @@ export interface PortalProfile {
 }
 
 export interface UpdateProfileInput {
+  email?: string;
   phone?: string;
   address?: string;
   city?: string;
@@ -196,18 +197,21 @@ export async function getMyPayslipDetail(id: string) {
   return data.data;
 }
 
-/** Format HH:MM from a @db.Time ISO (date portion is always 1970-01-01). */
+/** Format a @db.Time ISO (date portion is always 1970-01-01) as 12-hour time. */
 export function formatTime(iso: string): string {
   const d = new Date(iso);
-  const h = String(d.getUTCHours()).padStart(2, "0");
-  const m = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-/** Format an ISO datetime as HH:MM in local time. */
+/** Format an ISO datetime as 12-hour time in local time. */
 export function formatLocalTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
+    hour12: true,
   });
 }

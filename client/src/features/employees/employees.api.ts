@@ -66,6 +66,7 @@ export interface EmployeeCreateInput {
   firstName: string;
   lastName: string;
   middleName?: string;
+  dateOfBirth?: string;
   position: string;
   employmentStatus?: EmploymentStatus;
   dateHired: string; // ISO date

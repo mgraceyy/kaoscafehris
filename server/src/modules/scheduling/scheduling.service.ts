@@ -90,12 +90,37 @@ async function ensureEmployeesInBranch(employeeIds: string[], branchId: string) 
   }
 }
 
+async function ensureNoShiftTypeConflict(employeeIds: string[], date: string, shiftTypeId: string | null | undefined, excludeShiftId?: string) {
+  if (employeeIds.length === 0 || !shiftTypeId) return;
+  const targetDate = dateOnly(date);
+  const nextDay = new Date(targetDate);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
+  const conflicts = await prisma.shiftAssignment.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      shift: {
+        date: { gte: targetDate, lt: nextDay },
+        shiftTypeId,
+        ...(excludeShiftId ? { id: { not: excludeShiftId } } : {}),
+      },
+    },
+    include: { employee: { select: { firstName: true, lastName: true } } },
+  });
+
+  if (conflicts.length > 0) {
+    const names = [...new Set(conflicts.map((c) => `${c.employee.firstName} ${c.employee.lastName}`))].join(", ");
+    throw new AppError(400, `Employee(s) are already assigned to this shift type on this date: ${names}`);
+  }
+}
+
 export async function createShift(input: CreateShiftInput) {
   const branch = await prisma.branch.findUnique({ where: { id: input.branchId } });
   if (!branch) throw new AppError(400, "Branch not found");
   if (!branch.isActive) throw new AppError(400, "Cannot create shifts for an inactive branch");
 
   await ensureEmployeesInBranch(input.employeeIds, input.branchId);
+  await ensureNoShiftTypeConflict(input.employeeIds, input.date, input.shiftTypeId);
 
   let startTime: Date;
   let endTime: Date;
@@ -192,6 +217,7 @@ export async function assignEmployees(shiftId: string, input: AssignEmployeesInp
   if (!shift) throw new AppError(404, "Shift not found");
 
   await ensureEmployeesInBranch(input.employeeIds, shift.branchId);
+  await ensureNoShiftTypeConflict(input.employeeIds, shift.date.toISOString().slice(0, 10), shift.shiftTypeId, shiftId);
 
   // Idempotent: skip existing assignments, create the rest.
   const result = await prisma.shiftAssignment.createMany({

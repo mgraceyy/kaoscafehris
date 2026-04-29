@@ -83,6 +83,8 @@ export default function LeaveReviewDialog({ open, onOpenChange, request }: Props
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
+  const isAlreadyReviewed = request?.status === "APPROVED" || request?.status === "REJECTED";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
@@ -148,7 +150,7 @@ export default function LeaveReviewDialog({ open, onOpenChange, request }: Props
         >
           <div className="space-y-2">
             <Label htmlFor="status">Decision</Label>
-            <Select id="status" {...register("status")}>
+            <Select id="status" {...register("status")} disabled={isAlreadyReviewed}>
               <option value="APPROVED">Approve</option>
               <option value="REJECTED">Reject</option>
             </Select>
@@ -159,6 +161,7 @@ export default function LeaveReviewDialog({ open, onOpenChange, request }: Props
               id="reviewNotes"
               rows={3}
               placeholder="Explain approval / rejection for the record…"
+              disabled={isAlreadyReviewed}
               {...register("reviewNotes")}
             />
             {errors.reviewNotes && (
@@ -177,7 +180,7 @@ export default function LeaveReviewDialog({ open, onOpenChange, request }: Props
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="submit" disabled={mutation.isPending || isAlreadyReviewed} title={isAlreadyReviewed ? `Request is already ${request?.status.toLowerCase()}` : undefined}>
               {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Submit decision
             </Button>

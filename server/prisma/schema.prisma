@@ -218,6 +218,7 @@ model Employee {
   leaveBalances       LeaveBalance[]
   payslips            Payslip[]
   overtimeRequests    OvertimeRequest[]
+  overtimeSchedules   OvertimeSchedule[]
   employeeDeductions  EmployeeDeduction[]
   employeeEarnings    EmployeeEarning[]
 
@@ -323,6 +324,27 @@ model OvertimeRequest {
   @@index([employeeId, status])
   @@index([date])
   @@map("overtime_requests")
+}
+
+// Admin/manager pre-assigned overtime schedule
+model OvertimeSchedule {
+  id         String   @id @default(uuid())
+  employeeId String
+  date       DateTime @db.Date
+  startTime  String   // HH:MM
+  endTime    String   // HH:MM
+  notes      String?
+
+  createdById String  // userId of admin/manager who created it
+
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([date])
+  @@map("overtime_schedules")
 }
 
 // ============================================================================

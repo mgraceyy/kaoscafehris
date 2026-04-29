@@ -483,6 +483,15 @@ export default function SchedulingPage() {
                           <div className="truncate text-xs opacity-80">
                             {formatShiftTime(s.startTime)} - {formatShiftTime(s.endTime)}
                           </div>
+                          {s.assignments.length > 0 && (
+                            <div className="mt-0.5 space-y-0.5">
+                              {s.assignments.map((a) => (
+                                <div key={a.id} className="truncate text-xs opacity-70">
+                                  {a.employee.firstName} {a.employee.lastName}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <div className="absolute right-0.5 top-0.5 hidden gap-0.5 group-hover:flex">
                             <button
                               type="button"

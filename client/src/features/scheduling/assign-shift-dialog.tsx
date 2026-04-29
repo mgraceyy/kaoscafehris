@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { eachDayOfInterval, format } from "date-fns";
+import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,25 +22,27 @@ import { listBranches } from "@/features/branches/branches.api";
 import { listEmployees } from "@/features/employees/employees.api";
 import { createShift } from "./scheduling.api";
 import { listShiftTypes } from "./shift-types.api";
+import RecurrencePicker, {
+  defaultRecurrence,
+  expandRecurrenceDates,
+  type RecurrenceConfig,
+} from "./recurrence-picker";
 
 function toHHMM(value: string): string {
-  if (/^\d{2}:\d{2}$/.test(value)) return value;
   const d = new Date(value);
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-const schema = z
-  .object({
-    branchId: z.string().uuid("Select a branch"),
-    shiftTypeId: z.string().uuid("Select a shift template"),
-    dateFrom: z.string().min(1, "Pick a start date"),
-    dateTo: z.string().min(1, "Pick an end date"),
-    employeeIds: z.array(z.string().uuid()).min(1, "Select at least one employee"),
-  })
-  .refine((v) => !v.dateFrom || !v.dateTo || v.dateTo >= v.dateFrom, {
-    message: "End date must be on or after start date",
-    path: ["dateTo"],
-  });
+const schema = z.object({
+  branchId: z.string().uuid("Select a branch"),
+  shiftTypeId: z.string().uuid("Select a shift template"),
+  dateFrom: z.string().min(1, "Pick a start date"),
+  employeeIds: z.array(z.string().uuid()).min(1, "Select at least one employee"),
+});
 
 type FormValues = z.infer<typeof schema>;
 
@@ -53,6 +55,11 @@ interface Props {
 export default function AssignShiftDialog({ open, onOpenChange, initialDate }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const today = format(new Date(), "yyyy-MM-dd");
+
+  const [recurrence, setRecurrence] = useState<RecurrenceConfig>(
+    defaultRecurrence(initialDate ?? today)
+  );
 
   const {
     register,
@@ -66,14 +73,14 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
     defaultValues: {
       branchId: "",
       shiftTypeId: "",
-      dateFrom: initialDate ?? "",
-      dateTo: initialDate ?? "",
+      dateFrom: initialDate ?? today,
       employeeIds: [],
     },
   });
 
   const selectedBranch = watch("branchId");
   const selectedEmployees = watch("employeeIds") ?? [];
+  const dateFrom = watch("dateFrom");
 
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
@@ -96,25 +103,29 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
 
   useEffect(() => {
     if (open) {
-      reset({
-        branchId: "",
-        shiftTypeId: "",
-        dateFrom: initialDate ?? "",
-        dateTo: initialDate ?? "",
-        employeeIds: [],
-      });
+      const start = initialDate ?? today;
+      reset({ branchId: "", shiftTypeId: "", dateFrom: start, employeeIds: [] });
+      setRecurrence(defaultRecurrence(start));
     }
   }, [open, reset, initialDate]);
+
+  // Keep recurrence endsOnDate in sync when dateFrom changes
+  useEffect(() => {
+    if (dateFrom) {
+      setRecurrence((prev) => ({
+        ...prev,
+        endsOnDate: prev.endsOnDate < dateFrom ? dateFrom : prev.endsOnDate,
+      }));
+    }
+  }, [dateFrom]);
+
+  const dates = expandRecurrenceDates(dateFrom, recurrence);
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       const shiftType = shiftTypesQuery.data?.find((t) => t.id === values.shiftTypeId);
       if (!shiftType) throw new Error("Shift template not found");
-
-      const dates = eachDayOfInterval({
-        start: new Date(values.dateFrom),
-        end: new Date(values.dateTo),
-      });
+      if (dates.length === 0) throw new Error("No dates match this recurrence");
 
       await Promise.all(
         dates.map((d) =>
@@ -122,7 +133,7 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
             branchId: values.branchId,
             shiftTypeId: values.shiftTypeId,
             name: shiftType.name,
-            date: format(d, "yyyy-MM-dd"),
+            date: d,
             employeeIds: values.employeeIds,
           })
         )
@@ -149,13 +160,13 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
       <DialogHeader>
         <DialogTitle>Assign Shift</DialogTitle>
         <DialogDescription>
-          Select a shift template, date range, and employees to assign.
+          Select a shift template, recurrence, and employees to assign.
         </DialogDescription>
       </DialogHeader>
 
       <form
         onSubmit={handleSubmit((v) => mutation.mutate(v))}
-        className="max-h-[70vh] space-y-4 overflow-y-auto pt-4 pr-1"
+        className="max-h-[75vh] space-y-4 overflow-y-auto pt-4 pr-1"
         noValidate
       >
         <div className="grid gap-3 sm:grid-cols-2">
@@ -189,23 +200,26 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="dateFrom">Date From</Label>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="dateFrom">Start Date</Label>
             <Input id="dateFrom" type="date" {...register("dateFrom")} />
             {errors.dateFrom && (
               <p className="text-xs text-destructive">{errors.dateFrom.message}</p>
             )}
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="dateTo">Date To</Label>
-            <Input id="dateTo" type="date" {...register("dateTo")} />
-            {errors.dateTo && (
-              <p className="text-xs text-destructive">{errors.dateTo.message}</p>
-            )}
-          </div>
         </div>
 
+        {/* Recurrence */}
+        <div className="space-y-2">
+          <Label>Recurrence</Label>
+          <RecurrencePicker
+            value={recurrence}
+            onChange={setRecurrence}
+            startDate={dateFrom}
+          />
+        </div>
+
+        {/* Employees */}
         <div className="space-y-2">
           <Label>Select employees</Label>
           {!selectedBranch ? (
@@ -257,9 +271,9 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={mutation.isPending}>
+          <Button type="submit" disabled={mutation.isPending || dates.length === 0}>
             {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Assign Shift
+            {dates.length > 0 ? `Assign ${dates.length} Shift${dates.length !== 1 ? "s" : ""}` : "Assign Shift"}
           </Button>
         </DialogFooter>
       </form>

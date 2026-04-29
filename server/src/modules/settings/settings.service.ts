@@ -37,14 +37,15 @@ export const DEFAULT_SETTINGS: ReadonlyArray<{
   { key: "attendance.half_day_threshold_hours", value: 4, group: "attendance" },
   // Payroll
   { key: "payroll.regular_ot_rate", value: 0, group: "payroll" },
-  { key: "payroll.rest_day_ot_rate", value: 1.30, group: "payroll" },
-  { key: "payroll.night_diff_rate", value: 1.10, group: "payroll" },
-  { key: "payroll.holiday_pay_rate", value: 2.00, group: "payroll" },
+  { key: "payroll.rest_day_ot_rate", value: 0, group: "payroll" },
+  { key: "payroll.night_diff_rate", value: 0, group: "payroll" },
+  { key: "payroll.holiday_pay_rate", value: 0, group: "payroll" },
   { key: "payroll.cutoff_day", value: "15th & Last Day", group: "payroll" },
   { key: "payroll.tax_computation", value: "Annualized", group: "payroll" },
   { key: "payroll.working_days_per_month", value: 22, group: "payroll" },
   { key: "payroll.working_hours_per_day", value: 8, group: "payroll" },
   { key: "payroll.overtime_multiplier", value: 1.25, group: "payroll" },
+  { key: "payroll.late_deduction_per_minute", value: 0, group: "payroll" },
   // Kiosk
   { key: "kiosk.pin", value: "", group: "kiosk" },
   { key: "kiosk.auto_logout", value: 5, group: "kiosk" },

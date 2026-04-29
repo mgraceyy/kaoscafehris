@@ -7,6 +7,7 @@ import type {
   ClockOutInput,
   ListAttendanceQuery,
   ManualAdjustInput,
+  ManualCreateInput,
   SyncBatchInput,
 } from "./attendance.schema.js";
 
@@ -238,6 +239,74 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
     data,
     include: attendanceInclude,
   });
+}
+
+export async function manualCreate(input: ManualCreateInput) {
+  const employee = await prisma.employee.findUnique({
+    where: { id: input.employeeId },
+    select: { id: true, branchId: true, employmentStatus: true },
+  });
+  if (!employee) throw new AppError(404, "Employee not found");
+
+  const clockInAt = new Date(input.clockIn);
+  const dateKey = dateOnlyOf(clockInAt);
+
+  const shift = await findScheduledShift(input.employeeId, dateKey);
+  let status: "PRESENT" | "LATE" = "PRESENT";
+  let lateMinutes: number | null = null;
+
+  if (shift) {
+    const graceMinutes = await getSetting<number>("attendance.late_grace_minutes", 5);
+    const scheduledStart = combineDateAndTime(dateKey, shift.startTime);
+    const delta = diffMinutes(scheduledStart, clockInAt);
+    if (delta > graceMinutes) {
+      status = "LATE";
+      lateMinutes = delta;
+    }
+  }
+
+  let clockOutAt: Date | null = null;
+  let hoursWorked: number | undefined;
+  let overtimeHours: number | undefined;
+  let undertimeMinutes: number | undefined;
+
+  if (input.clockOut) {
+    clockOutAt = new Date(input.clockOut);
+    if (clockOutAt <= clockInAt) {
+      throw new AppError(400, "Clock-out time must be after clock-in");
+    }
+    hoursWorked = hoursBetween(clockInAt, clockOutAt);
+    if (shift) {
+      const scheduledEnd = combineDateAndTime(dateKey, shift.endTime);
+      if (clockOutAt < scheduledEnd) undertimeMinutes = diffMinutes(clockOutAt, scheduledEnd);
+      if (clockOutAt > scheduledEnd) overtimeHours = hoursBetween(scheduledEnd, clockOutAt);
+    }
+  }
+
+  try {
+    return await prisma.attendance.create({
+      data: {
+        employeeId: input.employeeId,
+        branchId: employee.branchId,
+        date: dateKey,
+        clockIn: clockInAt,
+        clockOut: clockOutAt ?? undefined,
+        status,
+        lateMinutes: lateMinutes ?? undefined,
+        hoursWorked,
+        overtimeHours,
+        undertimeMinutes,
+        remarks: input.remarks ?? undefined,
+        syncStatus: "SYNCED",
+      },
+      include: attendanceInclude,
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new AppError(409, "An attendance record already exists for this employee on that date");
+    }
+    throw err;
+  }
 }
 
 export async function syncBatch(input: SyncBatchInput) {

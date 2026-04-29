@@ -45,6 +45,7 @@ const FIELD_CONFIG: Record<string, FieldConfig> = {
     options: ["Yes", "No"],
   },
   "attendance.absent_if_no_clockin": { label: "Absent if No Clock-in After (HRS)", type: "number" },
+  "payroll.late_deduction_per_minute": { label: "Late Deduction (₱/min)", type: "number" },
   "payroll.regular_ot_rate": { label: "Regular OT Rate (₱/hr)", type: "number" },
   "payroll.night_diff_rate": { label: "Night Diff Rate", type: "number", suffix: "×" },
   "payroll.cutoff_day": {

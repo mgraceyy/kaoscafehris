@@ -98,15 +98,17 @@ function LeaveCard({ request }: { request: LeaveRequest }) {
 
 function NewLeaveRequestForm({
   employeeId,
+  allowedTypes,
   onClose,
 }: {
   employeeId: string;
+  allowedTypes: LeaveType[];
   onClose: () => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [leaveType, setLeaveType] = useState<LeaveType>("VACATION");
+  const [leaveType, setLeaveType] = useState<LeaveType>(allowedTypes[0] ?? "UNPAID");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
@@ -198,8 +200,8 @@ function NewLeaveRequestForm({
               onChange={(e) => setLeaveType(e.target.value as LeaveType)}
               className="w-full appearance-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 pr-10"
             >
-              {Object.entries(TYPE_LABEL).map(([v, label]) => (
-                <option key={v} value={v}>{label}</option>
+              {allowedTypes.map((v) => (
+                <option key={v} value={v}>{TYPE_LABEL[v]}</option>
               ))}
             </select>
             <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -339,6 +341,12 @@ export default function PortalLeavePage() {
       {showForm && user?.employee && (
         <NewLeaveRequestForm
           employeeId={user.employee.id}
+          allowedTypes={[
+            ...((balanceQuery.data ?? [])
+              .filter((b) => parseFloat(b.remainingDays) > 0)
+              .map((b) => b.leaveType as LeaveType)),
+            "UNPAID" as LeaveType,
+          ].filter((v, i, arr) => arr.indexOf(v) === i)}
           onClose={() => setShowForm(false)}
         />
       )}

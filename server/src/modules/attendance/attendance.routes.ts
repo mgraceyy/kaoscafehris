@@ -10,6 +10,7 @@ import {
   clockInSchema,
   clockOutSchema,
   manualAdjustSchema,
+  manualCreateSchema,
   syncBatchSchema,
 } from "./attendance.schema.js";
 import * as attendanceController from "./attendance.controller.js";
@@ -46,6 +47,7 @@ router.post(
   attendanceController.uploadSelfie
 );
 router.post("/clock-in", validate(clockInSchema), attendanceController.clockIn);
+router.post("/manual", authorize("ADMIN", "MANAGER"), validate(manualCreateSchema), attendanceController.manualCreate);
 router.post("/:id/clock-out", validate(clockOutSchema), attendanceController.clockOut);
 router.post("/sync", validate(syncBatchSchema), attendanceController.sync);
 

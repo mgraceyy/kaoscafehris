@@ -73,6 +73,15 @@ export async function getProfile(userId: string) {
 export async function updateProfile(userId: string, input: UpdateProfileInput) {
   const employeeId = await resolveEmployeeIdOrThrow(userId);
 
+  if (input.email) {
+    const conflict = await prisma.user.findFirst({
+      where: { email: input.email, NOT: { id: userId } },
+      select: { id: true },
+    });
+    if (conflict) throw new AppError(409, "That email address is already in use.");
+    await prisma.user.update({ where: { id: userId }, data: { email: input.email } });
+  }
+
   await prisma.employee.update({
     where: { id: employeeId },
     data: {

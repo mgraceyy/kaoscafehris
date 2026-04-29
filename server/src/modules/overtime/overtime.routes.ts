@@ -5,6 +5,8 @@ import {
   createOvertimeSchema,
   reviewOvertimeSchema,
   approveShiftOvertimeSchema,
+  createScheduleSchema,
+  updateScheduleSchema,
 } from "./overtime.schema.js";
 import * as overtimeController from "./overtime.controller.js";
 
@@ -31,6 +33,26 @@ router.patch(
   authorize("ADMIN", "MANAGER"),
   validate(approveShiftOvertimeSchema),
   overtimeController.setShiftOvertime
+);
+
+// Overtime schedules (admin/manager pre-assign)
+router.get("/schedules", authorize("ADMIN", "MANAGER"), overtimeController.listSchedules);
+router.post(
+  "/schedules",
+  authorize("ADMIN", "MANAGER"),
+  validate(createScheduleSchema),
+  overtimeController.createSchedule
+);
+router.patch(
+  "/schedules/:id",
+  authorize("ADMIN", "MANAGER"),
+  validate(updateScheduleSchema),
+  overtimeController.updateSchedule
+);
+router.delete(
+  "/schedules/:id",
+  authorize("ADMIN", "MANAGER"),
+  overtimeController.deleteSchedule
 );
 
 export default router;

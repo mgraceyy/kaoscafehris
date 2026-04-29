@@ -33,6 +33,7 @@ function fmtDate(iso: string) {
 // ─── Edit Profile Form ───────────────────────────────────────────────────────
 
 const profileSchema = z.object({
+  email: z.string().trim().email("Invalid email address").min(1, "Required"),
   phone: z.string().trim().max(30).optional(),
   address: z.string().trim().max(255).optional(),
 });
@@ -64,7 +65,7 @@ function EditProfileSheet({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-white">
       <div className="flex items-center justify-between px-5 pt-14 pb-5" style={{ backgroundColor: BRAND }}>
         <h2 className="text-xl font-bold text-white">Edit Profile</h2>
         <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white">
@@ -79,6 +80,7 @@ function EditProfileSheet({
       >
         <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4" style={{ backgroundColor: "#FAF0F0" }}>
           {[
+            { label: "Email Address", name: "email" as const, placeholder: "email@example.com" },
             { label: "Phone Number", name: "phone" as const, placeholder: "+63 XXX XXX XXXX" },
             { label: "Address", name: "address" as const, placeholder: "Street address" },
           ].map(({ label, name, placeholder }) => (
@@ -136,7 +138,7 @@ function ChangePasswordSheet({ onClose }: { onClose: () => void }) {
   const inputClass = "w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700";
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+    <div className="fixed inset-0 z-[100] flex flex-col overflow-hidden bg-white">
       <div className="flex items-center justify-between px-5 pt-14 pb-5" style={{ backgroundColor: BRAND }}>
         <h2 className="text-xl font-bold text-white">Change Password</h2>
         <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white">
@@ -306,6 +308,7 @@ export default function PortalProfilePage() {
 
           <InfoRow icon={Mail} label="Email" value={profile?.email} />
           <InfoRow icon={Phone} label="Phone" value={emp?.phone} />
+          <InfoRow icon={Calendar} label="Birthdate" value={emp?.dateOfBirth ? fmtDate(emp.dateOfBirth) : null} />
           <InfoRow icon={MapPin} label="Address" value={address || null} />
         </div>
 
@@ -366,6 +369,7 @@ export default function PortalProfilePage() {
       {editOpen && emp && (
         <EditProfileSheet
           initialValues={{
+            email: profile?.email ?? "",
             phone: emp.phone ?? "",
             address: emp.address ?? "",
           }}

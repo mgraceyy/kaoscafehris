@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Loader2, Pencil, Search } from "lucide-react";
+import { Download, Loader2, Pencil, Plus, Search } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import { exportToCsv } from "@/lib/export";
 import { listBranches } from "@/features/branches/branches.api";
@@ -11,6 +11,7 @@ import {
   type AttendanceStatus,
 } from "./attendance.api";
 import AttendanceAdjustDialog from "./attendance-adjust-dialog";
+import AttendanceAddDialog from "./attendance-add-dialog";
 
 const BRAND = "#8C1515";
 const AMBER = "#C4843A";
@@ -61,6 +62,7 @@ export default function AttendancePage() {
   const [statusFilter, setStatusFilter] = useState<"" | "COMPLETE" | "LATE" | "INCOMPLETE" | "ABSENT">("");
   const [search, setSearch] = useState("");
   const [adjustTarget, setAdjustTarget] = useState<AttendanceRecord | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
@@ -145,6 +147,14 @@ export default function AttendancePage() {
             <Download className="h-4 w-4" />
             Export
           </button>
+          <button
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90"
+            style={{ backgroundColor: BRAND }}
+          >
+            <Plus className="h-4 w-4" />
+            Add Attendance
+          </button>
         </div>
       </div>
 
@@ -168,7 +178,7 @@ export default function AttendancePage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
           <input
-            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm focus:border-primary focus:outline-none"
+            className="w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none"
             placeholder="Search by name or ID..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -313,6 +323,8 @@ export default function AttendancePage() {
         onOpenChange={(o) => !o && setAdjustTarget(null)}
         record={adjustTarget}
       />
+
+      <AttendanceAddDialog open={addOpen} onOpenChange={setAddOpen} />
     </div>
   );
 }

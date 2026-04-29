@@ -271,7 +271,7 @@ export async function processRun(id: string) {
 
   // OT rate setting.
   const settingRows = await prisma.systemSetting.findMany({
-    where: { key: { in: ["payroll.regular_ot_rate"] } },
+    where: { key: { in: ["payroll.regular_ot_rate", "payroll.late_deduction_per_minute", "attendance.late_threshold"] } },
     select: { key: true, value: true },
   });
 
@@ -283,6 +283,8 @@ export async function processRun(id: string) {
   }
 
   const otRatePerHour = getSetting("payroll.regular_ot_rate", 0);
+  const lateDeductionPerMinute = getSetting("payroll.late_deduction_per_minute", 0);
+  const lateThresholdMinutes = getSetting("attendance.late_threshold", 15);
 
   // Attendance for the period.
   const attendanceRows = await prisma.attendance.findMany({
@@ -290,14 +292,16 @@ export async function processRun(id: string) {
       employeeId: { in: employeeIds },
       date: { gte: run.periodStart, lte: run.periodEnd },
     },
-    select: { employeeId: true, hoursWorked: true, overtimeHours: true },
+    select: { employeeId: true, hoursWorked: true, overtimeHours: true, lateMinutes: true },
   });
 
   const otHoursMap = new Map<string, number>();
   const hoursWorkedMap = new Map<string, number>();
+  const lateMinutesMap = new Map<string, number>();
   for (const rec of attendanceRows) {
     otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + toNum(rec.overtimeHours));
     hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + toNum(rec.hoursWorked));
+    lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + (rec.lateMinutes ?? 0));
   }
 
   // Pre-fetch all employee deduction assignments for this batch.
@@ -339,15 +343,19 @@ export async function processRun(id: string) {
         const rate = toNum(emp.hourlyRate);
         const regularHours = round2(Math.max(0, totalHoursWorked - totalOtHours));
         basicPay = round2(rate * regularHours);
-        overtimePay = totalOtHours > 0 ? round2(rate * 1.25 * totalOtHours) : 0;
+        overtimePay = totalOtHours > 0 && otRatePerHour > 0
+          ? round2(totalOtHours * otRatePerHour)
+          : 0;
       } else {
         basicPay = round2(toNum(emp.basicSalary) / 2);
-        overtimePay = totalOtHours > 0 ? round2(totalOtHours * otRatePerHour) : 0;
+        overtimePay = totalOtHours > 0 && otRatePerHour > 0
+          ? round2(totalOtHours * otRatePerHour)
+          : 0;
       }
 
       const overtimeEarnings: Array<{ type: "OVERTIME"; label: string; amount: number }> =
         overtimePay > 0
-          ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs)`, amount: overtimePay }]
+          ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs × ₱${otRatePerHour}/hr)`, amount: overtimePay }]
           : [];
 
       const holidayEarnings: Array<{ type: "HOLIDAY_PAY"; label: string; amount: number }> =
@@ -376,6 +384,17 @@ export async function processRun(id: string) {
         label: ed.deduction.name,
         amount: round2(toNum(ed.amount ?? ed.deduction.amount)),
       }));
+
+      // Auto-compute late deduction: only minutes exceeding the late threshold are charged.
+      const totalLateMinutes = lateMinutesMap.get(emp.id) ?? 0;
+      const deductibleMinutes = Math.max(0, totalLateMinutes - lateThresholdMinutes);
+      if (lateDeductionPerMinute > 0 && deductibleMinutes > 0) {
+        deductionRows.push({
+          type: "LATE",
+          label: `Late deduction (${deductibleMinutes} min × ₱${lateDeductionPerMinute}/min)`,
+          amount: round2(deductibleMinutes * lateDeductionPerMinute),
+        });
+      }
 
       // Fold into denormalized columns.
       const sssContribution        = sumByDeductionType(deductionRows, "SSS");

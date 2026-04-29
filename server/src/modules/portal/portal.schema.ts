@@ -13,6 +13,7 @@ const isoDate = z
 // Fields the employee is allowed to self-edit. Intentionally excludes
 // employment, salary, government IDs, and name — those require admin action.
 export const updateProfileSchema = z.object({
+  email: emptyToUndef(z.string().trim().email("Invalid email address")),
   phone: emptyToUndef(z.string().trim().max(30)),
   address: emptyToUndef(z.string().trim().max(255)),
   city: emptyToUndef(z.string().trim().max(100)),

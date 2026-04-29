@@ -63,6 +63,15 @@ export async function adjust(
   }
 }
 
+export async function manualCreate(req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await attendanceService.manualCreate(req.body);
+    res.status(201).json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function sync(req: Request, res: Response, next: NextFunction) {
   try {
     const data = await attendanceService.syncBatch(req.body);

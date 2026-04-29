@@ -6,6 +6,9 @@ import type {
   ReviewOvertimeInput,
   ListOvertimeQuery,
   ApproveShiftOvertimeInput,
+  CreateScheduleInput,
+  UpdateScheduleInput,
+  ListSchedulesQuery,
 } from "./overtime.schema.js";
 
 function dateOnly(iso: string): Date {
@@ -89,6 +92,77 @@ export async function reviewRequest(
     },
     include: overtimeInclude,
   });
+}
+
+// ─── Overtime Schedules (admin/manager pre-assigned) ─────────────────────────
+
+const scheduleInclude = {
+  employee: {
+    select: {
+      id: true,
+      employeeId: true,
+      firstName: true,
+      lastName: true,
+      position: true,
+      branch: { select: { id: true, name: true } },
+    },
+  },
+} as const;
+
+export async function listSchedules(query: ListSchedulesQuery, scopedBranchId?: string) {
+  const where: Prisma.OvertimeScheduleWhereInput = {};
+  if (query.employeeId) where.employeeId = query.employeeId;
+  if (scopedBranchId) where.employee = { branchId: scopedBranchId };
+  if (query.startDate || query.endDate) {
+    where.date = {};
+    if (query.startDate) where.date.gte = dateOnly(query.startDate);
+    if (query.endDate) where.date.lte = dateOnly(query.endDate);
+  }
+  return prisma.overtimeSchedule.findMany({
+    where,
+    include: scheduleInclude,
+    orderBy: [{ date: "asc" }, { startTime: "asc" }],
+    take: 500,
+  });
+}
+
+export async function createSchedule(createdById: string, input: CreateScheduleInput) {
+  const employee = await prisma.employee.findUnique({ where: { id: input.employeeId } });
+  if (!employee) throw new AppError(404, "Employee not found");
+
+  return prisma.overtimeSchedule.create({
+    data: {
+      employeeId: input.employeeId,
+      date: dateOnly(input.date),
+      startTime: input.startTime,
+      endTime: input.endTime,
+      notes: input.notes,
+      createdById,
+    },
+    include: scheduleInclude,
+  });
+}
+
+export async function updateSchedule(id: string, input: UpdateScheduleInput) {
+  const existing = await prisma.overtimeSchedule.findUnique({ where: { id } });
+  if (!existing) throw new AppError(404, "Overtime schedule not found");
+
+  return prisma.overtimeSchedule.update({
+    where: { id },
+    data: {
+      ...(input.date ? { date: dateOnly(input.date) } : {}),
+      ...(input.startTime !== undefined ? { startTime: input.startTime } : {}),
+      ...(input.endTime !== undefined ? { endTime: input.endTime } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+    },
+    include: scheduleInclude,
+  });
+}
+
+export async function deleteSchedule(id: string) {
+  const existing = await prisma.overtimeSchedule.findUnique({ where: { id } });
+  if (!existing) throw new AppError(404, "Overtime schedule not found");
+  await prisma.overtimeSchedule.delete({ where: { id } });
 }
 
 /** Manager/admin toggles overtime pre-approval directly on a ShiftAssignment. */
