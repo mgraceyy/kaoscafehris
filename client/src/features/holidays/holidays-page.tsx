@@ -29,6 +29,7 @@ interface FormState {
   name: string;
   type: HolidayType;
   amount: number;
+  percentage: number | null;
 }
 
 const DEFAULT_FORM: FormState = {
@@ -36,6 +37,7 @@ const DEFAULT_FORM: FormState = {
   name: "",
   type: "REGULAR",
   amount: 0,
+  percentage: null,
 };
 
 export default function HolidaysPage() {
@@ -97,6 +99,7 @@ export default function HolidaysPage() {
         name: editing.name,
         type: editing.type,
         amount: editing.amount,
+        percentage: editing.percentage,
       });
       setShowForm(true);
     }
@@ -198,18 +201,61 @@ export default function HolidaysPage() {
             />
           </div>
 
+          {/* Pay mode toggle */}
           <div className="space-y-2">
-            <Label htmlFor="hol-pay">Holiday Pay Amount (₱)</Label>
-            <Input
-              id="hol-pay"
-              type="number"
-              required
-              step="0.01"
-              min="0"
-              value={form.amount}
-              onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))}
-            />
+            <Label>Holiday Pay Mode</Label>
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+              <button
+                type="button"
+                className={`flex-1 py-2 font-medium transition-colors ${form.percentage === null ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                onClick={() => setForm((f) => ({ ...f, percentage: null }))}
+              >
+                Fixed Amount (₱)
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-2 font-medium transition-colors ${form.percentage !== null ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                onClick={() => setForm((f) => ({ ...f, percentage: f.percentage ?? 100 }))}
+              >
+                % of Daily Rate
+              </button>
+            </div>
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 leading-relaxed">
+              {form.percentage !== null
+                ? "Percentage mode is active — holiday pay will be computed as a % of each employee's daily rate. Set to Fixed Amount to use a flat peso value instead."
+                : "Fixed amount mode is active — the same peso amount applies to all employees. Switch to % of Daily Rate to compute based on each employee's salary instead."}
+            </p>
           </div>
+
+          {form.percentage === null ? (
+            <div className="space-y-2">
+              <Label htmlFor="hol-pay">Fixed Amount (₱)</Label>
+              <Input
+                id="hol-pay"
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.amount}
+                onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))}
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="hol-pct">Percentage of Daily Rate (%)</Label>
+              <Input
+                id="hol-pct"
+                type="number"
+                step="0.01"
+                min="0"
+                max="1000"
+                value={form.percentage}
+                onChange={(e) => setForm((f) => ({ ...f, percentage: Number(e.target.value) }))}
+              />
+              <p className="text-xs text-gray-500">
+                e.g. 100 = one full day's pay, 30 = 30% of daily rate (for special non-working holidays)
+              </p>
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={resetForm} disabled={saving}>
@@ -230,7 +276,7 @@ export default function HolidaysPage() {
             <tr className="border-b border-gray-100">
               <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Date</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Holiday Title</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Pay Amount</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Holiday Pay</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Actions</th>
             </tr>
           </thead>
@@ -265,7 +311,10 @@ export default function HolidaysPage() {
                   {h.name}
                 </td>
                 <td className="px-5 py-4 tabular-nums font-medium text-gray-700">
-                  ₱{Number(h.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                  {h.percentage !== null
+                    ? <span>{h.percentage}% of daily rate</span>
+                    : <span>₱{Number(h.amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+                  }
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">

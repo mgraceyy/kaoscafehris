@@ -66,12 +66,14 @@ export async function runToXlsx(run: RunExport): Promise<Buffer> {
     "Bonuses",
     "Allowances",
     "Holiday Pay",
+    "Paid Leave",
     "Gross Pay",
     "SSS",
     "PhilHealth",
     "Pag-IBIG",
     "Withholding Tax",
     "Late",
+    "Unpaid Leave",
     "Cash Advance",
     "Salary Loan",
     "Other Deductions",
@@ -92,7 +94,7 @@ export async function runToXlsx(run: RunExport): Promise<Buffer> {
   });
 
   const currencyCols = [
-    "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+    "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V",
   ];
 
   run.payslips.forEach((p, idx) => {
@@ -107,12 +109,14 @@ export async function runToXlsx(run: RunExport): Promise<Buffer> {
       num(p.bonuses),
       num(p.allowances),
       num(p.holidayPay),
+      num(p.paidLeaveCredits),
       num(p.grossPay),
       num(p.sssContribution),
       num(p.philhealthContribution),
       num(p.pagibigContribution),
       num(p.withholdingTax),
       num(p.lateDeductions),
+      num(p.unpaidLeaveDeductions),
       num(p.cashAdvance),
       num(p.salaryLoan),
       num(p.otherDeductions),

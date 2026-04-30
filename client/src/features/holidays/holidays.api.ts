@@ -8,6 +8,7 @@ export interface PublicHoliday {
   name: string;
   type: HolidayType;
   amount: number;
+  percentage: number | null;
 }
 
 export async function listHolidays(year?: number): Promise<PublicHoliday[]> {

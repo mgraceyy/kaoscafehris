@@ -78,6 +78,7 @@ enum PayslipStatus {
 
 enum DeductionType {
   LATE           // auto-computed from attendance
+  UNPAID_LEAVE   // auto-computed from approved unpaid leave requests
   CASH_ADVANCE
   SALARY_LOAN
   SSS
@@ -92,6 +93,7 @@ enum EarningType {
   BONUS
   ALLOWANCE
   HOLIDAY_PAY
+  PAID_LEAVE   // credited for hourly employees on approved paid leave days
   OTHER
 }
 
@@ -468,6 +470,7 @@ model Payslip {
   bonuses       Decimal       @db.Decimal(12, 2) @default(0)
   allowances    Decimal       @db.Decimal(12, 2) @default(0)
   holidayPay    Decimal       @db.Decimal(12, 2) @default(0)
+  paidLeaveCredits Decimal    @db.Decimal(12, 2) @default(0)
   grossPay      Decimal       @db.Decimal(12, 2)
 
   // Government deductions
@@ -477,10 +480,11 @@ model Payslip {
   withholdingTax        Decimal @db.Decimal(12, 2) @default(0)
 
   // Other deductions
-  lateDeductions    Decimal   @db.Decimal(12, 2) @default(0)
-  cashAdvance       Decimal   @db.Decimal(12, 2) @default(0)
-  salaryLoan        Decimal   @db.Decimal(12, 2) @default(0)
-  otherDeductions   Decimal   @db.Decimal(12, 2) @default(0)
+  lateDeductions        Decimal   @db.Decimal(12, 2) @default(0)
+  unpaidLeaveDeductions Decimal   @db.Decimal(12, 2) @default(0)
+  cashAdvance           Decimal   @db.Decimal(12, 2) @default(0)
+  salaryLoan            Decimal   @db.Decimal(12, 2) @default(0)
+  otherDeductions       Decimal   @db.Decimal(12, 2) @default(0)
 
   totalDeductions   Decimal   @db.Decimal(12, 2)
   netPay            Decimal   @db.Decimal(12, 2)
@@ -620,7 +624,8 @@ model PublicHoliday {
   date        DateTime @db.Date
   name        String
   type        String   // "REGULAR" | "SPECIAL_NON_WORKING"
-  amount      Decimal  @db.Decimal(12, 2) @default(0)
+  amount      Decimal  @db.Decimal(12, 2) @default(0) // fixed peso amount (used when percentage is null)
+  percentage  Decimal? @db.Decimal(6, 2)              // % of daily rate (overrides amount when set, e.g. 100 = 100%)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

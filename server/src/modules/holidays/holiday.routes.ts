@@ -12,6 +12,7 @@ const holidaySchema = z.object({
   name: z.string().trim().min(1),
   type: z.enum(["REGULAR", "SPECIAL_NON_WORKING"]),
   amount: z.coerce.number().nonnegative().default(0),
+  percentage: z.coerce.number().min(0).max(1000).nullable().optional(),
 });
 
 router.get("/", async (req, res, next) => {
@@ -39,6 +40,7 @@ router.post("/", authorize("ADMIN"), async (req, res, next) => {
         name: body.name,
         type: body.type,
         amount: body.amount,
+        percentage: body.percentage ?? null,
       },
     });
     res.status(201).json({ data: holiday });
@@ -58,6 +60,7 @@ router.patch("/:id", authorize("ADMIN"), async (req, res, next) => {
         ...(body.name && { name: body.name }),
         ...(body.type && { type: body.type }),
         ...(body.amount !== undefined && { amount: body.amount }),
+        ...("percentage" in body && { percentage: body.percentage ?? null }),
       },
     });
     res.json({ data: updated });

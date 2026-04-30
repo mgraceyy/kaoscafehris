@@ -209,12 +209,12 @@ export async function cancelRun(id: string) {
 
 type DeductionTypeKey =
   | "SSS" | "PHILHEALTH" | "PAGIBIG" | "BIR_TAX"
-  | "LATE" | "CASH_ADVANCE" | "SALARY_LOAN" | "OTHER";
+  | "LATE" | "UNPAID_LEAVE" | "CASH_ADVANCE" | "SALARY_LOAN" | "OTHER";
 
 function toDeductionType(type: string | null | undefined): DeductionTypeKey {
   const valid: DeductionTypeKey[] = [
     "SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX",
-    "LATE", "CASH_ADVANCE", "SALARY_LOAN", "OTHER",
+    "LATE", "UNPAID_LEAVE", "CASH_ADVANCE", "SALARY_LOAN", "OTHER",
   ];
   return valid.includes(type as DeductionTypeKey) ? (type as DeductionTypeKey) : "OTHER";
 }
@@ -266,7 +266,7 @@ export async function processRun(id: string) {
   // Public holidays in the period.
   const periodHolidays = await prisma.publicHoliday.findMany({
     where: { date: { gte: run.periodStart, lte: run.periodEnd } },
-    select: { name: true, amount: true },
+    select: { name: true, amount: true, percentage: true },
   });
 
   // OT rate setting.
@@ -302,6 +302,53 @@ export async function processRun(id: string) {
     otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + toNum(rec.overtimeHours));
     hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + toNum(rec.hoursWorked));
     lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + (rec.lateMinutes ?? 0));
+  }
+
+  // Approved UNPAID leave days per employee within the payroll period.
+  const unpaidLeaveRows = await prisma.leaveRequest.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      leaveType: "UNPAID",
+      status: "APPROVED",
+      startDate: { lte: run.periodEnd },
+      endDate: { gte: run.periodStart },
+    },
+    select: { employeeId: true, startDate: true, endDate: true, totalDays: true },
+  });
+
+  // Clamp each leave to the payroll period and sum up days per employee.
+  const unpaidDaysMap = new Map<string, number>();
+  for (const leave of unpaidLeaveRows) {
+    const clampedStart = leave.startDate < run.periodStart ? run.periodStart : leave.startDate;
+    const clampedEnd   = leave.endDate   > run.periodEnd   ? run.periodEnd   : leave.endDate;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const clampedDays = Math.round((clampedEnd.getTime() - clampedStart.getTime()) / msPerDay) + 1;
+    // Use totalDays from the record but cap it to the clamped range so partial-period leaves are correct.
+    const days = Math.min(toNum(leave.totalDays), clampedDays);
+    unpaidDaysMap.set(leave.employeeId, round2((unpaidDaysMap.get(leave.employeeId) ?? 0) + days));
+  }
+
+  // Approved paid leave days per employee within the payroll period (non-UNPAID types).
+  // Used to credit HOURLY employees who would otherwise lose pay for approved leave days.
+  const paidLeaveRows = await prisma.leaveRequest.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      leaveType: { not: "UNPAID" },
+      status: "APPROVED",
+      startDate: { lte: run.periodEnd },
+      endDate: { gte: run.periodStart },
+    },
+    select: { employeeId: true, startDate: true, endDate: true, totalDays: true, leaveType: true },
+  });
+
+  const paidLeaveDaysMap = new Map<string, number>();
+  for (const leave of paidLeaveRows) {
+    const clampedStart = leave.startDate < run.periodStart ? run.periodStart : leave.startDate;
+    const clampedEnd   = leave.endDate   > run.periodEnd   ? run.periodEnd   : leave.endDate;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const clampedDays = Math.round((clampedEnd.getTime() - clampedStart.getTime()) / msPerDay) + 1;
+    const days = Math.min(toNum(leave.totalDays), clampedDays);
+    paidLeaveDaysMap.set(leave.employeeId, round2((paidLeaveDaysMap.get(leave.employeeId) ?? 0) + days));
   }
 
   // Pre-fetch all employee deduction assignments for this batch.
@@ -358,9 +405,23 @@ export async function processRun(id: string) {
           ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs × ₱${otRatePerHour}/hr)`, amount: overtimePay }]
           : [];
 
+      // Daily rate used for percentage-based holiday pay.
+      const dailyRateForHoliday = emp.payType === "HOURLY"
+        ? round2(toNum(emp.hourlyRate) * 8)
+        : round2(toNum(emp.basicSalary) / 26);
+
       const holidayEarnings: Array<{ type: "HOLIDAY_PAY"; label: string; amount: number }> =
         periodHolidays
-          .map((h) => ({ type: "HOLIDAY_PAY" as const, label: h.name, amount: round2(toNum(h.amount)) }))
+          .map((h) => {
+            const pct = toNum(h.percentage);
+            const amount = pct > 0
+              ? round2(dailyRateForHoliday * pct / 100)
+              : round2(toNum(h.amount));
+            const label = pct > 0
+              ? `${h.name} (${pct}% of ₱${dailyRateForHoliday}/day)`
+              : h.name;
+            return { type: "HOLIDAY_PAY" as const, label, amount };
+          })
           .filter((r) => r.amount > 0);
 
       const holidayPayTotal = round2(holidayEarnings.reduce((s, r) => s + r.amount, 0));
@@ -376,6 +437,23 @@ export async function processRun(id: string) {
       const bonuses    = round2(profileEarningRows.filter((r) => r.type === "BONUS").reduce((s, r) => s + r.amount, 0));
       const allowances = round2(profileEarningRows.filter((r) => r.type === "ALLOWANCE").reduce((s, r) => s + r.amount, 0));
       const otherEarningsTotal = round2(profileEarningRows.filter((r) => r.type === "OTHER").reduce((s, r) => s + r.amount, 0));
+
+      // For HOURLY employees: credit approved paid leave days so they don't lose pay.
+      // MONTHLY_FIXED employees already receive full semi-monthly pay regardless.
+      const paidLeaveDays = emp.payType === "HOURLY" ? (paidLeaveDaysMap.get(emp.id) ?? 0) : 0;
+      const paidLeaveEarnings: Array<{ type: "PAID_LEAVE"; label: string; amount: number }> = [];
+      if (paidLeaveDays > 0) {
+        const dailyRate = round2(toNum(emp.hourlyRate) * 8);
+        const paidLeaveAmount = round2(dailyRate * paidLeaveDays);
+        if (paidLeaveAmount > 0) {
+          paidLeaveEarnings.push({
+            type: "PAID_LEAVE",
+            label: `Paid leave (${paidLeaveDays} day${paidLeaveDays !== 1 ? "s" : ""} × ₱${dailyRate}/day)`,
+            amount: paidLeaveAmount,
+          });
+        }
+      }
+      const paidLeaveCredits = round2(paidLeaveEarnings.reduce((s, r) => s + r.amount, 0));
 
       // Build deductions from this employee's assigned deductions profile.
       const empDeductions = empDeductionMap.get(emp.id) ?? [];
@@ -396,18 +474,37 @@ export async function processRun(id: string) {
         });
       }
 
+      // Auto-compute unpaid leave deduction from approved UNPAID leave requests.
+      // MONTHLY_FIXED: daily rate = basicSalary / 26 (DOLE standard divisor).
+      // HOURLY: daily rate = hourlyRate × 8 hours.
+      const unpaidDays = unpaidDaysMap.get(emp.id) ?? 0;
+      if (unpaidDays > 0) {
+        const dailyRate = emp.payType === "HOURLY"
+          ? round2(toNum(emp.hourlyRate) * 8)
+          : round2(toNum(emp.basicSalary) / 26);
+        const unpaidLeaveAmount = round2(dailyRate * unpaidDays);
+        if (unpaidLeaveAmount > 0) {
+          deductionRows.push({
+            type: "UNPAID_LEAVE",
+            label: `Unpaid leave (${unpaidDays} day${unpaidDays !== 1 ? "s" : ""} × ₱${dailyRate}/day)`,
+            amount: unpaidLeaveAmount,
+          });
+        }
+      }
+
       // Fold into denormalized columns.
       const sssContribution        = sumByDeductionType(deductionRows, "SSS");
       const philhealthContribution = sumByDeductionType(deductionRows, "PHILHEALTH");
       const pagibigContribution    = sumByDeductionType(deductionRows, "PAGIBIG");
       const withholdingTax         = sumByDeductionType(deductionRows, "BIR_TAX");
       const lateDeductions         = sumByDeductionType(deductionRows, "LATE");
+      const unpaidLeaveDeductions  = sumByDeductionType(deductionRows, "UNPAID_LEAVE");
       const cashAdvance            = sumByDeductionType(deductionRows, "CASH_ADVANCE");
       const salaryLoan             = sumByDeductionType(deductionRows, "SALARY_LOAN");
       const otherDeductions        = sumByDeductionType(deductionRows, "OTHER");
       const totalDeductions        = round2(deductionRows.reduce((s, r) => s + r.amount, 0));
 
-      const grossPay = round2(basicPay + overtimePay + holidayPayTotal + bonuses + allowances + otherEarningsTotal);
+      const grossPay = round2(basicPay + overtimePay + holidayPayTotal + bonuses + allowances + paidLeaveCredits + otherEarningsTotal);
       const netPay   = round2(grossPay - totalDeductions);
 
       await tx.payslip.create({
@@ -419,19 +516,21 @@ export async function processRun(id: string) {
           bonuses,
           allowances,
           holidayPay: holidayPayTotal,
+          paidLeaveCredits,
           grossPay,
           sssContribution,
           philhealthContribution,
           pagibigContribution,
           withholdingTax,
           lateDeductions,
+          unpaidLeaveDeductions,
           cashAdvance,
           salaryLoan,
           otherDeductions,
           totalDeductions,
           netPay,
           status: "DRAFT",
-          earnings: { create: [...overtimeEarnings, ...holidayEarnings, ...profileEarningRows] },
+          earnings: { create: [...overtimeEarnings, ...holidayEarnings, ...paidLeaveEarnings, ...profileEarningRows] },
           deductions: { create: deductionRows },
         },
       });
@@ -575,9 +674,11 @@ export async function adjustPayslip(id: string, input: AdjustPayslipInput) {
   const bonuses = sumByType(e, "BONUS");
   const allowances = sumByType(e, "ALLOWANCE");
   const holidayPay = sumByType(e, "HOLIDAY_PAY");
+  const paidLeaveCredits = sumByType(e, "PAID_LEAVE");
   const otherEarnings = sumByType(e, "OTHER");
 
   const lateDeductions = sumByType(d, "LATE");
+  const unpaidLeaveDeductions = sumByType(d, "UNPAID_LEAVE");
   const cashAdvance = sumByType(d, "CASH_ADVANCE");
   const salaryLoan = sumByType(d, "SALARY_LOAN");
   const sssContribution = sumByType(d, "SSS");
@@ -587,10 +688,11 @@ export async function adjustPayslip(id: string, input: AdjustPayslipInput) {
   const otherDeductions = sumByType(d, "OTHER");
 
   const grossPay = round2(
-    basicPay + overtimePay + bonuses + allowances + holidayPay + otherEarnings
+    basicPay + overtimePay + bonuses + allowances + holidayPay + paidLeaveCredits + otherEarnings
   );
   const totalDeductions = round2(
     lateDeductions +
+      unpaidLeaveDeductions +
       cashAdvance +
       salaryLoan +
       sssContribution +
@@ -630,12 +732,14 @@ export async function adjustPayslip(id: string, input: AdjustPayslipInput) {
         bonuses,
         allowances,
         holidayPay,
+        paidLeaveCredits,
         grossPay,
         sssContribution,
         philhealthContribution,
         pagibigContribution,
         withholdingTax,
         lateDeductions,
+        unpaidLeaveDeductions,
         cashAdvance,
         salaryLoan,
         otherDeductions,
