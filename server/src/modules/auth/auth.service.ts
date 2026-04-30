@@ -50,7 +50,7 @@ export async function login(input: LoginInput): Promise<{
 
   const emp = await prisma.employee.findUnique({
     where: { employeeId: input.employeeId },
-    select: { userId: true },
+    select: { userId: true, employmentStatus: true },
   });
 
   if (emp) {
@@ -75,6 +75,10 @@ export async function login(input: LoginInput): Promise<{
 
   if (!user.isActive) {
     throw new AppError(403, "Account has been deactivated. Contact your administrator.");
+  }
+
+  if (emp?.employmentStatus === "TERMINATED") {
+    throw new AppError(403, "Your employment has been terminated. Access is no longer allowed.");
   }
 
   await prisma.user.update({
@@ -109,6 +113,7 @@ export async function getCurrentUser(userId: string): Promise<AuthenticatedUser>
           position: true,
           branchId: true,
           profilePhoto: true,
+          employmentStatus: true,
         },
       },
     },
@@ -122,11 +127,25 @@ export async function getCurrentUser(userId: string): Promise<AuthenticatedUser>
     throw new AppError(403, "Account has been deactivated");
   }
 
+  if (user.employee?.employmentStatus === "TERMINATED") {
+    throw new AppError(403, "Your employment has been terminated. Access is no longer allowed.");
+  }
+
   return {
     id: user.id,
     email: user.email,
     role: user.role,
     isActive: user.isActive,
-    employee: user.employee,
+    employee: user.employee
+      ? {
+          id: user.employee.id,
+          employeeId: user.employee.employeeId,
+          firstName: user.employee.firstName,
+          lastName: user.employee.lastName,
+          position: user.employee.position,
+          branchId: user.employee.branchId,
+          profilePhoto: user.employee.profilePhoto,
+        }
+      : null,
   };
 }
