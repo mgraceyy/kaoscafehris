@@ -87,6 +87,11 @@ async function runAutoClockout() {
       });
       if (approvedOT) continue;
 
+      const overtimeSchedule = await prisma.overtimeSchedule.findFirst({
+        where: { employeeId: assignment.employeeId, date: todayLocal },
+      });
+      if (overtimeSchedule) continue;
+
       const attendance = await prisma.attendance.findUnique({
         where: { employeeId_date: { employeeId: assignment.employeeId, date: todayLocal } },
       });
