@@ -4,6 +4,7 @@ import { AppError } from "../../middleware/error-handler.js";
 import { logAudit } from "../../lib/audit.js";
 import type {
   AssignEmployeesInput,
+  AssignEmployeeEntry,
   CreateShiftInput,
   ListShiftsQuery,
   UpdateShiftInput,
@@ -23,6 +24,7 @@ const shiftInclude = {
           position: true,
         },
       },
+      assignedBranch: { select: { id: true, name: true } },
     },
   },
 } as const;
@@ -71,18 +73,15 @@ export async function getShiftById(id: string) {
   return shift;
 }
 
-async function ensureEmployeesInBranch(employeeIds: string[], branchId: string) {
-  if (employeeIds.length === 0) return;
+async function ensureEmployeesValid(entries: AssignEmployeeEntry[]) {
+  if (entries.length === 0) return;
+  const employeeIds = entries.map((e) => e.employeeId);
   const employees = await prisma.employee.findMany({
     where: { id: { in: employeeIds } },
-    select: { id: true, branchId: true, employmentStatus: true },
+    select: { id: true, employmentStatus: true },
   });
   if (employees.length !== employeeIds.length) {
     throw new AppError(400, "One or more employees do not exist");
-  }
-  const wrongBranch = employees.filter((e) => e.branchId !== branchId);
-  if (wrongBranch.length > 0) {
-    throw new AppError(400, "Assigned employees must belong to the same branch as the shift");
   }
   const terminated = employees.filter((e) => e.employmentStatus === "TERMINATED");
   if (terminated.length > 0) {
@@ -119,8 +118,8 @@ export async function createShift(input: CreateShiftInput) {
   if (!branch) throw new AppError(400, "Branch not found");
   if (!branch.isActive) throw new AppError(400, "Cannot create shifts for an inactive branch");
 
-  await ensureEmployeesInBranch(input.employeeIds, input.branchId);
-  await ensureNoShiftTypeConflict(input.employeeIds, input.date, input.shiftTypeId);
+  await ensureEmployeesValid(input.employees);
+  await ensureNoShiftTypeConflict(input.employees.map((e) => e.employeeId), input.date, input.shiftTypeId);
 
   let startTime: Date;
   let endTime: Date;
@@ -131,12 +130,6 @@ export async function createShift(input: CreateShiftInput) {
       where: { id: input.shiftTypeId },
     });
     if (!shiftType) throw new AppError(400, "Shift type not found");
-    const stBranch = await prisma.shiftTypeBranch.findUnique({
-      where: { shiftTypeId_branchId: { shiftTypeId: input.shiftTypeId!, branchId: input.branchId } },
-    });
-    if (!stBranch) {
-      throw new AppError(400, "Shift type does not belong to this branch");
-    }
     startTime = shiftType.startTime;
     endTime = shiftType.endTime;
   } else {
@@ -157,9 +150,12 @@ export async function createShift(input: CreateShiftInput) {
       startTime,
       endTime,
       status: "PUBLISHED",
-      assignments: input.employeeIds.length
+      assignments: input.employees.length
         ? {
-            create: input.employeeIds.map((employeeId) => ({ employeeId })),
+            create: input.employees.map((e) => ({
+              employeeId: e.employeeId,
+              assignedBranchId: e.assignedBranchId ?? null,
+            })),
           }
         : undefined,
     },
@@ -216,12 +212,21 @@ export async function assignEmployees(shiftId: string, input: AssignEmployeesInp
   const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
   if (!shift) throw new AppError(404, "Shift not found");
 
-  await ensureEmployeesInBranch(input.employeeIds, shift.branchId);
-  await ensureNoShiftTypeConflict(input.employeeIds, shift.date.toISOString().slice(0, 10), shift.shiftTypeId, shiftId);
+  await ensureEmployeesValid(input.employees);
+  await ensureNoShiftTypeConflict(
+    input.employees.map((e) => e.employeeId),
+    shift.date.toISOString().slice(0, 10),
+    shift.shiftTypeId,
+    shiftId
+  );
 
   // Idempotent: skip existing assignments, create the rest.
   const result = await prisma.shiftAssignment.createMany({
-    data: input.employeeIds.map((employeeId) => ({ shiftId, employeeId })),
+    data: input.employees.map((e) => ({
+      shiftId,
+      employeeId: e.employeeId,
+      assignedBranchId: e.assignedBranchId ?? null,
+    })),
     skipDuplicates: true,
   });
 
@@ -230,7 +235,7 @@ export async function assignEmployees(shiftId: string, input: AssignEmployeesInp
       action: "UPDATE",
       tableName: "shift_assignments",
       recordId: shiftId,
-      newValues: { shiftId, addedEmployeeIds: input.employeeIds, added: result.count },
+      newValues: { shiftId, addedEmployeeIds: input.employees.map((e) => e.employeeId), added: result.count },
     });
   }
 

@@ -30,7 +30,7 @@ export default function SchedulingCalendar({
   onDelete,
   onAssign,
 }: Props) {
-  const weekStart = startOfWeek(weekDate, { weekStartsOn: 1 });
+  const weekStart = startOfWeek(weekDate, { weekStartsOn: 0 });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const weekLabel =
     format(days[0], "MMM d") + " – " + format(days[6], "MMM d, yyyy");

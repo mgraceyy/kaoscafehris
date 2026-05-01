@@ -6,7 +6,6 @@ const time = z
 
 export const createShiftTypeSchema = z
   .object({
-    branchIds: z.array(z.string().uuid("Invalid branch ID")).min(1, "Select at least one branch"),
     name: z.string().trim().min(1, "Name is required").max(60, "Name must be 60 characters or less"),
     startTime: time,
     endTime: time,
@@ -17,7 +16,6 @@ export const createShiftTypeSchema = z
   );
 
 export const updateShiftTypeSchema = z.object({
-  branchIds: z.array(z.string().uuid()).min(1).optional(),
   name: z.string().trim().min(1).max(60).optional(),
   startTime: time.optional(),
   endTime: time.optional(),
@@ -32,7 +30,7 @@ export const updateShiftTypeSchema = z.object({
 );
 
 export const listShiftTypesQuerySchema = z.object({
-  branchId: z.string().uuid().optional(), // filter to types that include this branch
+  branchId: z.string().uuid().optional(), // kept for backward compat, ignored
 });
 
 export type CreateShiftTypeInput = z.infer<typeof createShiftTypeSchema>;

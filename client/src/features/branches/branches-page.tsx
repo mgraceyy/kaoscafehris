@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, MapPin, Pencil, X } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
+import { TimePicker } from "@/components/ui/time-picker";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { extractErrorMessage } from "@/lib/api";
@@ -17,12 +18,44 @@ import {
 
 const BRAND = "#8C1515";
 
+/** Parse "H:MM AM" or "H:MM PM" → "HH:mm" 24-hour. Returns "" if unparseable. */
+function parseOpHour(token: string): string {
+  const m = token.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) return "";
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const period = m[3].toUpperCase();
+  if (period === "AM" && h === 12) h = 0;
+  if (period === "PM" && h !== 12) h += 12;
+  return `${String(h).padStart(2, "0")}:${min}`;
+}
+
+/** Split stored "H:MM AM – H:MM PM" into [openHHmm, closeHHmm]. */
+function parseOperatingHours(value?: string | null): { open: string; close: string } {
+  if (!value) return { open: "", close: "" };
+  const parts = value.split(/–|-/);
+  return { open: parseOpHour(parts[0] ?? ""), close: parseOpHour(parts[1] ?? "") };
+}
+
+/** Format two "HH:mm" 24h values back to display string "H:MM AM – H:MM PM". */
+function formatOperatingHours(open: string, close: string): string | undefined {
+  if (!open && !close) return undefined;
+  function fmt(hhmm: string) {
+    const [h, m] = hhmm.split(":").map(Number);
+    const period = h < 12 ? "AM" : "PM";
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+  }
+  return [open && fmt(open), close && fmt(close)].filter(Boolean).join(" – ");
+}
+
 const schema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
   address: z.string().trim().min(3, "Address is required"),
   city: z.string().trim().min(2, "City is required"),
   branchManager: z.string().trim().optional(),
-  operatingHours: z.string().trim().optional(),
+  operatingHoursOpen: z.string().optional(),
+  operatingHoursClose: z.string().optional(),
   phone: z.string().trim().optional(),
   isActive: z.enum(["true", "false"]),
 });
@@ -71,28 +104,31 @@ export default function BranchesPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", address: "", city: "", branchManager: "", operatingHours: "", phone: "", isActive: "true" },
+    defaultValues: { name: "", address: "", city: "", branchManager: "", operatingHoursOpen: "", operatingHoursClose: "", phone: "", isActive: "true" },
   });
 
   function openCreate() {
     setPanelBranch(null);
-    reset({ name: "", address: "", city: "", branchManager: "", operatingHours: "", phone: "", isActive: "true" });
+    reset({ name: "", address: "", city: "", branchManager: "", operatingHoursOpen: "", operatingHoursClose: "", phone: "", isActive: "true" });
     setPanelOpen(true);
   }
 
   function openEdit(branch: Branch) {
     setPanelBranch(branch);
+    const { open, close } = parseOperatingHours(branch.operatingHours);
     reset({
       name: branch.name,
       address: branch.address,
       city: branch.city,
       branchManager: branch.branchManager ?? "",
-      operatingHours: branch.operatingHours ?? "",
+      operatingHoursOpen: open,
+      operatingHoursClose: close,
       phone: branch.phone ?? "",
       isActive: branch.isActive ? "true" : "false",
     });
@@ -111,7 +147,7 @@ export default function BranchesPage() {
         address: values.address,
         city: values.city,
         branchManager: values.branchManager || undefined,
-        operatingHours: values.operatingHours || undefined,
+        operatingHours: formatOperatingHours(values.operatingHoursOpen ?? "", values.operatingHoursClose ?? ""),
         phone: values.phone || undefined,
         isActive: values.isActive === "true",
       };
@@ -327,11 +363,23 @@ export default function BranchesPage() {
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
                         Operating Hours
                       </label>
-                      <input
-                        {...register("operatingHours")}
-                        placeholder="e.g. 6:00 AM – 12:00 AM"
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400"
-                      />
+                      <div className="flex items-center gap-2">
+                        <Controller
+                          name="operatingHoursOpen"
+                          control={control}
+                          render={({ field }) => (
+                            <TimePicker value={field.value} onChange={field.onChange} className="flex-1" />
+                          )}
+                        />
+                        <span className="text-sm text-gray-400 shrink-0">–</span>
+                        <Controller
+                          name="operatingHoursClose"
+                          control={control}
+                          render={({ field }) => (
+                            <TimePicker value={field.value} onChange={field.onChange} className="flex-1" />
+                          )}
+                        />
+                      </div>
                     </div>
 
                     <div>

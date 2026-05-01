@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, format, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
+import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -35,7 +35,7 @@ function shiftColor(shiftId: string) {
   return SHIFT_COLORS[Math.abs(hash) % SHIFT_COLORS.length];
 }
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function SchedulingPage() {
   const qc = useQueryClient();
@@ -57,6 +57,9 @@ export default function SchedulingPage() {
     { shift: Shift; employeeId: string; name: string } | null
   >(null);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState<number>(new Date().getFullYear());
+  const datePickerRef = useRef<HTMLDivElement>(null);
 
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
@@ -70,18 +73,21 @@ export default function SchedulingPage() {
     }
   }, [branchesQuery.data, branchIds]);
 
-  // Close branch dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
         setBranchDropdownOpen(false);
+      }
+      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
+        setDatePickerOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const calWeekStart = startOfWeek(calendarWeek, { weekStartsOn: 1 });
+  const calWeekStart = startOfWeek(calendarWeek, { weekStartsOn: 0 });
   const calMonthStart = startOfMonth(calendarMonth);
   const calMonthEnd = endOfMonth(calendarMonth);
 
@@ -273,9 +279,68 @@ export default function SchedulingPage() {
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <span className="text-sm font-semibold text-gray-800">
-          {view === "weekly" ? rangeLabel : format(calendarMonth, "MMMM yyyy")}
-        </span>
+        <div className="relative" ref={datePickerRef}>
+          <button
+            onClick={() => {
+              setPickerYear(view === "weekly" ? calendarWeek.getFullYear() : calendarMonth.getFullYear());
+              setDatePickerOpen((o) => !o);
+            }}
+            className="flex items-center gap-1 text-sm font-semibold text-gray-800 hover:text-gray-600 transition-colors"
+          >
+            {view === "weekly" ? rangeLabel : format(calendarMonth, "MMMM yyyy")}
+            <ChevronDown className="h-4 w-4 text-gray-400" />
+          </button>
+          {datePickerOpen && (
+            <div className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-xl border border-gray-200 bg-white shadow-lg p-4 w-72">
+              {/* Year selector */}
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={() => setPickerYear((y) => y - 1)}
+                  className="rounded p-1 text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-sm font-semibold text-gray-800">{pickerYear}</span>
+                <button
+                  onClick={() => setPickerYear((y) => y + 1)}
+                  className="rounded p-1 text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              {/* Month grid */}
+              <div className="grid grid-cols-3 gap-1">
+                {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((m, idx) => {
+                  const target = new Date(pickerYear, idx, 1);
+                  const isActive = view === "weekly"
+                    ? calendarWeek.getMonth() === idx && calendarWeek.getFullYear() === pickerYear
+                    : calendarMonth.getMonth() === idx && calendarMonth.getFullYear() === pickerYear;
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => {
+                        if (view === "weekly") {
+                          setCalendarWeek(target);
+                        } else {
+                          setCalendarMonth(target);
+                        }
+                        setDatePickerOpen(false);
+                      }}
+                      className={`rounded-lg py-1.5 text-sm font-medium transition-colors ${
+                        isActive
+                          ? "text-white"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                      style={isActive ? { backgroundColor: BRAND } : undefined}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => view === "weekly" ? setCalendarWeek((d) => addWeeks(d, 1)) : setCalendarMonth((d) => addMonths(d, 1))}
           className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
@@ -436,14 +501,17 @@ export default function SchedulingPage() {
       {!query.isLoading && view === "monthly" && (
         <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
           <div className="grid grid-cols-7 gap-0">
-            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
               <div key={label} className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-center text-xs font-semibold text-gray-600">
                 {label}
               </div>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-0">
-            {eachDayOfInterval({ start: calMonthStart, end: calMonthEnd }).map((day) => {
+            {eachDayOfInterval({
+              start: startOfWeek(calMonthStart, { weekStartsOn: 0 }),
+              end: endOfWeek(calMonthEnd, { weekStartsOn: 0 }),
+            }).map((day) => {
               const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
               const dayIso = format(day, "yyyy-MM-dd");
               const dayShifts = shiftsForDay(dayIso);
@@ -488,6 +556,11 @@ export default function SchedulingPage() {
                               {s.assignments.map((a) => (
                                 <div key={a.id} className="truncate text-xs opacity-70">
                                   {a.employee.firstName} {a.employee.lastName}
+                                  {a.assignedBranch && (
+                                    <div className="truncate opacity-75" style={{ fontSize: "0.65rem" }}>
+                                      {a.assignedBranch.name}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>

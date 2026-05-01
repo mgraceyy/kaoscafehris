@@ -27,6 +27,11 @@ router.patch(
   leaveController.reviewRequest
 );
 router.patch("/requests/:id/cancel", leaveController.cancelRequest);
+router.patch(
+  "/requests/:id/revert",
+  authorize("ADMIN", "MANAGER"),
+  leaveController.revertRequest
+);
 
 router.get("/balances", leaveController.listBalances);
 router.put(

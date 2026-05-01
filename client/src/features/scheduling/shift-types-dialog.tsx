@@ -11,9 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TimePicker } from "@/components/ui/time-picker";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
-import { listBranches } from "@/features/branches/branches.api";
 import {
   createShiftType,
   deleteShiftType,
@@ -31,14 +31,12 @@ interface FormState {
   name: string;
   startTime: string;
   endTime: string;
-  branchIds: string[];
 }
 
 const DEFAULT_FORM: FormState = {
   name: "",
   startTime: "08:00",
   endTime: "17:00",
-  branchIds: [],
 };
 
 function toHHMM(value: string): string {
@@ -50,6 +48,11 @@ function toHHMM(value: string): string {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+function toHH24MM(value: string): string {
+  const d = new Date(value);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
 export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -57,29 +60,15 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
   const [editing, setEditing] = useState<ShiftType | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
 
-  const branchesQuery = useQuery({
-    queryKey: ["branches", { active: true }],
-    queryFn: () => listBranches({ isActive: true }),
-    enabled: open,
-  });
-
   const query = useQuery({
     queryKey: ["shift-types"],
     queryFn: () => listShiftTypes(),
     enabled: open,
   });
 
-  // Auto-select all branches when branches load (for new template)
-  useEffect(() => {
-    if (branchesQuery.data && !editing && form.branchIds.length === 0) {
-      setForm((f) => ({ ...f, branchIds: branchesQuery.data!.map((b) => b.id) }));
-    }
-  }, [branchesQuery.data, editing, form.branchIds.length]);
-
   const createMut = useMutation({
     mutationFn: () =>
       createShiftType({
-        branchIds: form.branchIds,
         name: form.name,
         startTime: form.startTime,
         endTime: form.endTime,
@@ -95,7 +84,6 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
   const updateMut = useMutation({
     mutationFn: (id: string) =>
       updateShiftType(id, {
-        branchIds: form.branchIds,
         name: form.name,
         startTime: form.startTime,
         endTime: form.endTime,
@@ -121,28 +109,17 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
     if (editing) {
       setForm({
         name: editing.name,
-        startTime: toHHMM(editing.startTime),
-        endTime: toHHMM(editing.endTime),
-        branchIds: editing.branches.map((b) => b.branchId),
+        startTime: toHH24MM(editing.startTime),
+        endTime: toHH24MM(editing.endTime),
       });
       setShowForm(true);
     }
   }, [editing]);
 
   function resetForm() {
-    setForm({
-      ...DEFAULT_FORM,
-      branchIds: branchesQuery.data?.map((b) => b.id) ?? [],
-    });
+    setForm(DEFAULT_FORM);
     setEditing(null);
     setShowForm(false);
-  }
-
-  function toggleBranch(id: string, checked: boolean) {
-    setForm((f) => ({
-      ...f,
-      branchIds: checked ? [...f.branchIds, id] : f.branchIds.filter((x) => x !== id),
-    }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -150,10 +127,6 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
     if (!form.name || !form.startTime || !form.endTime) return;
     if (form.startTime === form.endTime) {
       toast("Start and end times cannot be the same", "error");
-      return;
-    }
-    if (form.branchIds.length === 0) {
-      toast("Select at least one branch", "error");
       return;
     }
     if (editing) {
@@ -164,14 +137,13 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
   }
 
   const saving = createMut.isPending || updateMut.isPending;
-  const branches = branchesQuery.data ?? [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
         <DialogTitle>Shift Templates</DialogTitle>
         <DialogDescription>
-          Manage reusable shift templates. Each template can apply to one or more branches.
+          Manage reusable shift templates. Templates are available to all branches.
         </DialogDescription>
       </DialogHeader>
 
@@ -194,48 +166,21 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="template-start">Start Time</Label>
-                <Input
+                <TimePicker
                   id="template-start"
-                  type="time"
-                  required
                   value={form.startTime}
-                  onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))}
+                  onChange={(v) => setForm((f) => ({ ...f, startTime: v }))}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="template-end">End Time</Label>
-                <Input
+                <TimePicker
                   id="template-end"
-                  type="time"
-                  required
                   value={form.endTime}
-                  onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
+                  onChange={(v) => setForm((f) => ({ ...f, endTime: v }))}
                 />
               </div>
             </div>
-
-            {/* Branch multi-select */}
-            {branches.length > 0 && (
-              <div className="space-y-1.5">
-                <Label>Applies to Branch</Label>
-                <div className="rounded-md border p-2 space-y-1">
-                  {branches.map((b) => (
-                    <label
-                      key={b.id}
-                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/50"
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5"
-                        checked={form.branchIds.includes(b.id)}
-                        onChange={(e) => toggleBranch(b.id, e.target.checked)}
-                      />
-                      {b.name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="flex gap-2">
               <Button type="submit" disabled={saving} className="flex-1">
@@ -282,7 +227,6 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
                     <tr className="border-b bg-muted/30">
                       <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Name</th>
                       <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Time</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Branches</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
@@ -292,9 +236,6 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
                         <td className="px-3 py-2 font-medium text-gray-800">{template.name}</td>
                         <td className="px-3 py-2 text-gray-600 tabular-nums">
                           {toHHMM(template.startTime)} - {toHHMM(template.endTime)}
-                        </td>
-                        <td className="px-3 py-2 text-gray-500 text-xs">
-                          {template.branches.map((b) => b.branch.name).join(", ") || "—"}
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-2">

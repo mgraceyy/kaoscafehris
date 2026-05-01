@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
-import { listBalances, reviewRequest, type LeaveRequest } from "./leave.api";
+import { reviewOvertimeRequest, type OvertimeRequest } from "./overtime.api";
 
 const schema = z.object({
   status: z.enum(["APPROVED", "REJECTED"]),
@@ -29,26 +29,13 @@ type Values = z.infer<typeof schema>;
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  request: LeaveRequest | null;
+  request: OvertimeRequest | null;
   initialStatus?: "APPROVED" | "REJECTED";
 }
 
-export default function LeaveReviewDialog({ open, onOpenChange, request, initialStatus }: Props) {
+export default function OvertimeReviewDialog({ open, onOpenChange, request, initialStatus }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
-
-  const year = request ? new Date(request.startDate).getUTCFullYear() : undefined;
-
-  const balancesQuery = useQuery({
-    queryKey: ["leave-balances", { employeeId: request?.employeeId, year }],
-    queryFn: () =>
-      listBalances({ employeeId: request!.employeeId, year: year! }),
-    enabled: open && !!request,
-  });
-
-  const matchingBalance = balancesQuery.data?.find(
-    (b) => b.leaveType === request?.leaveType
-  );
 
   const {
     register,
@@ -67,16 +54,15 @@ export default function LeaveReviewDialog({ open, onOpenChange, request, initial
   const mutation = useMutation({
     mutationFn: async (values: Values) => {
       if (!request) throw new Error("Missing request");
-      return reviewRequest(request.id, {
+      return reviewOvertimeRequest(request.id, {
         status: values.status,
         reviewNotes: values.reviewNotes?.trim() || undefined,
       });
     },
     onSuccess: (_, values) => {
-      qc.invalidateQueries({ queryKey: ["leave-requests"] });
-      qc.invalidateQueries({ queryKey: ["leave-balances"] });
+      qc.invalidateQueries({ queryKey: ["overtime"] });
       toast(
-        values.status === "APPROVED" ? "Leave approved" : "Leave rejected",
+        values.status === "APPROVED" ? "Overtime approved" : "Overtime rejected",
         "success"
       );
       onOpenChange(false);
@@ -84,15 +70,13 @@ export default function LeaveReviewDialog({ open, onOpenChange, request, initial
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
-  const isAlreadyReviewed = request?.status === "APPROVED" || request?.status === "REJECTED";
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
-        <DialogTitle>Review leave request</DialogTitle>
+        <DialogTitle>Review overtime request</DialogTitle>
         <DialogDescription>
           {request
-            ? `${request.employee.firstName} ${request.employee.lastName} · ${request.leaveType} · ${request.totalDays} day(s)`
+            ? `${request.employee.firstName} ${request.employee.lastName} · ${request.date.slice(0, 10)}`
             : ""}
         </DialogDescription>
       </DialogHeader>
@@ -102,10 +86,8 @@ export default function LeaveReviewDialog({ open, onOpenChange, request, initial
           <div className="rounded-md border bg-muted/40 p-3 text-sm">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span>
-                <span className="text-muted-foreground">Dates:</span>{" "}
-                <span className="tabular-nums">
-                  {request.startDate.slice(0, 10)} → {request.endDate.slice(0, 10)}
-                </span>
+                <span className="text-muted-foreground">Employee:</span>{" "}
+                {request.employee.firstName} {request.employee.lastName} ({request.employee.employeeId})
               </span>
               <span>
                 <span className="text-muted-foreground">Reason:</span>{" "}
@@ -115,60 +97,28 @@ export default function LeaveReviewDialog({ open, onOpenChange, request, initial
           </div>
         )}
 
-        <div className="rounded-md border p-3 text-sm">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Balance ({year})
-          </div>
-          {balancesQuery.isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : request?.leaveType === "UNPAID" ? (
-            <p className="text-muted-foreground">
-              Unpaid leave does not consume a balance.
-            </p>
-          ) : matchingBalance ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span>
-                Total: <strong>{matchingBalance.totalDays}</strong>
-              </span>
-              <span>
-                Used: <strong>{matchingBalance.usedDays}</strong>
-              </span>
-              <span>
-                Remaining: <strong>{matchingBalance.remainingDays}</strong>
-              </span>
-            </div>
-          ) : (
-            <p className="text-muted-foreground">
-              No balance set for this leave type — approval will not track deduction.
-            </p>
-          )}
-        </div>
-
         <form
           onSubmit={handleSubmit((v) => mutation.mutate(v))}
           className="space-y-3"
           noValidate
         >
           <div className="space-y-2">
-            <Label htmlFor="status">Decision</Label>
-            <Select id="status" {...register("status")} disabled={isAlreadyReviewed}>
+            <Label htmlFor="ot-status">Decision</Label>
+            <Select id="ot-status" {...register("status")}>
               <option value="APPROVED">Approve</option>
               <option value="REJECTED">Reject</option>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="reviewNotes">Notes (optional)</Label>
+            <Label htmlFor="ot-reviewNotes">Notes (optional)</Label>
             <Textarea
-              id="reviewNotes"
+              id="ot-reviewNotes"
               rows={3}
               placeholder="Explain approval / rejection for the record…"
-              disabled={isAlreadyReviewed}
               {...register("reviewNotes")}
             />
             {errors.reviewNotes && (
-              <p className="text-xs text-destructive">
-                {errors.reviewNotes.message}
-              </p>
+              <p className="text-xs text-destructive">{errors.reviewNotes.message}</p>
             )}
           </div>
 
@@ -181,7 +131,7 @@ export default function LeaveReviewDialog({ open, onOpenChange, request, initial
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={mutation.isPending || isAlreadyReviewed} title={isAlreadyReviewed ? `Request is already ${request?.status.toLowerCase()}` : undefined}>
+            <Button type="submit" disabled={mutation.isPending}>
               {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Submit decision
             </Button>

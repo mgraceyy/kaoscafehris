@@ -46,6 +46,11 @@ export async function createOvertimeRequest(body: {
   return data.data;
 }
 
+export async function revertOvertimeRequest(id: string): Promise<OvertimeRequest> {
+  const { data } = await api.patch<{ data: OvertimeRequest }>(`/overtime/${id}/revert`);
+  return data.data;
+}
+
 export async function reviewOvertimeRequest(
   id: string,
   body: { status: "APPROVED" | "REJECTED"; reviewNotes?: string }

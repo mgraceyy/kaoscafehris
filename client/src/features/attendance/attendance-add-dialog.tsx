@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
@@ -22,12 +23,16 @@ import { listEmployees } from "@/features/employees/employees.api";
 import { createAttendance } from "./attendance.api";
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** Combine a date string (YYYY-MM-DD) and time string (HH:mm) into an ISO datetime. */
+/** Combine a date string (YYYY-MM-DD) and time string (HH:mm) into an ISO datetime.
+ *  Treat the admin-entered date+time as local wall-clock time (Asia/Manila = UTC+8)
+ *  and send it as a UTC-offset string so the server stores the correct calendar date.
+ */
 function toIso(date: string, time: string): string {
-  return new Date(`${date}T${time}:00`).toISOString();
+  return `${date}T${time}:00+08:00`;
 }
 
 const schema = z
@@ -65,6 +70,7 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -147,14 +153,26 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="clockInTime">Clock In</Label>
-            <Input id="clockInTime" type="time" {...register("clockInTime")} />
+            <Controller
+              name="clockInTime"
+              control={control}
+              render={({ field }) => (
+                <TimePicker id="clockInTime" value={field.value} onChange={field.onChange} />
+              )}
+            />
             {errors.clockInTime && (
               <p className="text-xs text-destructive">{errors.clockInTime.message}</p>
             )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="clockOutTime">Clock Out</Label>
-            <Input id="clockOutTime" type="time" {...register("clockOutTime")} />
+            <Controller
+              name="clockOutTime"
+              control={control}
+              render={({ field }) => (
+                <TimePicker id="clockOutTime" value={field.value} onChange={field.onChange} />
+              )}
+            />
             {errors.clockOutTime && (
               <p className="text-xs text-destructive">{errors.clockOutTime.message}</p>
             )}

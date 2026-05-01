@@ -27,6 +27,13 @@ router.patch(
   overtimeController.review
 );
 
+// Manager/Admin reverts an approved request back to pending
+router.patch(
+  "/:id/revert",
+  authorize("ADMIN", "MANAGER"),
+  overtimeController.revert
+);
+
 // Manager/Admin toggles pre-approved overtime on a specific shift assignment
 router.patch(
   "/shift/:shiftId/employee/:employeeId",

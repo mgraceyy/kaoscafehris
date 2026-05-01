@@ -129,6 +129,13 @@ export async function reviewRequest(
   return data.data;
 }
 
+export async function revertRequest(id: string): Promise<LeaveRequest> {
+  const { data } = await api.patch<{ data: LeaveRequest }>(
+    `/leave/requests/${id}/revert`
+  );
+  return data.data;
+}
+
 export async function cancelRequest(id: string): Promise<LeaveRequest> {
   const { data } = await api.patch<{ data: LeaveRequest }>(
     `/leave/requests/${id}/cancel`

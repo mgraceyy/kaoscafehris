@@ -150,11 +150,11 @@ model Branch {
   operatingHours String?
   isActive       Boolean @default(true)
 
-  employees         Employee[]
-  shifts             Shift[]
-  shiftTypeBranches ShiftTypeBranch[]
-  attendanceRecords  Attendance[]
-  payrollRuns        PayrollRun[]
+  employees              Employee[]
+  shifts                 Shift[]
+  attendanceRecords      Attendance[]
+  payrollRuns            PayrollRun[]
+  shiftAssignmentOverrides ShiftAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -243,7 +243,6 @@ model ShiftType {
   endTime   DateTime @db.Time()
   isActive  Boolean  @default(true)
 
-  branches             ShiftTypeBranch[]
   shifts               Shift[]
   employeesWithDefault Employee[]
 
@@ -253,16 +252,6 @@ model ShiftType {
   @@map("shift_types")
 }
 
-model ShiftTypeBranch {
-  shiftTypeId String
-  branchId    String
-
-  shiftType ShiftType @relation(fields: [shiftTypeId], references: [id], onDelete: Cascade)
-  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
-
-  @@id([shiftTypeId, branchId])
-  @@map("shift_type_branches")
-}
 
 model Shift {
   id         String       @id @default(uuid())
@@ -291,17 +280,22 @@ model ShiftAssignment {
   shiftId    String
   employeeId String
 
+  // Override branch for this specific assignment (null = use shift.branchId)
+  assignedBranchId String?
+
   // Pre-approved overtime (set by manager/admin before the shift)
   overtimeApproved   Boolean @default(false)
   overtimeApprovedBy String? // userId of the approver
 
-  shift    Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  employee Employee @relation(fields: [employeeId], references: [id])
+  shift          Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  employee       Employee @relation(fields: [employeeId], references: [id])
+  assignedBranch Branch?  @relation(fields: [assignedBranchId], references: [id])
 
   createdAt DateTime @default(now())
 
   @@unique([shiftId, employeeId])
   @@index([employeeId])
+  @@index([assignedBranchId])
   @@map("shift_assignments")
 }
 

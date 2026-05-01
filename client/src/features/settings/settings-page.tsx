@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, Lock, Save, Shield, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import { TimePicker } from "@/components/ui/time-picker";
 import { extractErrorMessage } from "@/lib/api";
 import {
   bulkUpdateSettings,
@@ -15,7 +16,7 @@ const BRAND = "#8C1515";
 
 // ─── Field config ─────────────────────────────────────────────────────────────
 
-type FieldType = "text" | "number" | "password" | "select";
+type FieldType = "text" | "number" | "password" | "select" | "timepicker";
 
 interface FieldConfig {
   label: string;
@@ -32,7 +33,7 @@ const FIELD_CONFIG: Record<string, FieldConfig> = {
     type: "select",
     options: ["PHP", "USD", "EUR", "GBP", "JPY"],
   },
-  "company.default_work_hours": { label: "Default Work Hours", type: "text" },
+  "company.default_work_hours": { label: "Split Time (Day Boundary)", type: "timepicker" },
   "company.payroll_frequency": {
     label: "Payroll Frequency",
     type: "select",
@@ -338,6 +339,15 @@ function GeneralTab() {
             <option key={o} value={o}>{o}</option>
           ))}
         </select>
+      );
+    }
+
+    if (cfg.type === "timepicker") {
+      return (
+        <TimePicker
+          value={val}
+          onChange={(v) => setDrafts((d) => ({ ...d, [s.key]: v }))}
+        />
       );
     }
 

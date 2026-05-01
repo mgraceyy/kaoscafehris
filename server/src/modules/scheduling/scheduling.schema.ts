@@ -8,6 +8,15 @@ const time = z
   .string()
   .regex(/^\d{2}:\d{2}$/, "Time must be HH:MM (24h)");
 
+export const assignEmployeeEntrySchema = z.object({
+  employeeId: z.string().uuid(),
+  assignedBranchId: z.string().uuid().optional(),
+});
+
+export const assignEmployeesSchema = z.object({
+  employees: z.array(assignEmployeeEntrySchema).min(1, "Pick at least one employee"),
+});
+
 export const createShiftSchema = z
   .object({
     branchId: z.string().uuid(),
@@ -17,11 +26,10 @@ export const createShiftSchema = z
     startTime: time.optional(),
     endTime: time.optional(),
     status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
-    employeeIds: z.array(z.string().uuid()).optional().default([]),
+    employees: z.array(assignEmployeeEntrySchema).optional().default([]),
   })
   .refine(
     (v) => {
-      // Either shiftTypeId must be provided, or both startTime and endTime must be provided
       if (v.shiftTypeId) return true;
       return v.startTime && v.endTime && v.startTime !== v.endTime;
     },
@@ -36,10 +44,6 @@ export const updateShiftSchema = z.object({
   status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
 });
 
-export const assignEmployeesSchema = z.object({
-  employeeIds: z.array(z.string().uuid()).min(1, "Pick at least one employee"),
-});
-
 export const listShiftsQuerySchema = z.object({
   branchIds: z.string().optional(), // comma-separated UUIDs
   startDate: isoDate.optional(),
@@ -49,5 +53,6 @@ export const listShiftsQuerySchema = z.object({
 
 export type CreateShiftInput = z.infer<typeof createShiftSchema>;
 export type UpdateShiftInput = z.infer<typeof updateShiftSchema>;
+export type AssignEmployeeEntry = z.infer<typeof assignEmployeeEntrySchema>;
 export type AssignEmployeesInput = z.infer<typeof assignEmployeesSchema>;
 export type ListShiftsQuery = z.infer<typeof listShiftsQuerySchema>;

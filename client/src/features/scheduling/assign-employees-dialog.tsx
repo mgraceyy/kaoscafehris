@@ -12,7 +12,8 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listEmployees } from "@/features/employees/employees.api";
-import { assignEmployees, type Shift } from "./scheduling.api";
+import { listBranches } from "@/features/branches/branches.api";
+import { assignEmployees, type AssignEmployeeEntry, type Shift } from "./scheduling.api";
 
 interface Props {
   open: boolean;
@@ -23,18 +24,24 @@ interface Props {
 export default function AssignEmployeesDialog({ open, onOpenChange, shift }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [selected, setSelected] = useState<string[]>([]);
+  // Map of employeeId → assignedBranchId override (undefined = use shift branch)
+  const [selected, setSelected] = useState<Record<string, string | undefined>>({});
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { branchId: shift?.branchId, status: "ACTIVE" }],
-    queryFn: () =>
-      listEmployees({ branchId: shift!.branchId, status: "ACTIVE" }),
+    queryKey: ["employees", { status: "ACTIVE" }],
+    queryFn: () => listEmployees({ status: "ACTIVE" }),
     enabled: open && !!shift,
     select: (data) => data.filter((e) => e.position !== "Administrator"),
   });
 
+  const branchesQuery = useQuery({
+    queryKey: ["branches", { isActive: true }],
+    queryFn: () => listBranches({ isActive: true }),
+    enabled: open,
+  });
+
   useEffect(() => {
-    if (open) setSelected([]);
+    if (open) setSelected({});
   }, [open, shift?.id]);
 
   const alreadyAssignedIds = new Set(
@@ -44,8 +51,13 @@ export default function AssignEmployeesDialog({ open, onOpenChange, shift }: Pro
   const mutation = useMutation({
     mutationFn: async () => {
       if (!shift) return;
-      if (selected.length === 0) throw new Error("Pick at least one employee");
-      return assignEmployees(shift.id, selected);
+      const entries = Object.entries(selected);
+      if (entries.length === 0) throw new Error("Pick at least one employee");
+      const employees: AssignEmployeeEntry[] = entries.map(([employeeId, assignedBranchId]) => ({
+        employeeId,
+        assignedBranchId,
+      }));
+      return assignEmployees(shift.id, employees);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shifts"] });
@@ -56,14 +68,28 @@ export default function AssignEmployeesDialog({ open, onOpenChange, shift }: Pro
   });
 
   function toggle(id: string, checked: boolean) {
-    setSelected((curr) =>
-      checked ? [...curr, id] : curr.filter((x) => x !== id)
-    );
+    setSelected((curr) => {
+      if (!checked) {
+        const next = { ...curr };
+        delete next[id];
+        return next;
+      }
+      return { ...curr, [id]: undefined };
+    });
+  }
+
+  function setBranchOverride(employeeId: string, branchId: string) {
+    setSelected((curr) => ({
+      ...curr,
+      [employeeId]: branchId || undefined,
+    }));
   }
 
   const available = (employeesQuery.data ?? []).filter(
     (e) => !alreadyAssignedIds.has(e.id)
   );
+  const selectedCount = Object.keys(selected).length;
+  const branches = branchesQuery.data ?? [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -87,31 +113,54 @@ export default function AssignEmployeesDialog({ open, onOpenChange, shift }: Pro
         )}
         {employeesQuery.data && available.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            All active employees from this branch are already assigned.
+            All active employees are already assigned.
           </p>
         )}
         {available.length > 0 && (
-          <div className="rounded-md border p-2">
+          <div className="rounded-md border divide-y">
             {available.map((emp) => {
-              const checked = selected.includes(emp.id);
+              const isChecked = emp.id in selected;
+              const overrideBranchId = selected[emp.id] ?? "";
               return (
-                <label
-                  key={emp.id}
-                  className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => toggle(emp.id, e.target.checked)}
-                  />
-                  <span className="flex-1">
-                    {emp.firstName} {emp.lastName}
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {emp.position}
+                <div key={emp.id} className="px-2 py-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => toggle(emp.id, e.target.checked)}
+                    />
+                    <span className="flex-1">
+                      {emp.firstName} {emp.lastName}
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {emp.position}
+                      </span>
                     </span>
-                  </span>
-                  <span className="text-xs text-muted-foreground">{emp.employeeId}</span>
-                </label>
+                    <span className="text-xs text-muted-foreground">{emp.employeeId}</span>
+                  </label>
+                  {isChecked && (
+                    <div className="mt-1.5 ml-6 flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        Assigned branch:
+                      </span>
+                      <select
+                        className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs"
+                        value={overrideBranchId}
+                        onChange={(e) => setBranchOverride(emp.id, e.target.value)}
+                      >
+                        <option value="">
+                          Default ({shift?.branch.name})
+                        </option>
+                        {branches
+                          .filter((b) => b.id !== shift?.branchId)
+                          .map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -129,11 +178,11 @@ export default function AssignEmployeesDialog({ open, onOpenChange, shift }: Pro
         </Button>
         <Button
           type="button"
-          disabled={mutation.isPending || selected.length === 0}
+          disabled={mutation.isPending || selectedCount === 0}
           onClick={() => mutation.mutate()}
         >
           {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Assign {selected.length ? `(${selected.length})` : ""}
+          Assign {selectedCount ? `(${selectedCount})` : ""}
         </Button>
       </DialogFooter>
     </Dialog>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Loader2, Settings } from "lucide-react";
+import { Download, Loader2, Search, Settings } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { exportToCsv } from "@/lib/export";
@@ -9,12 +9,13 @@ import { listBranches } from "@/features/branches/branches.api";
 import {
   listBalances,
   listRequests,
-  reviewRequest,
+  revertRequest,
   type LeaveBalance,
   type LeaveRequest,
   type LeaveStatus,
   type LeaveType,
 } from "./leave.api";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import LeaveReviewDialog from "./leave-review-dialog";
 import LeaveBalanceDialog from "./leave-balance-dialog";
 import LeaveRequestDialog from "./leave-request-dialog";
@@ -125,12 +126,15 @@ export default function LeavePage() {
   const isEmployee = user?.role === "EMPLOYEE";
   const canReview = user?.role === "ADMIN" || user?.role === "MANAGER";
 
+  const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"" | LeaveType>("");
   const [statusFilter, setStatusFilter] = useState<"" | LeaveStatus>("");
   const [branchId, setBranchId] = useState("");
   const [balanceOpen, setBalanceOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<LeaveRequest | null>(null);
+  const [reviewInitialStatus, setReviewInitialStatus] = useState<"APPROVED" | "REJECTED">("APPROVED");
+  const [revertTarget, setRevertTarget] = useState<LeaveRequest | null>(null);
 
   const currentYear = new Date().getFullYear();
   const monthLabel = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -156,27 +160,28 @@ export default function LeavePage() {
     enabled: isEmployee && !!user?.employee,
   });
 
-  const approveMut = useMutation({
-    mutationFn: (id: string) => reviewRequest(id, { status: "APPROVED" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); toast("Request approved", "success"); },
-    onError: (err) => toast(extractErrorMessage(err), "error"),
-  });
 
-  const rejectMut = useMutation({
-    mutationFn: (id: string) => reviewRequest(id, { status: "REJECTED" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); toast("Request rejected", "success"); },
-    onError: (err) => toast(extractErrorMessage(err), "error"),
+  const revertMut = useMutation({
+    mutationFn: (id: string) => revertRequest(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leave-requests"] }); qc.invalidateQueries({ queryKey: ["leave-balances"] }); toast("Leave request reverted to pending", "success"); setRevertTarget(null); },
+    onError: (err) => { toast(extractErrorMessage(err), "error"); setRevertTarget(null); },
   });
 
   const allData = query.data ?? [];
 
   const filtered = useMemo(() => {
     let data = allData;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      data = data.filter((r) =>
+        `${r.employee.firstName} ${r.employee.lastName} ${r.employee.employeeId}`.toLowerCase().includes(q)
+      );
+    }
     if (typeFilter) data = data.filter((r) => r.leaveType === typeFilter);
     if (statusFilter) data = data.filter((r) => r.status === statusFilter);
     if (branchId) data = data.filter((r) => r.employee.branchId === branchId);
     return data;
-  }, [allData, typeFilter, statusFilter, branchId]);
+  }, [allData, search, typeFilter, statusFilter, branchId]);
 
   const stats = useMemo(() => ({
     pending: allData.filter((r) => r.status === "PENDING").length,
@@ -218,43 +223,6 @@ export default function LeavePage() {
           <p className="text-sm text-gray-400 mt-1">{monthLabel} · {selectedBranchName}</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Type filter */}
-          <select
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as "" | LeaveType)}
-          >
-            <option value="">All Types</option>
-            {(Object.keys(TYPE_LABEL) as LeaveType[]).map((t) => (
-              <option key={t} value={t}>{TYPE_LABEL[t]}</option>
-            ))}
-          </select>
-          {/* Status filter */}
-          <select
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "" | LeaveStatus)}
-          >
-            <option value="">All Status</option>
-            <option value="PENDING">Pending</option>
-            <option value="APPROVED">Approved</option>
-            <option value="REJECTED">Rejected</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
-          {/* Branch filter for admin/manager */}
-          {!isEmployee && (
-            <select
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm"
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-            >
-              <option value="">All Branches</option>
-              {branchesQuery.data?.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          )}
-          {/* Export button */}
           <button
             onClick={handleExport}
             disabled={filtered.length === 0}
@@ -263,7 +231,6 @@ export default function LeavePage() {
           >
             <Download className="h-4 w-4" /> Export
           </button>
-          {/* Admin settings */}
           {isAdmin && (
             <button
               onClick={() => setBalanceOpen(true)}
@@ -272,7 +239,6 @@ export default function LeavePage() {
               <Settings className="h-4 w-4" />
             </button>
           )}
-          {/* Employee file request */}
           {!isAdmin && (
             <button
               onClick={() => setRequestOpen(true)}
@@ -301,6 +267,52 @@ export default function LeavePage() {
           <StatCard label="Total" value={stats.total} color={BRAND} stagger={4} />
         </div>
       )}
+
+      {/* Filters */}
+      <div className="mb-6 flex flex-wrap gap-3 rounded-2xl bg-white p-4 shadow-sm animate-fade-up stagger-5">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
+          <input
+            className="w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none"
+            placeholder="Search by name or ID..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        {!isEmployee && (
+          <select
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
+            value={branchId}
+            onChange={(e) => setBranchId(e.target.value)}
+          >
+            <option value="">All Branches</option>
+            {branchesQuery.data?.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        )}
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as "" | LeaveType)}
+        >
+          <option value="">All Types</option>
+          {(Object.keys(TYPE_LABEL) as LeaveType[]).map((t) => (
+            <option key={t} value={t}>{TYPE_LABEL[t]}</option>
+          ))}
+        </select>
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as "" | LeaveStatus)}
+        >
+          <option value="">All Statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="APPROVED">Approved</option>
+          <option value="REJECTED">Rejected</option>
+          <option value="CANCELLED">Cancelled</option>
+        </select>
+      </div>
 
       {/* Table */}
       <div className="animate-fade-up stagger-5 overflow-hidden rounded-2xl bg-white shadow-sm">
@@ -335,8 +347,6 @@ export default function LeavePage() {
             )}
             {filtered.map((r) => {
               const isPending = r.status === "PENDING";
-              const isApproving = approveMut.isPending && approveMut.variables === r.id;
-              const isRejecting = rejectMut.isPending && rejectMut.variables === r.id;
               return (
                 <tr
                   key={r.id}
@@ -372,21 +382,26 @@ export default function LeavePage() {
                       {isPending ? (
                         <div className="flex gap-2">
                           <button
-                            disabled={isApproving || isRejecting}
-                            onClick={() => approveMut.mutate(r.id)}
-                            className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600 disabled:opacity-60"
+                            onClick={() => { setReviewInitialStatus("APPROVED"); setReviewTarget(r); }}
+                            className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600"
                           >
-                            {isApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Approve"}
+                            Approve
                           </button>
                           <button
-                            disabled={isApproving || isRejecting}
-                            onClick={() => rejectMut.mutate(r.id)}
-                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                            onClick={() => { setReviewInitialStatus("REJECTED"); setReviewTarget(r); }}
+                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white"
                             style={{ backgroundColor: BRAND }}
                           >
-                            {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Reject"}
+                            Reject
                           </button>
                         </div>
+                      ) : (r.status === "APPROVED" || r.status === "REJECTED") ? (
+                        <button
+                          onClick={() => setRevertTarget(r)}
+                          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                        >
+                          Revert
+                        </button>
                       ) : (
                         <span className="text-gray-300">—</span>
                       )}
@@ -408,9 +423,24 @@ export default function LeavePage() {
         open={!!reviewTarget}
         onOpenChange={(o) => !o && setReviewTarget(null)}
         request={reviewTarget}
+        initialStatus={reviewInitialStatus}
       />
       <LeaveRequestDialog open={requestOpen} onOpenChange={setRequestOpen} />
       {isAdmin && <LeaveBalanceDialog open={balanceOpen} onOpenChange={setBalanceOpen} />}
+
+      <ConfirmDialog
+        open={!!revertTarget}
+        onOpenChange={(o) => !o && setRevertTarget(null)}
+        title="Revert leave request?"
+        description={
+          revertTarget
+            ? `This will set ${revertTarget.employee.firstName} ${revertTarget.employee.lastName}'s ${TYPE_LABEL[revertTarget.leaveType]} request back to Pending and restore ${revertTarget.totalDays} day(s) to their balance.`
+            : ""
+        }
+        confirmLabel="Revert"
+        onConfirm={() => revertTarget && revertMut.mutate(revertTarget.id)}
+        loading={revertMut.isPending}
+      />
     </div>
   );
 }

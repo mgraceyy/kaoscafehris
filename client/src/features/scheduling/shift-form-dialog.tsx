@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TimePicker } from "@/components/ui/time-picker";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import {
@@ -43,6 +44,7 @@ export default function ShiftFormDialog({ open, onOpenChange, shift }: Props) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -115,14 +117,26 @@ export default function ShiftFormDialog({ open, onOpenChange, shift }: Props) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="startTime">Start time</Label>
-            <Input id="startTime" type="time" {...register("startTime")} />
+            <Controller
+              name="startTime"
+              control={control}
+              render={({ field }) => (
+                <TimePicker id="startTime" value={field.value} onChange={field.onChange} />
+              )}
+            />
             {errors.startTime && (
               <p className="text-xs text-destructive">{errors.startTime.message}</p>
             )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="endTime">End time</Label>
-            <Input id="endTime" type="time" {...register("endTime")} />
+            <Controller
+              name="endTime"
+              control={control}
+              render={({ field }) => (
+                <TimePicker id="endTime" value={field.value} onChange={field.onChange} />
+              )}
+            />
             {errors.endTime && (
               <p className="text-xs text-destructive">{errors.endTime.message}</p>
             )}

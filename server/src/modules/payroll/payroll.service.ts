@@ -266,7 +266,7 @@ export async function processRun(id: string) {
   // Public holidays in the period.
   const periodHolidays = await prisma.publicHoliday.findMany({
     where: { date: { gte: run.periodStart, lte: run.periodEnd } },
-    select: { name: true, amount: true, percentage: true },
+    select: { date: true, name: true, amount: true, percentage: true },
   });
 
   // OT rate setting.
@@ -292,16 +292,25 @@ export async function processRun(id: string) {
       employeeId: { in: employeeIds },
       date: { gte: run.periodStart, lte: run.periodEnd },
     },
-    select: { employeeId: true, hoursWorked: true, overtimeHours: true, lateMinutes: true },
+    select: { employeeId: true, date: true, hoursWorked: true, overtimeHours: true, lateMinutes: true },
   });
 
   const otHoursMap = new Map<string, number>();
   const hoursWorkedMap = new Map<string, number>();
   const lateMinutesMap = new Map<string, number>();
+  // Per-employee, per-date attendance for holiday pay eligibility check.
+  const attendanceDateMap = new Map<string, Map<string, { hoursWorked: number; lateMinutes: number }>>();
   for (const rec of attendanceRows) {
     otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + toNum(rec.overtimeHours));
     hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + toNum(rec.hoursWorked));
     lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + (rec.lateMinutes ?? 0));
+
+    const dateKey = rec.date.toISOString().slice(0, 10);
+    if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
+    attendanceDateMap.get(rec.employeeId)!.set(dateKey, {
+      hoursWorked: toNum(rec.hoursWorked),
+      lateMinutes: rec.lateMinutes ?? 0,
+    });
   }
 
   // Approved UNPAID leave days per employee within the payroll period.
@@ -405,24 +414,37 @@ export async function processRun(id: string) {
           ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs × ₱${otRatePerHour}/hr)`, amount: overtimePay }]
           : [];
 
-      // Daily rate used for percentage-based holiday pay.
+      // Daily rate used for percentage-based holiday pay (8-hour equivalent).
       const dailyRateForHoliday = emp.payType === "HOURLY"
         ? round2(toNum(emp.hourlyRate) * 8)
         : round2(toNum(emp.basicSalary) / 26);
 
+      const empAttendanceDates = attendanceDateMap.get(emp.id);
       const holidayEarnings: Array<{ type: "HOLIDAY_PAY"; label: string; amount: number }> =
         periodHolidays
           .map((h) => {
+            const holidayDateKey = h.date.toISOString().slice(0, 10);
+            const att = empAttendanceDates?.get(holidayDateKey);
+            // No attendance on that date = day off, no holiday pay.
+            if (!att) return null;
+
+            // Holiday pay covers the first 8 hours only; minutes late reduce eligible hours.
+            const eligibleHours = Math.max(0, 8 - att.lateMinutes / 60);
+            const prorationFactor = round2(eligibleHours / 8);
+
             const pct = toNum(h.percentage);
             const amount = pct > 0
-              ? round2(dailyRateForHoliday * pct / 100)
-              : round2(toNum(h.amount));
+              ? round2(dailyRateForHoliday * prorationFactor * pct / 100)
+              : round2(toNum(h.amount) * prorationFactor);
+
+            if (amount <= 0) return null;
+
             const label = pct > 0
-              ? `${h.name} (${pct}% of ₱${dailyRateForHoliday}/day)`
+              ? `${h.name} (${pct}% × ${eligibleHours.toFixed(2)} hrs)`
               : h.name;
             return { type: "HOLIDAY_PAY" as const, label, amount };
           })
-          .filter((r) => r.amount > 0);
+          .filter((r): r is { type: "HOLIDAY_PAY"; label: string; amount: number } => r !== null);
 
       const holidayPayTotal = round2(holidayEarnings.reduce((s, r) => s + r.amount, 0));
 

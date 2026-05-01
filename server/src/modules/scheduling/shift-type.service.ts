@@ -8,12 +8,7 @@ function timeToDate(time: string): Date {
   return new Date(Date.UTC(1970, 0, 1, h, m, 0));
 }
 
-const shiftTypeInclude = {
-  branches: { select: { branchId: true, branch: { select: { id: true, name: true } } } },
-} as const;
-
 export async function createShiftType(input: CreateShiftTypeInput, userId?: string) {
-  // Check for duplicate name globally
   const existing = await prisma.shiftType.findUnique({ where: { name: input.name } });
   if (existing) {
     throw new AppError(400, `Shift type "${input.name}" already exists`);
@@ -24,11 +19,7 @@ export async function createShiftType(input: CreateShiftTypeInput, userId?: stri
       name: input.name,
       startTime: timeToDate(input.startTime),
       endTime: timeToDate(input.endTime),
-      branches: {
-        create: input.branchIds.map((branchId) => ({ branchId })),
-      },
     },
-    include: shiftTypeInclude,
   });
 
   await logAudit({
@@ -42,24 +33,15 @@ export async function createShiftType(input: CreateShiftTypeInput, userId?: stri
   return shiftType;
 }
 
-export async function listShiftTypes(query: ListShiftTypesQuery) {
+export async function listShiftTypes(_query: ListShiftTypesQuery) {
   return prisma.shiftType.findMany({
-    where: {
-      isActive: true,
-      ...(query.branchId
-        ? { branches: { some: { branchId: query.branchId } } }
-        : {}),
-    },
-    include: shiftTypeInclude,
+    where: { isActive: true },
     orderBy: { createdAt: "asc" },
   });
 }
 
 export async function getShiftTypeById(id: string) {
-  const shiftType = await prisma.shiftType.findUnique({
-    where: { id },
-    include: shiftTypeInclude,
-  });
+  const shiftType = await prisma.shiftType.findUnique({ where: { id } });
   if (!shiftType) {
     throw new AppError(404, "Shift type not found");
   }
@@ -73,7 +55,6 @@ export async function updateShiftType(
 ) {
   const shiftType = await getShiftTypeById(id);
 
-  // If updating name, check for duplicate
   if (input.name && input.name !== shiftType.name) {
     const existing = await prisma.shiftType.findUnique({ where: { name: input.name } });
     if (existing) {
@@ -87,16 +68,7 @@ export async function updateShiftType(
       name: input.name,
       startTime: input.startTime ? timeToDate(input.startTime) : undefined,
       endTime: input.endTime ? timeToDate(input.endTime) : undefined,
-      ...(input.branchIds
-        ? {
-            branches: {
-              deleteMany: {},
-              create: input.branchIds.map((branchId) => ({ branchId })),
-            },
-          }
-        : {}),
     },
-    include: shiftTypeInclude,
   });
 
   await logAudit({

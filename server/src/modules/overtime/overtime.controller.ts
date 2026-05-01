@@ -61,6 +61,13 @@ export async function review(req: Request<{ id: string }>, res: Response, next: 
   } catch (err) { next(err); }
 }
 
+export async function revert(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    const data = await overtimeService.revertRequest(req.params.id);
+    res.json({ data });
+  } catch (err) { next(err); }
+}
+
 export async function listSchedules(req: Request, res: Response, next: NextFunction) {
   try {
     const query = listSchedulesQuerySchema.parse(req.query);

@@ -14,6 +14,8 @@ export interface ShiftAssignment {
   id: string;
   shiftId: string;
   employeeId: string;
+  assignedBranchId: string | null;
+  assignedBranch: { id: string; name: string } | null;
   createdAt: string;
   employee: ShiftAssignmentEmployee;
 }
@@ -42,7 +44,7 @@ export interface ShiftCreateInput {
   startTime?: string;
   endTime?: string;
   status?: ShiftStatus;
-  employeeIds?: string[];
+  employees?: AssignEmployeeEntry[];
 }
 
 export interface ShiftUpdateInput {
@@ -118,13 +120,18 @@ export async function deleteShift(id: string): Promise<void> {
   await api.delete(`/scheduling/shifts/${id}`);
 }
 
+export interface AssignEmployeeEntry {
+  employeeId: string;
+  assignedBranchId?: string;
+}
+
 export async function assignEmployees(
   shiftId: string,
-  employeeIds: string[]
+  employees: AssignEmployeeEntry[]
 ): Promise<Shift> {
   const { data } = await api.post<{ data: Shift }>(
     `/scheduling/shifts/${shiftId}/assignments`,
-    { employeeIds }
+    { employees }
   );
   return data.data;
 }

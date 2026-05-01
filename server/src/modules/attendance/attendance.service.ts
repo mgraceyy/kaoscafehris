@@ -28,11 +28,73 @@ function dateOnly(isoDate: string): Date {
   return new Date(`${isoDate}T00:00:00.000Z`);
 }
 
-/** Return the UTC date (midnight) for a given instant. */
+/** Return the UTC date (midnight) for a given instant, using UTC date. */
 function dateOnlyOf(instant: Date): Date {
   return new Date(
     Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth(), instant.getUTCDate())
   );
+}
+
+/**
+ * Parse "H:mm AM/PM – ..." and return { hour, minute } in 24-hour format.
+ * Falls back to { hour: 8, minute: 0 } if the setting is missing or unparseable.
+ */
+function parseWorkStartTime(setting: string): { hour: number; minute: number } {
+  // Plain HH:mm (24-hour) — new format stored by TimePicker.
+  const hhmm = setting.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (hhmm) return { hour: parseInt(hhmm[1], 10), minute: parseInt(hhmm[2], 10) };
+  // Legacy "H:mm AM/PM – ..." format.
+  const ampm = setting.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!ampm) return { hour: 8, minute: 0 };
+  let hour = parseInt(ampm[1], 10);
+  const minute = parseInt(ampm[2], 10);
+  const period = ampm[3].toUpperCase();
+  if (period === "AM" && hour === 12) hour = 0;
+  if (period === "PM" && hour !== 12) hour += 12;
+  return { hour, minute };
+}
+
+/**
+ * Determine the work-day calendar date for a clock-in timestamp.
+ * Uses the company timezone and Default Work Hours start time so that
+ * night-shift workers clocking in before the work-day start (e.g., 1 AM
+ * when the day starts at 8 AM) are recorded under the previous calendar date.
+ */
+async function workDayDateOf(instant: Date): Promise<Date> {
+  const [tzSetting, workHoursSetting] = await Promise.all([
+    getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
+    getSetting<string>("company.default_work_hours", "8:00 AM – 5:00 PM"),
+  ]);
+
+  // Extract IANA timezone name (e.g. "Asia/Manila") from "Asia/Manila (UTC+8)".
+  const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+  const { hour: startHour, minute: startMinute } = parseWorkStartTime(workHoursSetting);
+
+  // Get local date parts in the company timezone.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(instant);
+
+  const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+  const localYear = get("year");
+  const localMonth = get("month") - 1; // 0-indexed
+  const localDay = get("day");
+  const localHour = get("hour");
+  const localMinute = get("minute");
+
+  // If the local time is before the work-day start, this clock-in belongs to the previous calendar date.
+  const beforeWorkStart =
+    localHour < startHour || (localHour === startHour && localMinute < startMinute);
+
+  if (beforeWorkStart) {
+    const d = new Date(Date.UTC(localYear, localMonth, localDay));
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d;
+  }
+
+  return new Date(Date.UTC(localYear, localMonth, localDay));
 }
 
 function diffMinutes(from: Date, to: Date): number {
@@ -118,7 +180,7 @@ export async function clockIn(input: ClockInInput) {
   }
 
   const clockInAt = input.clockIn ? new Date(input.clockIn) : new Date();
-  const dateKey = dateOnlyOf(clockInAt);
+  const dateKey = await workDayDateOf(clockInAt);
 
   // Idempotency for offline sync: if a localRecordId matches an existing row,
   // return it instead of creating a duplicate.
@@ -249,7 +311,7 @@ export async function manualCreate(input: ManualCreateInput) {
   if (!employee) throw new AppError(404, "Employee not found");
 
   const clockInAt = new Date(input.clockIn);
-  const dateKey = dateOnlyOf(clockInAt);
+  const dateKey = await workDayDateOf(clockInAt);
 
   const shift = await findScheduledShift(input.employeeId, dateKey);
   let status: "PRESENT" | "LATE" = "PRESENT";

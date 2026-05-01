@@ -270,6 +270,80 @@ export async function cancelRequest(id: string) {
   return updated;
 }
 
+export async function revertRequest(id: string, reviewerUserId: string) {
+  const request = await prisma.leaveRequest.findUnique({ where: { id } });
+  if (!request) throw new AppError(404, "Leave request not found");
+  if (request.status !== "APPROVED" && request.status !== "REJECTED") {
+    throw new AppError(409, "Only approved or rejected requests can be reverted");
+  }
+
+  // Block revert if the leave period overlaps a completed payroll run for this employee
+  const completedRun = await prisma.payrollRun.findFirst({
+    where: {
+      status: "COMPLETED",
+      periodStart: { lte: new Date(request.endDate) },
+      periodEnd: { gte: new Date(request.startDate) },
+      payslips: { some: { employeeId: request.employeeId } },
+    },
+    select: { id: true, periodStart: true, periodEnd: true },
+  });
+
+  if (completedRun) {
+    const start = completedRun.periodStart.toISOString().slice(0, 10);
+    const end = completedRun.periodEnd.toISOString().slice(0, 10);
+    throw new AppError(
+      409,
+      `Cannot revert: a completed payroll run (${start} – ${end}) already covers this leave period.`
+    );
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    // Restore leave balance only if it was APPROVED (REJECTED never deducted)
+    if (request.status === "APPROVED" && request.leaveType !== "UNPAID") {
+      const year = new Date(request.startDate).getUTCFullYear();
+      const balance = await tx.leaveBalance.findUnique({
+        where: {
+          employeeId_leaveType_year: {
+            employeeId: request.employeeId,
+            leaveType: request.leaveType,
+            year,
+          },
+        },
+      });
+      if (balance) {
+        const days = Number(request.totalDays);
+        const newUsed = Math.max(0, Number(balance.usedDays) - days);
+        const newRemaining = Number(balance.totalDays) - newUsed;
+        await tx.leaveBalance.update({
+          where: { id: balance.id },
+          data: { usedDays: newUsed, remainingDays: newRemaining },
+        });
+      }
+    }
+
+    return tx.leaveRequest.update({
+      where: { id },
+      data: {
+        status: "PENDING",
+        reviewedBy: null,
+        reviewedAt: null,
+        reviewNotes: null,
+      },
+      include: requestInclude,
+    });
+  });
+
+  await logAudit({
+    action: "UPDATE",
+    tableName: "leave_requests",
+    recordId: id,
+    oldValues: request,
+    newValues: updated,
+  });
+
+  return updated;
+}
+
 // --- Balances ---------------------------------------------------------------
 
 export async function listBalances(query: ListLeaveBalancesQuery) {

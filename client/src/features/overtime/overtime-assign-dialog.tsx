@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
@@ -47,7 +48,7 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
     enabled: open,
   });
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<Values>({
+  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: { employeeId: "", date: "", startTime: "18:00", endTime: "22:00", notes: "" },
   });
@@ -129,12 +130,24 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="ot-start">Start Time</Label>
-            <Input id="ot-start" type="time" {...register("startTime")} />
+            <Controller
+              name="startTime"
+              control={control}
+              render={({ field }) => (
+                <TimePicker id="ot-start" value={field.value} onChange={field.onChange} />
+              )}
+            />
             {errors.startTime && <p className="text-xs text-destructive">{errors.startTime.message}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="ot-end">End Time</Label>
-            <Input id="ot-end" type="time" {...register("endTime")} />
+            <Controller
+              name="endTime"
+              control={control}
+              render={({ field }) => (
+                <TimePicker id="ot-end" value={field.value} onChange={field.onChange} />
+              )}
+            />
             {errors.endTime && <p className="text-xs text-destructive">{errors.endTime.message}</p>}
           </div>
         </div>

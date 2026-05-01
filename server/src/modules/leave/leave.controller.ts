@@ -109,6 +109,20 @@ export async function cancelRequest(
   }
 }
 
+export async function revertRequest(
+  req: Request<IdParams>,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    if (!req.user) throw new AppError(401, "Authentication required");
+    const data = await leaveService.revertRequest(req.params.id, req.user.userId);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function listBalances(req: Request, res: Response, next: NextFunction) {
   try {
     const query = listLeaveBalancesQuerySchema.parse(req.query);

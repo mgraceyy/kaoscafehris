@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: ReadonlyArray<{
   { key: "company.name", value: "KAOS Cafe", group: "company" },
   { key: "company.timezone", value: "Asia/Manila (UTC+8)", group: "company" },
   { key: "company.currency", value: "PHP", group: "company" },
-  { key: "company.default_work_hours", value: "8:00 AM – 5:00 PM", group: "company" },
+  { key: "company.default_work_hours", value: "08:00", group: "company" },
   { key: "company.payroll_frequency", value: "Bi-Monthly", group: "company" },
   { key: "company.address", value: "", group: "company" },
   { key: "company.city", value: "", group: "company" },

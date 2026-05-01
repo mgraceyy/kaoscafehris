@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { listShiftsQuerySchema } from "./scheduling.schema.js";
+import { assignEmployeesSchema, listShiftsQuerySchema } from "./scheduling.schema.js";
 import * as schedulingService from "./scheduling.service.js";
 
 type IdParams = { id: string };
@@ -69,7 +69,8 @@ export async function assignEmployees(
   next: NextFunction
 ) {
   try {
-    const data = await schedulingService.assignEmployees(req.params.id, req.body);
+    const input = assignEmployeesSchema.parse(req.body);
+    const data = await schedulingService.assignEmployees(req.params.id, input);
     res.json({ data });
   } catch (err) {
     next(err);

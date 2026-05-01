@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import {
@@ -45,7 +46,8 @@ function toLocalInput(iso: string | null): string {
 }
 
 function fromLocalInput(local: string): string {
-  return new Date(local).toISOString();
+  // datetime-local value has no timezone — treat as Asia/Manila (UTC+8).
+  return `${local}:00+08:00`;
 }
 
 interface Props {
@@ -61,6 +63,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -167,22 +170,56 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="clockIn">Clock in</Label>
-            <Input
-              id="clockIn"
-              type="datetime-local"
-              {...register("clockIn")}
+            <Label>Clock in</Label>
+            <Controller
+              name="clockIn"
+              control={control}
+              render={({ field }) => {
+                const [datePart, timePart] = (field.value ?? "").split("T");
+                return (
+                  <div className="flex gap-2">
+                    <Input
+                      type="date"
+                      className="w-auto flex-1"
+                      value={datePart ?? ""}
+                      onChange={(e) => field.onChange(`${e.target.value}T${timePart ?? "08:00"}`)}
+                    />
+                    <TimePicker
+                      className="flex-1"
+                      value={timePart ?? "08:00"}
+                      onChange={(t) => field.onChange(`${datePart ?? ""}T${t}`)}
+                    />
+                  </div>
+                );
+              }}
             />
             {errors.clockIn && (
               <p className="text-xs text-destructive">{errors.clockIn.message}</p>
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="clockOut">Clock out</Label>
-            <Input
-              id="clockOut"
-              type="datetime-local"
-              {...register("clockOut")}
+            <Label>Clock out</Label>
+            <Controller
+              name="clockOut"
+              control={control}
+              render={({ field }) => {
+                const [datePart, timePart] = (field.value ?? "").split("T");
+                return (
+                  <div className="flex gap-2">
+                    <Input
+                      type="date"
+                      className="w-auto flex-1"
+                      value={datePart ?? ""}
+                      onChange={(e) => field.onChange(`${e.target.value}T${timePart ?? "08:00"}`)}
+                    />
+                    <TimePicker
+                      className="flex-1"
+                      value={timePart ?? ""}
+                      onChange={(t) => field.onChange(`${datePart ?? ""}T${t}`)}
+                    />
+                  </div>
+                );
+              }}
             />
             <p className="text-xs text-muted-foreground">
               Leave blank if still clocked in.

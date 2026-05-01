@@ -94,6 +94,40 @@ export async function reviewRequest(
   });
 }
 
+export async function revertRequest(id: string) {
+  const req = await prisma.overtimeRequest.findUnique({ where: { id } });
+  if (!req) throw new AppError(404, "Overtime request not found");
+  if (req.status !== "APPROVED" && req.status !== "REJECTED") {
+    throw new AppError(409, "Only approved or rejected requests can be reverted");
+  }
+
+  // Block revert if the overtime date falls within a completed payroll run
+  const completedRun = await prisma.payrollRun.findFirst({
+    where: {
+      status: "COMPLETED",
+      periodStart: { lte: new Date(req.date) },
+      periodEnd: { gte: new Date(req.date) },
+      payslips: { some: { employeeId: req.employeeId } },
+    },
+    select: { id: true, periodStart: true, periodEnd: true },
+  });
+
+  if (completedRun) {
+    const start = completedRun.periodStart.toISOString().slice(0, 10);
+    const end = completedRun.periodEnd.toISOString().slice(0, 10);
+    throw new AppError(
+      409,
+      `Cannot revert: a completed payroll run (${start} – ${end}) already covers this overtime date.`
+    );
+  }
+
+  return prisma.overtimeRequest.update({
+    where: { id },
+    data: { status: "PENDING", reviewedBy: null, reviewedAt: null, reviewNotes: null },
+    include: overtimeInclude,
+  });
+}
+
 // ─── Overtime Schedules (admin/manager pre-assigned) ─────────────────────────
 
 const scheduleInclude = {
