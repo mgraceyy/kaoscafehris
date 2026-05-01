@@ -137,6 +137,35 @@ function combineDateAndTime(date: Date, timeOfDay: Date): Date {
   );
 }
 
+/**
+ * Compute how many minutes past the shift start the clock-in is.
+ *
+ * Shift times are stored as @db.Time() where the UTC hours/minutes equal the
+ * local wall-clock hours (e.g. a 7:00 AM shift is stored as 07:00 UTC).
+ * Clock-in timestamps are real UTC, so we must extract the local time of the
+ * clock-in and compare against the shift's UTC hours directly — never mix the
+ * two via Date arithmetic.
+ */
+async function computeLateMinutes(clockInAt: Date, shiftStartTime: Date): Promise<number> {
+  const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
+  const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(clockInAt);
+
+  const localHour   = parseInt(parts.find((p) => p.type === "hour")?.value   ?? "0", 10);
+  const localMinute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+
+  const shiftMinutes  = shiftStartTime.getUTCHours() * 60 + shiftStartTime.getUTCMinutes();
+  const clockInMinutes = localHour * 60 + localMinute;
+
+  return clockInMinutes - shiftMinutes;
+}
+
 export async function deleteAttendance(id: string) {
   const record = await prisma.attendance.findUnique({ where: { id } });
   if (!record) throw new AppError(404, "Attendance record not found");
@@ -206,8 +235,7 @@ export async function clockIn(input: ClockInInput) {
 
   if (shift) {
     const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
-    const scheduledStart = combineDateAndTime(dateKey, shift.startTime);
-    const delta = diffMinutes(scheduledStart, clockInAt);
+    const delta = await computeLateMinutes(clockInAt, shift.startTime);
     if (delta > graceMinutes) {
       status = "LATE";
       lateMinutes = delta;
@@ -325,8 +353,7 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
     const shift = await findScheduledShift(existing.employeeId, existing.date);
     if (shift) {
       const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
-      const scheduledStart = combineDateAndTime(existing.date, shift.startTime);
-      const delta = diffMinutes(scheduledStart, nextClockIn);
+      const delta = await computeLateMinutes(nextClockIn, shift.startTime);
       if (delta > graceMinutes) {
         data.status = "LATE";
         data.lateMinutes = delta;
@@ -363,8 +390,7 @@ export async function manualCreate(input: ManualCreateInput) {
 
   if (shift) {
     const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
-    const scheduledStart = combineDateAndTime(dateKey, shift.startTime);
-    const delta = diffMinutes(scheduledStart, clockInAt);
+    const delta = await computeLateMinutes(clockInAt, shift.startTime);
     if (delta > graceMinutes) {
       status = "LATE";
       lateMinutes = delta;
