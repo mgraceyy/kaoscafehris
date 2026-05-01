@@ -92,6 +92,10 @@ export async function createAttendance(input: ManualCreateInput): Promise<Attend
   return data.data;
 }
 
+export async function deleteAttendance(id: string): Promise<void> {
+  await api.delete(`/attendance/${id}`);
+}
+
 export function formatClockTime(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);

@@ -81,6 +81,19 @@ export async function sync(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+export async function deleteRecord(
+  req: Request<IdParams>,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    await attendanceService.deleteAttendance(req.params.id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function uploadSelfie(req: Request, res: Response, next: NextFunction) {
   try {
     if (!req.file) throw new AppError(400, "No image file uploaded");

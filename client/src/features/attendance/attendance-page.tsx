@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Download, Loader2, Pencil, Plus, Search } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import { exportToCsv } from "@/lib/export";
 import { listBranches } from "@/features/branches/branches.api";
 import { listSettings } from "@/features/settings/settings.api";
+import { useToast } from "@/components/ui/toast";
 import {
   formatClockTime,
   listAttendance,
+  deleteAttendance,
   type AttendanceRecord,
   type AttendanceStatus,
 } from "./attendance.api";
@@ -90,8 +92,21 @@ export default function AttendancePage() {
   const [search, setSearch] = useState("");
   const [adjustTarget, setAdjustTarget] = useState<AttendanceRecord | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AttendanceRecord | null>(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteAttendance(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["attendance"] });
+      toast("Attendance record deleted", "success");
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
 
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
@@ -317,13 +332,22 @@ export default function AttendancePage() {
                     <StatusBadge status={r.status} hasClockOut={!!r.clockOut} />
                   </td>
                   <td className="px-4 py-4 text-right">
-                    <button
-                      onClick={() => setAdjustTarget(r)}
-                      className="text-gray-400 hover:text-primary transition-colors"
-                      title="Adjust"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setAdjustTarget(r)}
+                        className="text-gray-400 hover:text-primary transition-colors"
+                        title="Adjust"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(r)}
+                        className="text-gray-400 hover:text-red-600 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
             ))}
@@ -365,6 +389,44 @@ export default function AttendancePage() {
       />
 
       <AttendanceAddDialog open={addOpen} onOpenChange={setAddOpen} />
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="font-heading text-lg font-bold text-gray-900">Delete Attendance Record?</h3>
+            <p className="mt-2 text-sm text-gray-500">
+              This will permanently delete the attendance record for{" "}
+              <span className="font-medium text-gray-800">
+                {deleteTarget.employee.firstName} {deleteTarget.employee.lastName}
+              </span>{" "}
+              on{" "}
+              <span className="font-medium text-gray-800">
+                {new Date(deleteTarget.clockIn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              </span>
+              . This cannot be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteMutation.isPending}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 disabled:opacity-60"
+                style={{ backgroundColor: BRAND }}
+              >
+                {deleteMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -61,10 +61,14 @@ function parseWorkStartTime(setting: string): { hour: number; minute: number } {
  * when the day starts at 8 AM) are recorded under the previous calendar date.
  */
 async function workDayDateOf(instant: Date): Promise<Date> {
-  const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
+  const [tzSetting, splitTimeSetting] = await Promise.all([
+    getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
+    getSetting<string>("company.default_work_hours", "05:00"),
+  ]);
 
   // Extract IANA timezone name (e.g. "Asia/Manila") from "Asia/Manila (UTC+8)".
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+  const { hour: splitHour, minute: splitMinute } = parseWorkStartTime(splitTimeSetting);
 
   // Get local date parts in the company timezone.
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -80,13 +84,11 @@ async function workDayDateOf(instant: Date): Promise<Date> {
   const localHour = get("hour");
   const localMinute = get("minute");
 
-  // Only roll back to the previous calendar date for clock-ins in the early-morning window
-  // (before 05:00 local time). This handles night-shift workers who clock in after midnight
-  // (e.g. 1–4 AM) while avoiding false rollbacks for early day-shifts (e.g. 6 AM, 7 AM).
-  // Using the work-hours start as the cutoff would incorrectly roll back a 7 AM clock-in
-  // when the company default is 8 AM.
-  const NIGHT_SHIFT_CUTOFF_HOUR = 5;
-  const beforeWorkStart = localHour < NIGHT_SHIFT_CUTOFF_HOUR;
+  // Roll back to the previous calendar date for clock-ins before the configured Split Time
+  // (Settings → Split Time / Day Boundary). Set this to the earliest possible shift start
+  // so only true night-shift continuations (e.g. 1–4 AM) get rolled back.
+  const beforeWorkStart =
+    localHour < splitHour || (localHour === splitHour && localMinute < splitMinute);
 
   if (beforeWorkStart) {
     const d = new Date(Date.UTC(localYear, localMonth, localDay));
@@ -133,6 +135,12 @@ function combineDateAndTime(date: Date, timeOfDay: Date): Date {
       0
     )
   );
+}
+
+export async function deleteAttendance(id: string) {
+  const record = await prisma.attendance.findUnique({ where: { id } });
+  if (!record) throw new AppError(404, "Attendance record not found");
+  await prisma.attendance.delete({ where: { id } });
 }
 
 export async function listAttendance(query: ListAttendanceQuery) {

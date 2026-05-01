@@ -59,5 +59,6 @@ router.put(
   validate(manualAdjustSchema),
   attendanceController.adjust
 );
+router.delete("/:id", authorize("ADMIN"), attendanceController.deleteRecord);
 
 export default router;
