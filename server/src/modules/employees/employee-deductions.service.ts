@@ -10,7 +10,7 @@ export async function listEmployeeDeductions(employeeId: string) {
     include: {
       deduction: { select: { id: true, name: true, type: true, amount: true } },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 }
 

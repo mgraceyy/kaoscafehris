@@ -10,7 +10,7 @@ export async function listEmployeeEarnings(employeeId: string) {
 
   return prisma.employeeEarning.findMany({
     where: { employeeId },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 }
 

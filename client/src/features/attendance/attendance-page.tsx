@@ -58,8 +58,15 @@ function formatDate(iso: string) {
 function StatusBadge({ status, hasClockOut }: { status: AttendanceStatus; hasClockOut: boolean }) {
   if (!hasClockOut && (status === "PRESENT" || status === "LATE")) {
     return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fce9e9", color: BRAND }}>
-        Ongoing
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fce9e9", color: BRAND }}>
+          Ongoing
+        </span>
+        {status === "LATE" && (
+          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fdf0e0", color: AMBER }}>
+            Late
+          </span>
+        )}
       </span>
     );
   }

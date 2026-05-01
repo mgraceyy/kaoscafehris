@@ -36,7 +36,7 @@ export async function createShiftType(input: CreateShiftTypeInput, userId?: stri
 export async function listShiftTypes(_query: ListShiftTypesQuery) {
   return prisma.shiftType.findMany({
     where: { isActive: true },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 }
 

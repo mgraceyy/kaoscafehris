@@ -197,7 +197,7 @@ export async function clockIn(input: ClockInInput) {
   let lateMinutes: number | null = null;
 
   if (shift) {
-    const graceMinutes = await getSetting<number>("attendance.late_grace_minutes", 5);
+    const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
     const scheduledStart = combineDateAndTime(dateKey, shift.startTime);
     const delta = diffMinutes(scheduledStart, clockInAt);
     if (delta > graceMinutes) {
@@ -316,7 +316,7 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
   if (input.status === undefined) {
     const shift = await findScheduledShift(existing.employeeId, existing.date);
     if (shift) {
-      const graceMinutes = await getSetting<number>("attendance.late_grace_minutes", 5);
+      const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
       const scheduledStart = combineDateAndTime(existing.date, shift.startTime);
       const delta = diffMinutes(scheduledStart, nextClockIn);
       if (delta > graceMinutes) {
@@ -354,7 +354,7 @@ export async function manualCreate(input: ManualCreateInput) {
   let lateMinutes: number | null = null;
 
   if (shift) {
-    const graceMinutes = await getSetting<number>("attendance.late_grace_minutes", 5);
+    const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
     const scheduledStart = combineDateAndTime(dateKey, shift.startTime);
     const delta = diffMinutes(scheduledStart, clockInAt);
     if (delta > graceMinutes) {
