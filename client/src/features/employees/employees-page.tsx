@@ -278,7 +278,7 @@ export default function EmployeesPage() {
   });
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { search, branchId }],
+    queryKey: ["employees", search, branchId],
     queryFn: () => listEmployees({ search: search || undefined, branchId: branchId || undefined }),
   });
 

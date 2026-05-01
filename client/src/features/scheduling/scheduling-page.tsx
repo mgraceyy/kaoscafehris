@@ -101,7 +101,7 @@ export default function SchedulingPage() {
   }, [branchIds, view, calWeekStart, calMonthStart, calMonthEnd]);
 
   const query = useQuery({
-    queryKey: ["shifts", filters],
+    queryKey: ["shifts", view, branchIds.join(","), filters.startDate, filters.endDate],
     queryFn: () => listShifts(filters),
   });
 

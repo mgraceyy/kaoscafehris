@@ -55,11 +55,9 @@ export default function PayrollPage() {
     queryFn: () => listBranches(),
   });
 
-  const filters = useMemo(() => ({ branchId: branchId || undefined }), [branchId]);
-
   const query = useQuery<PayrollRunSummary[]>({
-    queryKey: ["payroll-runs", filters],
-    queryFn: () => listRuns(filters),
+    queryKey: ["payroll-runs", branchId],
+    queryFn: () => listRuns({ branchId: branchId || undefined }),
   });
 
   const filtered = useMemo(() => {

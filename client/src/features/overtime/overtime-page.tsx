@@ -95,7 +95,7 @@ export default function OvertimePage() {
   const [reviewInitialStatus, setReviewInitialStatus] = useState<"APPROVED" | "REJECTED">("APPROVED");
 
   const requestsQuery = useQuery({
-    queryKey: ["overtime", {}],
+    queryKey: ["overtime"],
     queryFn: () => listOvertimeRequests({}),
   });
 

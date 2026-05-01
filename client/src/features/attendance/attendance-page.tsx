@@ -130,15 +130,17 @@ export default function AttendancePage() {
     ? todayWorkDay
     : workDayIso(splitHour, splitMinute, DATE_RANGE_OPTIONS[dateRangeIdx].days);
 
-  const apiFilters = useMemo(() => ({
+  const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : "") as AttendanceStatus | "";
+
+  const apiFilters = {
     branchId: branchId || undefined,
     startDate,
     endDate: todayWorkDay,
-    status: (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : undefined) as AttendanceStatus | undefined,
-  }), [branchId, startDate, todayWorkDay, statusFilter]);
+    status: apiStatus || undefined,
+  };
 
   const query = useQuery({
-    queryKey: ["attendance", apiFilters],
+    queryKey: ["attendance", dateRangeIdx, branchId, startDate, todayWorkDay, apiStatus],
     queryFn: () => listAttendance(apiFilters),
   });
 

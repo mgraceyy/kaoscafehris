@@ -150,12 +150,12 @@ export default function LeavePage() {
   }), [isEmployee, user]);
 
   const query = useQuery({
-    queryKey: ["leave-requests", filters],
+    queryKey: ["leave-requests", isEmployee ? (user?.employee?.id ?? "") : "all"],
     queryFn: () => listRequests(filters),
   });
 
   const balancesQuery = useQuery({
-    queryKey: ["leave-balances", { employeeId: user?.employee?.id, year: currentYear }],
+    queryKey: ["leave-balances", user?.employee?.id, currentYear],
     queryFn: () => listBalances({ employeeId: user!.employee!.id, year: currentYear }),
     enabled: isEmployee && !!user?.employee,
   });

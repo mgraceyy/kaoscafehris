@@ -75,7 +75,7 @@ export default function AuditLogsPage() {
   );
 
   const query = useQuery({
-    queryKey: ["audit-logs", params],
+    queryKey: ["audit-logs", action, tableName, recordId, startDate, endDate, page],
     queryFn: () => listAuditLogs(params),
     placeholderData: (prev) => prev,
   });
