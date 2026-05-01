@@ -286,6 +286,36 @@ export async function processRun(id: string) {
   const lateDeductionPerMinute = getSetting("payroll.late_deduction_per_minute", 0);
   const lateThresholdMinutes = getSetting("attendance.late_threshold", 15);
 
+  // Shift assignments for the period — determines which days are paid.
+  const shiftAssignments = await prisma.shiftAssignment.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      shift: { date: { gte: run.periodStart, lte: run.periodEnd } },
+    },
+    select: {
+      employeeId: true,
+      shift: { select: { date: true, startTime: true, endTime: true } },
+    },
+  });
+
+  // scheduledDatesMap: empId → Set of dateKeys with a shift assignment.
+  // scheduledHoursMap: empId → dateKey → scheduled shift duration (hours).
+  const scheduledDatesMap = new Map<string, Set<string>>();
+  const scheduledHoursMap = new Map<string, Map<string, number>>();
+
+  for (const sa of shiftAssignments) {
+    const dateKey = sa.shift.date.toISOString().slice(0, 10);
+    const shiftMs = sa.shift.endTime.getTime() - sa.shift.startTime.getTime();
+    const shiftHrs = Math.max(0, shiftMs / 3_600_000);
+
+    if (!scheduledDatesMap.has(sa.employeeId)) scheduledDatesMap.set(sa.employeeId, new Set());
+    scheduledDatesMap.get(sa.employeeId)!.add(dateKey);
+
+    if (!scheduledHoursMap.has(sa.employeeId)) scheduledHoursMap.set(sa.employeeId, new Map());
+    const prev = scheduledHoursMap.get(sa.employeeId)!.get(dateKey) ?? 0;
+    if (shiftHrs > prev) scheduledHoursMap.get(sa.employeeId)!.set(dateKey, shiftHrs);
+  }
+
   // Attendance for the period.
   const attendanceRows = await prisma.attendance.findMany({
     where: {
@@ -301,14 +331,27 @@ export async function processRun(id: string) {
   // Per-employee, per-date attendance for holiday pay eligibility check.
   const attendanceDateMap = new Map<string, Map<string, { hoursWorked: number; lateMinutes: number }>>();
   for (const rec of attendanceRows) {
-    otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + toNum(rec.overtimeHours));
-    hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + toNum(rec.hoursWorked));
+    const dateKey = rec.date.toISOString().slice(0, 10);
+
+    // Only count attendance on days the employee has a shift assignment.
+    if (!scheduledDatesMap.get(rec.employeeId)?.has(dateKey)) continue;
+
+    const scheduledHrs = scheduledHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
+    const actualHrs = toNum(rec.hoursWorked);
+    // overtimeHours in attendance is already gated by the auto-clockout job:
+    // employees without approved OT are clocked out at shift end (overtimeHours = 0).
+    const otHrs = toNum(rec.overtimeHours);
+    // Regular hours = actual minus OT, capped at scheduled shift duration.
+    const regularHrs = Math.min(Math.max(0, actualHrs - otHrs), scheduledHrs);
+    const countedHrs = round2(regularHrs + otHrs);
+
+    otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + otHrs);
+    hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + countedHrs);
     lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + (rec.lateMinutes ?? 0));
 
-    const dateKey = rec.date.toISOString().slice(0, 10);
     if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
     attendanceDateMap.get(rec.employeeId)!.set(dateKey, {
-      hoursWorked: toNum(rec.hoursWorked),
+      hoursWorked: countedHrs,
       lateMinutes: rec.lateMinutes ?? 0,
     });
   }
@@ -389,6 +432,10 @@ export async function processRun(id: string) {
     await tx.payslip.deleteMany({ where: { payrollRunId: run.id } });
 
     for (const emp of employees) {
+      // Employees with no shift assignments in this period are not paid
+      // and should not appear in the payroll run regardless of pay type.
+      if (!scheduledDatesMap.has(emp.id)) continue;
+
       const totalOtHours = round2(otHoursMap.get(emp.id) ?? 0);
       const totalHoursWorked = round2(hoursWorkedMap.get(emp.id) ?? 0);
 

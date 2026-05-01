@@ -28,28 +28,26 @@ function todayIso() {
 }
 
 /** Combine a date string (YYYY-MM-DD) and time string (HH:mm) into an ISO datetime.
- *  Treat the admin-entered date+time as local wall-clock time (Asia/Manila = UTC+8)
- *  and send it as a UTC-offset string so the server stores the correct calendar date.
+ *  Treat the admin-entered date+time as local wall-clock time (Asia/Manila = UTC+8).
+ *  If clockOutTime < clockInTime, the clock-out is on the next calendar day.
  */
 function toIso(date: string, time: string): string {
   return `${date}T${time}:00+08:00`;
 }
 
-const schema = z
-  .object({
-    employeeId: z.string().uuid("Select an employee"),
-    date: z.string().min(1, "Required"),
-    clockInTime: z.string().min(1, "Required"),
-    clockOutTime: z.string().optional(),
-    remarks: z.string().max(500).optional(),
-  })
-  .refine(
-    (v) => {
-      if (!v.clockOutTime) return true;
-      return v.clockOutTime > v.clockInTime;
-    },
-    { message: "Clock-out must be after clock-in", path: ["clockOutTime"] }
-  );
+function nextDayIso(date: string): string {
+  const d = new Date(date + "T12:00:00");
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const schema = z.object({
+  employeeId: z.string().uuid("Select an employee"),
+  date: z.string().min(1, "Required"),
+  clockInTime: z.string().min(1, "Required"),
+  clockOutTime: z.string().optional(),
+  remarks: z.string().max(500).optional(),
+});
 
 type Values = z.infer<typeof schema>;
 
@@ -98,13 +96,18 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
   }, [open, reset]);
 
   const mutation = useMutation({
-    mutationFn: (values: Values) =>
-      createAttendance({
+    mutationFn: (values: Values) => {
+      const clockOutDate =
+        values.clockOutTime && values.clockOutTime < values.clockInTime
+          ? nextDayIso(values.date)
+          : values.date;
+      return createAttendance({
         employeeId: values.employeeId,
         clockIn: toIso(values.date, values.clockInTime),
-        clockOut: values.clockOutTime ? toIso(values.date, values.clockOutTime) : null,
+        clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime) : null,
         remarks: values.remarks?.trim() || null,
-      }),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["attendance"] });
       toast("Attendance record added", "success");
@@ -176,7 +179,7 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
             {errors.clockOutTime && (
               <p className="text-xs text-destructive">{errors.clockOutTime.message}</p>
             )}
-            <p className="text-xs text-muted-foreground">Leave blank if not yet clocked out.</p>
+            <p className="text-xs text-muted-foreground">Leave blank if not yet clocked out. If earlier than clock-in, it is treated as the next day.</p>
           </div>
         </div>
 

@@ -4,7 +4,7 @@ const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
 
-const isoDateTime = z.string().datetime({ message: "Must be an ISO datetime" });
+const isoDateTime = z.string().datetime({ offset: true, message: "Must be an ISO datetime" });
 
 export const clockInSchema = z.object({
   employeeId: z.string().uuid(),

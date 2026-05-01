@@ -29,11 +29,11 @@ function fmtEmploymentStatus(s: string): string {
 }
 
 export function PayslipPreview({ data }: { data: PayslipDetail }) {
-  const hourlyRate =
-    data.employee.payType === "HOURLY"
-      ? Number(data.employee.hourlyRate ?? 0)
-      : Number(data.employee.basicSalary) / 26 / 8;
-  const dailyRate = hourlyRate * 8;
+  const isHourly = data.employee.payType === "HOURLY";
+  const dailyRate = isHourly
+    ? Number(data.employee.hourlyRate ?? 0) * 8
+    : Math.round((Number(data.employee.basicSalary) / 26) * 100) / 100;
+  const hourlyRate = dailyRate / 8;
 
   const toHours = (amount: string | number): string => {
     const n = Number(amount);

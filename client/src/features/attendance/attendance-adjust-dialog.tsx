@@ -25,29 +25,36 @@ import {
   type AttendanceRecord,
 } from "./attendance.api";
 
-/**
- * datetime-local inputs give "YYYY-MM-DDTHH:mm" without timezone. We treat that
- * as the user's local wall-clock and convert to an ISO string when submitting.
- */
 const schema = z.object({
-  clockIn: z.string().min(1, "Required"),
-  clockOut: z.string().optional(),
+  date: z.string().min(1, "Required"),
+  clockInTime: z.string().min(1, "Required"),
+  clockOutTime: z.string().optional(),
   status: z.enum(["PRESENT", "LATE", "ABSENT", "HALF_DAY"]),
   remarks: z.string().max(500).optional(),
 });
 
 type Values = z.infer<typeof schema>;
 
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function toIso(date: string, time: string): string {
+  return `${date}T${time}:00+08:00`;
 }
 
-function fromLocalInput(local: string): string {
-  // datetime-local value has no timezone — treat as Asia/Manila (UTC+8).
-  return `${local}:00+08:00`;
+function nextDayIso(date: string): string {
+  const d = new Date(date + "T12:00:00");
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isoToDateStr(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isoToTimeStr(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 interface Props {
@@ -70,8 +77,9 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
   } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
-      clockIn: "",
-      clockOut: "",
+      date: "",
+      clockInTime: "",
+      clockOutTime: "",
       status: "PRESENT",
       remarks: "",
     },
@@ -81,8 +89,9 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
     if (!open) { setLightbox(null); return; }
     if (!record) return;
     reset({
-      clockIn: toLocalInput(record.clockIn),
-      clockOut: toLocalInput(record.clockOut),
+      date: isoToDateStr(record.clockIn),
+      clockInTime: isoToTimeStr(record.clockIn),
+      clockOutTime: isoToTimeStr(record.clockOut),
       status: record.status,
       remarks: record.remarks ?? "",
     });
@@ -91,9 +100,13 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
   const mutation = useMutation({
     mutationFn: async (values: Values) => {
       if (!record) throw new Error("Missing record");
+      const clockOutDate =
+        values.clockOutTime && values.clockOutTime < values.clockInTime
+          ? nextDayIso(values.date)
+          : values.date;
       const payload: AdjustAttendanceInput = {
-        clockIn: fromLocalInput(values.clockIn),
-        clockOut: values.clockOut ? fromLocalInput(values.clockOut) : null,
+        clockIn: toIso(values.date, values.clockInTime),
+        clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime) : null,
         status: values.status,
         remarks: values.remarks?.trim() ? values.remarks : null,
       };
@@ -168,81 +181,61 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
           </div>
         )}
 
+        <div className="space-y-2">
+          <Label htmlFor="date">Date</Label>
+          <Input id="date" type="date" {...register("date")} />
+          {errors.date && (
+            <p className="text-xs text-destructive">{errors.date.message}</p>
+          )}
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label>Clock in</Label>
+            <Label>Clock In</Label>
             <Controller
-              name="clockIn"
+              name="clockInTime"
               control={control}
-              render={({ field }) => {
-                const [datePart, timePart] = (field.value ?? "").split("T");
-                return (
-                  <div className="flex gap-2">
-                    <Input
-                      type="date"
-                      className="w-auto flex-1"
-                      value={datePart ?? ""}
-                      onChange={(e) => field.onChange(`${e.target.value}T${timePart ?? "08:00"}`)}
-                    />
-                    <TimePicker
-                      className="flex-1"
-                      value={timePart ?? "08:00"}
-                      onChange={(t) => field.onChange(`${datePart ?? ""}T${t}`)}
-                    />
-                  </div>
-                );
-              }}
+              render={({ field }) => (
+                <TimePicker value={field.value} onChange={field.onChange} />
+              )}
             />
-            {errors.clockIn && (
-              <p className="text-xs text-destructive">{errors.clockIn.message}</p>
+            {errors.clockInTime && (
+              <p className="text-xs text-destructive">{errors.clockInTime.message}</p>
             )}
           </div>
           <div className="space-y-2">
-            <Label>Clock out</Label>
+            <Label>Clock Out</Label>
             <Controller
-              name="clockOut"
+              name="clockOutTime"
               control={control}
-              render={({ field }) => {
-                const [datePart, timePart] = (field.value ?? "").split("T");
-                return (
-                  <div className="flex gap-2">
-                    <Input
-                      type="date"
-                      className="w-auto flex-1"
-                      value={datePart ?? ""}
-                      onChange={(e) => field.onChange(`${e.target.value}T${timePart ?? "08:00"}`)}
-                    />
-                    <TimePicker
-                      className="flex-1"
-                      value={timePart ?? ""}
-                      onChange={(t) => field.onChange(`${datePart ?? ""}T${t}`)}
-                    />
-                  </div>
-                );
-              }}
+              render={({ field }) => (
+                <TimePicker value={field.value} onChange={field.onChange} />
+              )}
             />
             <p className="text-xs text-muted-foreground">
-              Leave blank if still clocked in.
+              Leave blank if still clocked in. If earlier than clock-in, treated as next day.
             </p>
           </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="status">Status</Label>
-            <Select id="status" {...register("status")}>
-              <option value="PRESENT">Present</option>
-              <option value="LATE">Late</option>
-              <option value="ABSENT">Absent</option>
-              <option value="HALF_DAY">Half-day</option>
-            </Select>
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="remarks">Remarks</Label>
-            <Textarea
-              id="remarks"
-              rows={3}
-              placeholder="Reason for manual adjustment…"
-              {...register("remarks")}
-            />
-          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="status">Status</Label>
+          <Select id="status" {...register("status")}>
+            <option value="PRESENT">Present</option>
+            <option value="LATE">Late</option>
+            <option value="ABSENT">Absent</option>
+            <option value="HALF_DAY">Half-day</option>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="remarks">Remarks</Label>
+          <Textarea
+            id="remarks"
+            rows={3}
+            placeholder="Reason for manual adjustment…"
+            {...register("remarks")}
+          />
         </div>
 
         <DialogFooter>

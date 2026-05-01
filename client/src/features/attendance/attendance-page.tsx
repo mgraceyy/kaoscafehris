@@ -4,6 +4,7 @@ import { Download, Loader2, Pencil, Plus, Search } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import { exportToCsv } from "@/lib/export";
 import { listBranches } from "@/features/branches/branches.api";
+import { listSettings } from "@/features/settings/settings.api";
 import {
   formatClockTime,
   listAttendance,
@@ -24,10 +25,29 @@ const DATE_RANGE_OPTIONS = [
   { label: "Last 30 days", days: 29 },
 ];
 
-function todayIso() { return new Date().toISOString().slice(0, 10); }
-function daysAgoIso(n: number) {
-  const d = new Date(); d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+function localDateIso(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function parseSplitTime(raw: string): { hour: number; minute: number } {
+  const hhmm = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (hhmm) return { hour: parseInt(hhmm[1], 10), minute: parseInt(hhmm[2], 10) };
+  const ampm = raw.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!ampm) return { hour: 8, minute: 0 };
+  let hour = parseInt(ampm[1], 10);
+  const minute = parseInt(ampm[2], 10);
+  if (ampm[3].toUpperCase() === "AM" && hour === 12) hour = 0;
+  if (ampm[3].toUpperCase() === "PM" && hour !== 12) hour += 12;
+  return { hour, minute };
+}
+
+function workDayIso(splitHour: number, splitMinute: number, offsetDays = 0): string {
+  const now = new Date();
+  const beforeSplit = now.getHours() < splitHour || (now.getHours() === splitHour && now.getMinutes() < splitMinute);
+  const base = new Date(now);
+  if (beforeSplit) base.setDate(base.getDate() - 1);
+  if (offsetDays) base.setDate(base.getDate() - offsetDays);
+  return localDateIso(base);
 }
 
 function formatDate(iso: string) {
@@ -52,8 +72,8 @@ function StatusBadge({ status, hasClockOut }: { status: AttendanceStatus; hasClo
   }
 }
 
-function todayLabel() {
-  return new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+function dateLabel(iso: string) {
+  return new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 }
 
 export default function AttendancePage() {
@@ -71,16 +91,29 @@ export default function AttendancePage() {
     queryFn: () => listBranches({ isActive: true }),
   });
 
+  const settingsQuery = useQuery({
+    queryKey: ["settings", "company"],
+    queryFn: () => listSettings("company"),
+    staleTime: 5 * 60_000,
+  });
+
+  const { hour: splitHour, minute: splitMinute } = useMemo(() => {
+    const raw = settingsQuery.data?.find((s) => s.key === "company.default_work_hours")?.value as string | undefined;
+    return parseSplitTime(raw ?? "08:00");
+  }, [settingsQuery.data]);
+
+  const todayWorkDay = workDayIso(splitHour, splitMinute);
+
   const startDate = DATE_RANGE_OPTIONS[dateRangeIdx].days === 0
-    ? todayIso()
-    : daysAgoIso(DATE_RANGE_OPTIONS[dateRangeIdx].days);
+    ? todayWorkDay
+    : workDayIso(splitHour, splitMinute, DATE_RANGE_OPTIONS[dateRangeIdx].days);
 
   const apiFilters = useMemo(() => ({
     branchId: branchId || undefined,
     startDate,
-    endDate: todayIso(),
+    endDate: todayWorkDay,
     status: (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : undefined) as AttendanceStatus | undefined,
-  }), [branchId, startDate, statusFilter]);
+  }), [branchId, startDate, todayWorkDay, statusFilter]);
 
   const query = useQuery({
     queryKey: ["attendance", apiFilters],
@@ -118,7 +151,7 @@ export default function AttendancePage() {
       r.status,
     ]);
     const branch = selectedBranch ? `_${selectedBranch.name.replace(/\s+/g, "_")}` : "";
-    exportToCsv(`attendance${branch}_${startDate}_to_${todayIso()}.csv`, headers, rows);
+    exportToCsv(`attendance${branch}_${startDate}_to_${todayWorkDay}.csv`, headers, rows);
   }
 
   const summary = {
@@ -135,7 +168,7 @@ export default function AttendancePage() {
       <div className="mb-8 flex items-start justify-between animate-fade-up">
         <div>
           <h1 className="font-heading text-3xl font-bold text-gray-900">Attendance</h1>
-          <p className="text-sm text-gray-400 mt-1">{todayLabel()}</p>
+          <p className="text-sm text-gray-400 mt-1">{dateLabel(todayWorkDay)}</p>
         </div>
         <div className="flex items-center gap-2">
           <button

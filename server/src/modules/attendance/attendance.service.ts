@@ -276,24 +276,60 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
   if (!existing) throw new AppError(404, "Attendance record not found");
 
   const data: Prisma.AttendanceUpdateInput = {};
-  if (input.clockIn !== undefined) data.clockIn = new Date(input.clockIn);
-  if (input.clockOut !== undefined) {
-    data.clockOut = input.clockOut ? new Date(input.clockOut) : null;
-  }
   if (input.status !== undefined) data.status = input.status;
   if (input.remarks !== undefined) data.remarks = input.remarks;
-  if (input.hoursWorked !== undefined) data.hoursWorked = input.hoursWorked;
-  if (input.overtimeHours !== undefined) data.overtimeHours = input.overtimeHours;
-  if (input.lateMinutes !== undefined) data.lateMinutes = input.lateMinutes;
-  if (input.undertimeMinutes !== undefined) data.undertimeMinutes = input.undertimeMinutes;
 
-  const nextClockIn = (data.clockIn as Date | undefined) ?? existing.clockIn;
+  const nextClockIn = input.clockIn !== undefined ? new Date(input.clockIn) : existing.clockIn;
   const nextClockOut =
     input.clockOut === undefined
       ? existing.clockOut
-      : (data.clockOut as Date | null | undefined) ?? null;
+      : input.clockOut ? new Date(input.clockOut) : null;
+
   if (nextClockOut && nextClockOut <= nextClockIn) {
     throw new AppError(400, "Clock-out time must be after clock-in");
+  }
+
+  data.clockIn = nextClockIn;
+  data.clockOut = nextClockOut ?? null;
+
+  // Always recompute derived fields from the resolved clockIn/clockOut.
+  if (nextClockOut) {
+    data.hoursWorked = hoursBetween(nextClockIn, nextClockOut);
+
+    const shift = await findScheduledShift(existing.employeeId, existing.date);
+    if (shift) {
+      const scheduledEnd = combineDateAndTime(existing.date, shift.endTime);
+      data.undertimeMinutes = nextClockOut < scheduledEnd ? diffMinutes(nextClockOut, scheduledEnd) : null;
+      data.overtimeHours = nextClockOut > scheduledEnd ? hoursBetween(scheduledEnd, nextClockOut) : 0;
+    } else {
+      data.overtimeHours = 0;
+      data.undertimeMinutes = null;
+    }
+  } else {
+    // No clock-out yet — clear computed fields.
+    data.hoursWorked = null;
+    data.overtimeHours = 0;
+    data.undertimeMinutes = null;
+  }
+
+  // Recompute late status from the (possibly updated) clockIn.
+  if (input.status === undefined) {
+    const shift = await findScheduledShift(existing.employeeId, existing.date);
+    if (shift) {
+      const graceMinutes = await getSetting<number>("attendance.late_grace_minutes", 5);
+      const scheduledStart = combineDateAndTime(existing.date, shift.startTime);
+      const delta = diffMinutes(scheduledStart, nextClockIn);
+      if (delta > graceMinutes) {
+        data.status = "LATE";
+        data.lateMinutes = delta;
+      } else {
+        data.status = "PRESENT";
+        data.lateMinutes = null;
+      }
+    }
+  } else {
+    // Status was explicitly set; keep provided lateMinutes if any, else clear.
+    data.lateMinutes = input.lateMinutes ?? null;
   }
 
   return prisma.attendance.update({

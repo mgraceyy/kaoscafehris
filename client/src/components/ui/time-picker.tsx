@@ -11,7 +11,7 @@ interface TimePickerProps {
 }
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1); // 1–12
-const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5); // 0, 5, 10 … 55
+const MINUTES = Array.from({ length: 60 }, (_, i) => i);   // 0–59
 
 function parseHHMM(value?: string): { h: number; m: number; period: "AM" | "PM" } {
   if (!value) return { h: 12, m: 0, period: "AM" };
@@ -104,12 +104,12 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
       ? ReactDOM.createPortal(
           <div
             ref={dropdownRef}
-            style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: 160, zIndex: 9999 }}
             className="rounded-md border bg-white shadow-lg"
           >
-            <div className="flex divide-x" style={{ maxHeight: 200 }}>
+            <div className="flex divide-x" style={{ height: 160 }}>
               {/* Hours */}
-              <div className="flex-1 overflow-y-auto py-1">
+              <div className="flex-1 overflow-y-auto">
                 {HOURS.map((h) => (
                   <button
                     key={h}
@@ -117,7 +117,7 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
                     data-selected={h === hour ? "" : undefined}
                     onClick={() => selectHour(h)}
                     className={cn(
-                      "w-full px-3 py-1.5 text-sm text-left hover:bg-muted transition-colors",
+                      "w-full px-2 py-1 text-xs text-center hover:bg-muted transition-colors",
                       h === hour && "bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
                     )}
                   >
@@ -127,7 +127,7 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
               </div>
 
               {/* Minutes */}
-              <div className="flex-1 overflow-y-auto py-1">
+              <div className="flex-1 overflow-y-auto">
                 {MINUTES.map((m) => (
                   <button
                     key={m}
@@ -135,7 +135,7 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
                     data-selected={m === minute ? "" : undefined}
                     onClick={() => selectMinute(m)}
                     className={cn(
-                      "w-full px-3 py-1.5 text-sm text-left hover:bg-muted transition-colors",
+                      "w-full px-2 py-1 text-xs text-center hover:bg-muted transition-colors",
                       m === minute && "bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
                     )}
                   >
@@ -145,14 +145,14 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
               </div>
 
               {/* AM / PM */}
-              <div className="flex flex-col py-1">
+              <div className="flex flex-col justify-center">
                 {(["AM", "PM"] as const).map((p) => (
                   <button
                     key={p}
                     type="button"
                     onClick={() => { selectPeriod(p); setOpen(false); }}
                     className={cn(
-                      "px-4 py-1.5 text-sm font-medium hover:bg-muted transition-colors",
+                      "px-2 py-1.5 text-xs font-medium hover:bg-muted transition-colors",
                       p === period && "bg-primary text-primary-foreground hover:bg-primary/90"
                     )}
                   >
