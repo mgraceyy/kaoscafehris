@@ -19,6 +19,7 @@ export async function createShiftType(input: CreateShiftTypeInput, userId?: stri
       name: input.name,
       startTime: timeToDate(input.startTime),
       endTime: timeToDate(input.endTime),
+      breakDuration: input.breakDuration ?? 60,
     },
   });
 
@@ -68,6 +69,7 @@ export async function updateShiftType(
       name: input.name,
       startTime: input.startTime ? timeToDate(input.startTime) : undefined,
       endTime: input.endTime ? timeToDate(input.endTime) : undefined,
+      breakDuration: input.breakDuration,
     },
   });
 

@@ -72,6 +72,7 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
         name: form.name,
         startTime: form.startTime,
         endTime: form.endTime,
+        breakDuration: 60,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shift-types"] });
@@ -181,6 +182,7 @@ export default function ShiftTypesDialog({ open, onOpenChange }: Props) {
                 />
               </div>
             </div>
+
 
             <div className="flex gap-2">
               <Button type="submit" disabled={saving} className="flex-1">

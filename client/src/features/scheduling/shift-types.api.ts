@@ -5,6 +5,7 @@ export interface ShiftType {
   name: string;
   startTime: string;
   endTime: string;
+  breakDuration: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -14,12 +15,14 @@ export interface CreateShiftTypeInput {
   name: string;
   startTime: string;
   endTime: string;
+  breakDuration: number;
 }
 
 export interface UpdateShiftTypeInput {
   name?: string;
   startTime?: string;
   endTime?: string;
+  breakDuration?: number;
 }
 
 export async function listShiftTypes(_branchId?: string): Promise<ShiftType[]> {

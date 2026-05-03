@@ -483,6 +483,7 @@ export async function manualCreate(input: ManualCreateInput) {
   // Use the plain local calendar date — no split-time rollback — because the
   // admin explicitly chose the target date in the form.
   const dateKey = await localCalendarDateOf(clockInAt);
+  console.log("[manualCreate DEBUG] input.clockIn:", input.clockIn, "clockInAt UTC:", clockInAt.toISOString(), "dateKey:", dateKey.toISOString());
 
   const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),

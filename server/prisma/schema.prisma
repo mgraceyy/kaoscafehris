@@ -237,11 +237,12 @@ model Employee {
 // ============================================================================
 
 model ShiftType {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  startTime DateTime @db.Time()
-  endTime   DateTime @db.Time()
-  isActive  Boolean  @default(true)
+  id             String   @id @default(uuid())
+  name           String   @unique
+  startTime      DateTime @db.Time()
+  endTime        DateTime @db.Time()
+  breakDuration  Int      @default(60) // break time in minutes (excluded from paid hours)
+  isActive       Boolean  @default(true)
 
   shifts               Shift[]
   employeesWithDefault Employee[]

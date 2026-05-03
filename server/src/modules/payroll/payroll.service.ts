@@ -295,7 +295,7 @@ export async function processRun(id: string) {
     select: {
       employeeId: true,
       overtimeApproved: true,
-      shift: { select: { date: true, startTime: true, endTime: true } },
+      shift: { select: { date: true, startTime: true, endTime: true, shiftType: { select: { breakDuration: true } } } },
     },
   });
 
@@ -323,7 +323,8 @@ export async function processRun(id: string) {
     const startMs = sa.shift.startTime.getTime();
     const endMs = sa.shift.endTime.getTime();
     const shiftMs = endMs >= startMs ? endMs - startMs : endMs - startMs + 24 * 3_600_000;
-    const shiftHrs = shiftMs / 3_600_000;
+    const breakMins = sa.shift.shiftType?.breakDuration ?? 60;
+    const shiftHrs = shiftMs / 3_600_000 - breakMins / 60;
 
     if (!scheduledDatesMap.has(sa.employeeId)) scheduledDatesMap.set(sa.employeeId, new Set());
     scheduledDatesMap.get(sa.employeeId)!.add(dateKey);

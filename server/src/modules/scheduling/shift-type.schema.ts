@@ -9,6 +9,7 @@ export const createShiftTypeSchema = z
     name: z.string().trim().min(1, "Name is required").max(60, "Name must be 60 characters or less"),
     startTime: time,
     endTime: time,
+    breakDuration: z.number().int().min(0).max(720).default(60),
   })
   .refine(
     (v) => v.startTime !== v.endTime,
@@ -19,6 +20,7 @@ export const updateShiftTypeSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   startTime: time.optional(),
   endTime: time.optional(),
+  breakDuration: z.number().int().min(0).max(720).optional(),
 }).refine(
   (v) => {
     if (v.startTime && v.endTime) {
