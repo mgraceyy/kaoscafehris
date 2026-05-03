@@ -417,6 +417,12 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
     throw new AppError(400, "Clock-out time must be after clock-in");
   }
 
+  // If clockIn changed, recompute the date field to keep it consistent with clockIn.
+  const nextDate = input.clockIn !== undefined ? await localCalendarDateOf(nextClockIn) : existing.date;
+  if (nextDate.getTime() !== existing.date.getTime()) {
+    data.date = nextDate;
+  }
+
   data.clockIn = nextClockIn;
   data.clockOut = nextClockOut ?? null;
 
@@ -426,14 +432,14 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, nextClockIn);
-  const shift = await findScheduledShift(existing.employeeId, existing.date, nextClockIn, tzOffset);
+  const shift = await findScheduledShift(existing.employeeId, nextDate, nextClockIn, tzOffset);
 
   // Always recompute derived fields from the resolved clockIn/clockOut.
   if (nextClockOut) {
     data.hoursWorked = hoursBetween(nextClockIn, nextClockOut);
 
     if (shift) {
-      const { scheduledEnd } = getScheduledTimes(existing.date, shift, tzOffset);
+      const { scheduledEnd } = getScheduledTimes(nextDate, shift, tzOffset);
       data.undertimeMinutes = nextClockOut < scheduledEnd ? diffMinutes(nextClockOut, scheduledEnd) : null;
       data.overtimeHours = nextClockOut > scheduledEnd ? hoursBetween(scheduledEnd, nextClockOut) : 0;
     } else {
@@ -450,7 +456,7 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
   // Recompute late status from the (possibly updated) clockIn.
   if (input.status === undefined) {
     if (shift) {
-      const { scheduledStart } = getScheduledTimes(existing.date, shift, tzOffset);
+      const { scheduledStart } = getScheduledTimes(nextDate, shift, tzOffset);
       const delta = diffMinutes(scheduledStart, nextClockIn);
       if (delta > graceMinutes) {
         data.status = "LATE";
@@ -483,7 +489,6 @@ export async function manualCreate(input: ManualCreateInput) {
   // Use the plain local calendar date — no split-time rollback — because the
   // admin explicitly chose the target date in the form.
   const dateKey = await localCalendarDateOf(clockInAt);
-  console.log("[manualCreate DEBUG] input.clockIn:", input.clockIn, "clockInAt UTC:", clockInAt.toISOString(), "dateKey:", dateKey.toISOString());
 
   const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
@@ -513,7 +518,9 @@ export async function manualCreate(input: ManualCreateInput) {
   if (existingCount > 0 && existingCount >= Math.max(scheduledCount, 1)) {
     throw new AppError(
       409,
-      `[DEBUG] dateKey=${dateKey.toISOString()} existingCount=${existingCount} scheduledCount=${scheduledCount} — ${scheduledCount > 1 ? "Attendance records already exist for all scheduled shifts on this date." : "An attendance record already exists for this employee on that date."}`
+      scheduledCount > 1
+        ? "Attendance records already exist for all scheduled shifts on this date."
+        : "An attendance record already exists for this employee on that date."
     );
   }
 
