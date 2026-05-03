@@ -9,6 +9,7 @@ import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { getSetting } from "../../lib/settings-cache.js";
 import * as attendanceService from "../attendance/attendance.service.js";
+import { workDayDateOf } from "../attendance/attendance.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const selfieDir = path.join(__dirname, "..", "..", "..", "uploads", "selfies");
@@ -100,24 +101,38 @@ router.get("/status/:employeeId", async (req, res, next) => {
     });
     if (!emp) throw new AppError(404, "Employee not found");
 
-    const nowUtc = new Date();
-    const dateKey = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate()));
+    const dateKey = await workDayDateOf(new Date());
 
-    // Today's shift
+    // Today's attendance — or, for graveyard/overnight shifts, the most recent
+    // open record from a previous date (employee clocked in yesterday, still no clock-out).
+    let attendance = await prisma.attendance.findUnique({
+      where: { employeeId_date: { employeeId: emp.id, date: dateKey } },
+    });
+    if (!attendance) {
+      const openPrev = await prisma.attendance.findFirst({
+        where: {
+          employeeId: emp.id,
+          clockOut: null,
+          status: { in: ["PRESENT", "LATE"] },
+          date: { lt: dateKey },
+        },
+        orderBy: { date: "desc" },
+      });
+      if (openPrev) attendance = openPrev;
+    }
+
+    // Find today's shift, or the shift matching the open attendance record's date
+    // (covers graveyard employees whose shift date is yesterday).
+    const shiftDate = attendance ? attendance.date : dateKey;
     const assignment = await prisma.shiftAssignment.findFirst({
-      where: { employeeId: emp.id, shift: { date: dateKey } },
+      where: { employeeId: emp.id, shift: { date: shiftDate } },
       include: { shift: true },
       orderBy: { shift: { startTime: "asc" } },
     });
 
-    // Today's attendance
-    const attendance = await prisma.attendance.findUnique({
-      where: { employeeId_date: { employeeId: emp.id, date: dateKey } },
-    });
-
-    // Last clock-in (previous day)
+    // Last clock-in (any completed record before today, for display only)
     const lastAttendance = await prisma.attendance.findFirst({
-      where: { employeeId: emp.id, date: { lt: dateKey } },
+      where: { employeeId: emp.id, clockOut: { not: null }, date: { lt: dateKey } },
       orderBy: { date: "desc" },
     });
 

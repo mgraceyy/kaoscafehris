@@ -60,8 +60,13 @@ function parseWorkStartTime(setting: string): { hour: number; minute: number } {
  * night-shift workers clocking in before the work-day start (e.g., 1 AM
  * when the day starts at 8 AM) are recorded under the previous calendar date.
  */
+<<<<<<< Updated upstream
 async function workDayDateOf(instant: Date): Promise<Date> {
   const [tzSetting, splitTimeSetting] = await Promise.all([
+=======
+export async function workDayDateOf(instant: Date): Promise<Date> {
+  const [tzSetting, workHoursSetting] = await Promise.all([
+>>>>>>> Stashed changes
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
     getSetting<string>("company.default_work_hours", "05:00"),
   ]);
@@ -138,6 +143,7 @@ function combineDateAndTime(date: Date, timeOfDay: Date): Date {
 }
 
 /**
+<<<<<<< Updated upstream
  * Compute how many minutes past the shift start the clock-in is.
  *
  * Shift times are stored as @db.Time() where the UTC hours/minutes equal the
@@ -170,6 +176,54 @@ export async function deleteAttendance(id: string) {
   const record = await prisma.attendance.findUnique({ where: { id } });
   if (!record) throw new AppError(404, "Attendance record not found");
   await prisma.attendance.delete({ where: { id } });
+=======
+ * Return the UTC offset in minutes for `tz` at `forDate`.
+ * E.g. Asia/Manila → 480 (UTC+8). Handles DST-observing zones correctly.
+ */
+function getUtcOffsetMinutes(tz: string, forDate: Date): number {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(forDate);
+  const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+  const localMs = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return Math.round((localMs - forDate.getTime()) / 60_000);
+}
+
+/**
+ * Like combineDateAndTime but treats the stored @db.Time hours/minutes as
+ * LOCAL company timezone time rather than UTC. Shift times are entered by
+ * admins in local time (e.g. "08:00" = 8 AM Manila), so we must subtract the
+ * UTC offset to arrive at the correct UTC instant.
+ */
+function combineDateAndTimeLocal(date: Date, timeOfDay: Date, tzOffsetMinutes: number): Date {
+  const dateMs = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const storedMs = timeOfDay.getUTCHours() * 3_600_000 + timeOfDay.getUTCMinutes() * 60_000;
+  return new Date(dateMs + storedMs - tzOffsetMinutes * 60_000);
+}
+
+/**
+ * Returns the scheduled start and end instants for a shift on a given date.
+ * tzOffsetMinutes is the company timezone's UTC offset (e.g. +480 for Manila).
+ * Handles overnight/graveyard shifts where endTime < startTime by adding one
+ * day to scheduledEnd so it lands on the correct calendar day.
+ */
+function getScheduledTimes(
+  date: Date,
+  shift: { startTime: Date; endTime: Date },
+  tzOffsetMinutes: number,
+) {
+  const scheduledStart = combineDateAndTimeLocal(date, shift.startTime, tzOffsetMinutes);
+  let scheduledEnd = combineDateAndTimeLocal(date, shift.endTime, tzOffsetMinutes);
+  const startMins = shift.startTime.getUTCHours() * 60 + shift.startTime.getUTCMinutes();
+  const endMins = shift.endTime.getUTCHours() * 60 + shift.endTime.getUTCMinutes();
+  if (endMins < startMins) {
+    scheduledEnd = new Date(scheduledEnd.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return { scheduledStart, scheduledEnd };
+>>>>>>> Stashed changes
 }
 
 export async function listAttendance(query: ListAttendanceQuery) {
@@ -229,13 +283,39 @@ export async function clockIn(input: ClockInInput) {
     if (existing) return existing;
   }
 
+  // Block clock-in if the employee has any open record (no clock-out) from a previous date.
+  const openRecord = await prisma.attendance.findFirst({
+    where: {
+      employeeId: input.employeeId,
+      clockOut: null,
+      status: { in: ["PRESENT", "LATE"] },
+      date: { lt: dateKey },
+    },
+  });
+  if (openRecord) {
+    throw new AppError(
+      409,
+      "Employee has not clocked out from a previous shift. Please clock out first."
+    );
+  }
+
   const shift = await findScheduledShift(input.employeeId, dateKey);
   let status: "PRESENT" | "LATE" = "PRESENT";
   let lateMinutes: number | null = null;
 
   if (shift) {
+<<<<<<< Updated upstream
     const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
     const delta = await computeLateMinutes(clockInAt, shift.startTime);
+=======
+    const [graceMinutes, tzSetting] = await Promise.all([
+      getSetting<number>("attendance.late_grace_minutes", 5),
+      getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
+    ]);
+    const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+    const { scheduledStart } = getScheduledTimes(dateKey, shift, getUtcOffsetMinutes(tz, clockInAt));
+    const delta = diffMinutes(scheduledStart, clockInAt);
+>>>>>>> Stashed changes
     if (delta > graceMinutes) {
       status = "LATE";
       lateMinutes = delta;
@@ -283,9 +363,13 @@ export async function clockOut(attendanceId: string, input: ClockOutInput) {
   let overtimeHours = 0;
   let undertimeMinutes: number | null = null;
 
-  const shift = await findScheduledShift(record.employeeId, record.date);
+  const [shift, tzSetting] = await Promise.all([
+    findScheduledShift(record.employeeId, record.date),
+    getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
+  ]);
   if (shift) {
-    const scheduledEnd = combineDateAndTime(record.date, shift.endTime);
+    const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+    const { scheduledEnd } = getScheduledTimes(record.date, shift, getUtcOffsetMinutes(tz, clockOutAt));
     if (clockOutAt < scheduledEnd) {
       undertimeMinutes = diffMinutes(clockOutAt, scheduledEnd);
     }
@@ -328,13 +412,21 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
   data.clockIn = nextClockIn;
   data.clockOut = nextClockOut ?? null;
 
+  // Fetch shift + settings once for all derived field calculations.
+  const [shift, tzSetting, graceMinutes] = await Promise.all([
+    findScheduledShift(existing.employeeId, existing.date),
+    getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
+    getSetting<number>("attendance.late_grace_minutes", 5),
+  ]);
+  const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+  const tzOffset = getUtcOffsetMinutes(tz, nextClockIn);
+
   // Always recompute derived fields from the resolved clockIn/clockOut.
   if (nextClockOut) {
     data.hoursWorked = hoursBetween(nextClockIn, nextClockOut);
 
-    const shift = await findScheduledShift(existing.employeeId, existing.date);
     if (shift) {
-      const scheduledEnd = combineDateAndTime(existing.date, shift.endTime);
+      const { scheduledEnd } = getScheduledTimes(existing.date, shift, tzOffset);
       data.undertimeMinutes = nextClockOut < scheduledEnd ? diffMinutes(nextClockOut, scheduledEnd) : null;
       data.overtimeHours = nextClockOut > scheduledEnd ? hoursBetween(scheduledEnd, nextClockOut) : 0;
     } else {
@@ -350,10 +442,14 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
 
   // Recompute late status from the (possibly updated) clockIn.
   if (input.status === undefined) {
-    const shift = await findScheduledShift(existing.employeeId, existing.date);
     if (shift) {
+<<<<<<< Updated upstream
       const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
       const delta = await computeLateMinutes(nextClockIn, shift.startTime);
+=======
+      const { scheduledStart } = getScheduledTimes(existing.date, shift, tzOffset);
+      const delta = diffMinutes(scheduledStart, nextClockIn);
+>>>>>>> Stashed changes
       if (delta > graceMinutes) {
         data.status = "LATE";
         data.lateMinutes = delta;
@@ -384,13 +480,25 @@ export async function manualCreate(input: ManualCreateInput) {
   const clockInAt = new Date(input.clockIn);
   const dateKey = await workDayDateOf(clockInAt);
 
-  const shift = await findScheduledShift(input.employeeId, dateKey);
+  const [shift, tzSetting, graceMinutes] = await Promise.all([
+    findScheduledShift(input.employeeId, dateKey),
+    getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
+    getSetting<number>("attendance.late_grace_minutes", 5),
+  ]);
+  const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+  const tzOffset = getUtcOffsetMinutes(tz, clockInAt);
+
   let status: "PRESENT" | "LATE" = "PRESENT";
   let lateMinutes: number | null = null;
 
   if (shift) {
+<<<<<<< Updated upstream
     const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
     const delta = await computeLateMinutes(clockInAt, shift.startTime);
+=======
+    const { scheduledStart } = getScheduledTimes(dateKey, shift, tzOffset);
+    const delta = diffMinutes(scheduledStart, clockInAt);
+>>>>>>> Stashed changes
     if (delta > graceMinutes) {
       status = "LATE";
       lateMinutes = delta;
@@ -409,7 +517,7 @@ export async function manualCreate(input: ManualCreateInput) {
     }
     hoursWorked = hoursBetween(clockInAt, clockOutAt);
     if (shift) {
-      const scheduledEnd = combineDateAndTime(dateKey, shift.endTime);
+      const { scheduledEnd } = getScheduledTimes(dateKey, shift, tzOffset);
       if (clockOutAt < scheduledEnd) undertimeMinutes = diffMinutes(clockOutAt, scheduledEnd);
       if (clockOutAt > scheduledEnd) overtimeHours = hoursBetween(scheduledEnd, clockOutAt);
     }

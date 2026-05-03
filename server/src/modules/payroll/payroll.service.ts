@@ -338,8 +338,6 @@ export async function processRun(id: string) {
 
     const scheduledHrs = scheduledHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
     const actualHrs = toNum(rec.hoursWorked);
-    // overtimeHours in attendance is already gated by the auto-clockout job:
-    // employees without approved OT are clocked out at shift end (overtimeHours = 0).
     const otHrs = toNum(rec.overtimeHours);
     // Regular hours = actual minus OT, capped at scheduled shift duration.
     const regularHrs = Math.min(Math.max(0, actualHrs - otHrs), scheduledHrs);

@@ -23,8 +23,13 @@ import { listEmployees } from "@/features/employees/employees.api";
 import { createAttendance } from "./attendance.api";
 
 function todayIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const y = parts.find((p) => p.type === "year")?.value ?? "";
+  const mo = parts.find((p) => p.type === "month")?.value ?? "";
+  const d = parts.find((p) => p.type === "day")?.value ?? "";
+  return `${y}-${mo}-${d}`;
 }
 
 /** Combine a date string (YYYY-MM-DD) and time string (HH:mm) into an ISO datetime.

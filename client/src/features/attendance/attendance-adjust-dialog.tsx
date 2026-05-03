@@ -45,16 +45,29 @@ function nextDayIso(date: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+const TZ = "Asia/Manila";
+
+/** Extract YYYY-MM-DD in the company timezone so the date field pre-fills correctly. */
 function isoToDateStr(iso: string | null): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date(iso));
+  const y = parts.find((p) => p.type === "year")?.value ?? "2000";
+  const mo = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${y}-${mo}-${d}`;
 }
 
+/** Extract HH:mm in the company timezone so it matches the +08:00 offset used by toIso(). */
 function isoToTimeStr(iso: string | null): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date(iso));
+  const h = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${h}:${m}`;
 }
 
 interface Props {

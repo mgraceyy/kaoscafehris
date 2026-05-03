@@ -1,6 +1,12 @@
+<<<<<<< Updated upstream
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+=======
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Download, Loader2, Pencil, Plus, Search } from "lucide-react";
+>>>>>>> Stashed changes
 import { extractErrorMessage } from "@/lib/api";
 import { exportToCsv } from "@/lib/export";
 import { listBranches } from "@/features/branches/branches.api";
@@ -21,11 +27,6 @@ const AMBER = "#C4843A";
 const PURPLE = "#7a3db0";
 const GREEN = "#4e8a40";
 
-const DATE_RANGE_OPTIONS = [
-  { label: "Today", days: 0 },
-  { label: "Last 7 days", days: 6 },
-  { label: "Last 30 days", days: 29 },
-];
 
 function localDateIso(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -52,20 +53,27 @@ function workDayIso(splitHour: number, splitMinute: number, offsetDays = 0): str
   return localDateIso(base);
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+function formatDate(iso: string, timeZone = "Asia/Manila") {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone });
 }
 
 
 function StatusBadge({ status, hasClockOut }: { status: AttendanceStatus; hasClockOut: boolean }) {
   if (!hasClockOut && (status === "PRESENT" || status === "LATE")) {
     return (
+<<<<<<< Updated upstream
       <span className="inline-flex items-center gap-1">
         <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fce9e9", color: BRAND }}>
           Ongoing
         </span>
         {status === "LATE" && (
           <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fdf0e0", color: AMBER }}>
+=======
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fce9e9", color: BRAND }}>
+        Ongoing
+        {status === "LATE" && (
+          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: AMBER, color: "#fff" }}>
+>>>>>>> Stashed changes
             Late
           </span>
         )}
@@ -86,7 +94,8 @@ function dateLabel(iso: string) {
 }
 
 export default function AttendancePage() {
-  const [dateRangeIdx, setDateRangeIdx] = useState(0);
+  const [dateRangeStart, setDateRangeStart] = useState(() => localDateIso());
+  const [dateRangeEnd, setDateRangeEnd] = useState(() => localDateIso());
   const [branchId, setBranchId] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"" | "COMPLETE" | "LATE" | "INCOMPLETE" | "ABSENT">("");
   const [search, setSearch] = useState("");
@@ -119,6 +128,11 @@ export default function AttendancePage() {
     staleTime: 5 * 60_000,
   });
 
+  const companyTimezone = useMemo(() => {
+    const raw = settingsQuery.data?.find((s) => s.key === "company.timezone")?.value as string | undefined;
+    return raw?.split(" ")[0] ?? "Asia/Manila";
+  }, [settingsQuery.data]);
+
   const { hour: splitHour, minute: splitMinute } = useMemo(() => {
     const raw = settingsQuery.data?.find((s) => s.key === "company.default_work_hours")?.value as string | undefined;
     return parseSplitTime(raw ?? "08:00");
@@ -126,18 +140,31 @@ export default function AttendancePage() {
 
   const todayWorkDay = workDayIso(splitHour, splitMinute);
 
-  const startDate = DATE_RANGE_OPTIONS[dateRangeIdx].days === 0
-    ? todayWorkDay
-    : workDayIso(splitHour, splitMinute, DATE_RANGE_OPTIONS[dateRangeIdx].days);
+  // Once settings first load, snap the date filter to the split-time-aware work day.
+  // A ref prevents this from re-firing on background refetches or after the user changes dates.
+  const datesInitialised = useRef(false);
+  useEffect(() => {
+    if (!settingsQuery.data || datesInitialised.current) return;
+    datesInitialised.current = true;
+    setDateRangeStart(todayWorkDay);
+    setDateRangeEnd(todayWorkDay);
+  }, [settingsQuery.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : "") as AttendanceStatus | "";
 
   const apiFilters = {
     branchId: branchId || undefined,
+<<<<<<< Updated upstream
     startDate,
     endDate: todayWorkDay,
     status: apiStatus || undefined,
   };
+=======
+    startDate: dateRangeStart,
+    endDate: dateRangeEnd,
+    status: (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : undefined) as AttendanceStatus | undefined,
+  }), [branchId, dateRangeStart, dateRangeEnd, statusFilter]);
+>>>>>>> Stashed changes
 
   const query = useQuery({
     queryKey: ["attendance", dateRangeIdx, branchId, startDate, todayWorkDay, apiStatus],
@@ -170,12 +197,12 @@ export default function AttendancePage() {
       `${r.employee.firstName} ${r.employee.lastName}`,
       r.employee.position ?? "",
       r.clockIn.slice(0, 10),
-      formatClockTime(r.clockIn),
-      r.clockOut ? formatClockTime(r.clockOut) : "",
+      formatClockTime(r.clockIn, companyTimezone),
+      r.clockOut ? formatClockTime(r.clockOut, companyTimezone) : "",
       r.status,
     ]);
     const branch = selectedBranch ? `_${selectedBranch.name.replace(/\s+/g, "_")}` : "";
-    exportToCsv(`attendance${branch}_${startDate}_to_${todayWorkDay}.csv`, headers, rows);
+    exportToCsv(`attendance${branch}_${dateRangeStart}_to_${dateRangeEnd}.csv`, headers, rows);
   }
 
   const summary = {
@@ -251,15 +278,23 @@ export default function AttendancePage() {
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
         </select>
-        <select
-          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:outline-none"
-          value={dateRangeIdx}
-          onChange={(e) => { setDateRangeIdx(Number(e.target.value)); setPage(1); }}
-        >
-          {DATE_RANGE_OPTIONS.map((o, i) => (
-            <option key={o.label} value={i}>{o.label}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none"
+            value={dateRangeStart}
+            max={dateRangeEnd}
+            onChange={(e) => { setDateRangeStart(e.target.value); setPage(1); }}
+          />
+          <span className="text-xs text-gray-400">to</span>
+          <input
+            type="date"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none"
+            value={dateRangeEnd}
+            min={dateRangeStart}
+            onChange={(e) => { setDateRangeEnd(e.target.value); setPage(1); }}
+          />
+        </div>
         <select
           className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:outline-none"
           value={statusFilter}
@@ -323,12 +358,12 @@ export default function AttendancePage() {
                     </div>
                   </td>
                   <td className="px-5 py-4 text-gray-600">{r.employee.position ?? "—"}</td>
-                  <td className="px-5 py-4 text-gray-600">{formatDate(r.clockIn)}</td>
+                  <td className="px-5 py-4 text-gray-600">{formatDate(r.clockIn, companyTimezone)}</td>
                   <td className="px-5 py-4 tabular-nums font-medium text-gray-800">
-                    {formatClockTime(r.clockIn)}
+                    {formatClockTime(r.clockIn, companyTimezone)}
                   </td>
                   <td className="px-5 py-4 tabular-nums text-gray-600">
-                    {r.clockOut ? formatClockTime(r.clockOut) : <span className="text-gray-300">—</span>}
+                    {r.clockOut ? formatClockTime(r.clockOut, companyTimezone) : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-5 py-4">
                     <StatusBadge status={r.status} hasClockOut={!!r.clockOut} />
