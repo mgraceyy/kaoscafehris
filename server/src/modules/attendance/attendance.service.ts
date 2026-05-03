@@ -513,9 +513,7 @@ export async function manualCreate(input: ManualCreateInput) {
   if (existingCount > 0 && existingCount >= Math.max(scheduledCount, 1)) {
     throw new AppError(
       409,
-      scheduledCount > 1
-        ? "Attendance records already exist for all scheduled shifts on this date."
-        : "An attendance record already exists for this employee on that date."
+      `[DEBUG] dateKey=${dateKey.toISOString()} existingCount=${existingCount} scheduledCount=${scheduledCount} — ${scheduledCount > 1 ? "Attendance records already exist for all scheduled shifts on this date." : "An attendance record already exists for this employee on that date."}`
     );
   }
 
