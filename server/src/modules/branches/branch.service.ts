@@ -28,11 +28,7 @@ export async function listBranches(query: ListBranchQuery) {
   const branches = await prisma.branch.findMany({
     where,
     include: branchWithCounts,
-<<<<<<< Updated upstream
-    orderBy: [{ createdAt: "desc" }],
-=======
     orderBy: [{ createdAt: "desc" }, { isActive: "desc" }],
->>>>>>> Stashed changes
   });
 
   return branches;

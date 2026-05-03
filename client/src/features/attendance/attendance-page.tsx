@@ -1,12 +1,6 @@
-<<<<<<< Updated upstream
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
-=======
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Download, Loader2, Pencil, Plus, Search } from "lucide-react";
->>>>>>> Stashed changes
 import { extractErrorMessage } from "@/lib/api";
 import { exportToCsv } from "@/lib/export";
 import { listBranches } from "@/features/branches/branches.api";
@@ -29,7 +23,7 @@ const GREEN = "#4e8a40";
 
 
 function localDateIso(d: Date = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 function parseSplitTime(raw: string): { hour: number; minute: number } {
@@ -46,10 +40,18 @@ function parseSplitTime(raw: string): { hour: number; minute: number } {
 
 function workDayIso(splitHour: number, splitMinute: number, offsetDays = 0): string {
   const now = new Date();
-  const beforeSplit = now.getHours() < splitHour || (now.getHours() === splitHour && now.getMinutes() < splitMinute);
-  const base = new Date(now);
-  if (beforeSplit) base.setDate(base.getDate() - 1);
-  if (offsetDays) base.setDate(base.getDate() - offsetDays);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(now);
+  const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+  const localHour = get("hour");
+  const localMinute = get("minute");
+  const beforeSplit = localHour < splitHour || (localHour === splitHour && localMinute < splitMinute);
+  const base = new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
+  if (beforeSplit) base.setUTCDate(base.getUTCDate() - 1);
+  if (offsetDays) base.setUTCDate(base.getUTCDate() - offsetDays);
   return localDateIso(base);
 }
 
@@ -61,19 +63,10 @@ function formatDate(iso: string, timeZone = "Asia/Manila") {
 function StatusBadge({ status, hasClockOut }: { status: AttendanceStatus; hasClockOut: boolean }) {
   if (!hasClockOut && (status === "PRESENT" || status === "LATE")) {
     return (
-<<<<<<< Updated upstream
-      <span className="inline-flex items-center gap-1">
-        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fce9e9", color: BRAND }}>
-          Ongoing
-        </span>
-        {status === "LATE" && (
-          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fdf0e0", color: AMBER }}>
-=======
       <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#fce9e9", color: BRAND }}>
         Ongoing
         {status === "LATE" && (
           <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: AMBER, color: "#fff" }}>
->>>>>>> Stashed changes
             Late
           </span>
         )}
@@ -94,8 +87,8 @@ function dateLabel(iso: string) {
 }
 
 export default function AttendancePage() {
-  const [dateRangeStart, setDateRangeStart] = useState(() => localDateIso());
-  const [dateRangeEnd, setDateRangeEnd] = useState(() => localDateIso());
+  const [dateRangeStart, setDateRangeStart] = useState("");
+  const [dateRangeEnd, setDateRangeEnd] = useState("");
   const [branchId, setBranchId] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"" | "COMPLETE" | "LATE" | "INCOMPLETE" | "ABSENT">("");
   const [search, setSearch] = useState("");
@@ -140,34 +133,17 @@ export default function AttendancePage() {
 
   const todayWorkDay = workDayIso(splitHour, splitMinute);
 
-  // Once settings first load, snap the date filter to the split-time-aware work day.
-  // A ref prevents this from re-firing on background refetches or after the user changes dates.
-  const datesInitialised = useRef(false);
-  useEffect(() => {
-    if (!settingsQuery.data || datesInitialised.current) return;
-    datesInitialised.current = true;
-    setDateRangeStart(todayWorkDay);
-    setDateRangeEnd(todayWorkDay);
-  }, [settingsQuery.data]); // eslint-disable-line react-hooks/exhaustive-deps
+const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : "") as AttendanceStatus | "";
 
-  const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : "") as AttendanceStatus | "";
-
-  const apiFilters = {
+  const apiFilters = useMemo(() => ({
     branchId: branchId || undefined,
-<<<<<<< Updated upstream
-    startDate,
-    endDate: todayWorkDay,
-    status: apiStatus || undefined,
-  };
-=======
     startDate: dateRangeStart,
     endDate: dateRangeEnd,
-    status: (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : undefined) as AttendanceStatus | undefined,
-  }), [branchId, dateRangeStart, dateRangeEnd, statusFilter]);
->>>>>>> Stashed changes
+    status: apiStatus || undefined,
+  }), [branchId, dateRangeStart, dateRangeEnd, apiStatus]);
 
   const query = useQuery({
-    queryKey: ["attendance", dateRangeIdx, branchId, startDate, todayWorkDay, apiStatus],
+    queryKey: ["attendance", branchId, dateRangeStart, dateRangeEnd, apiStatus],
     queryFn: () => listAttendance(apiFilters),
   });
 

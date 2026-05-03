@@ -41,8 +41,11 @@ export function PayslipPreview({ data }: { data: PayslipDetail }) {
     return (n / hourlyRate).toFixed(2);
   };
 
-  const payDate = new Date(data.payrollRun.periodEnd.slice(0, 10) + "T00:00:00");
-  payDate.setDate(payDate.getDate() + 5);
+  const periodEnd = new Date(data.payrollRun.periodEnd.slice(0, 10) + "T00:00:00");
+  const payDate =
+    periodEnd.getDate() <= 15
+      ? new Date(periodEnd.getFullYear(), periodEnd.getMonth(), 15)
+      : new Date(periodEnd.getFullYear(), periodEnd.getMonth() + 1, 0);
   const payDateStr = `${payDate.getMonth() + 1}/${payDate.getDate()}/${String(payDate.getFullYear()).slice(-2)}`;
 
   const branch = data.payrollRun.branch;

@@ -92,15 +92,11 @@ export async function createAttendance(input: ManualCreateInput): Promise<Attend
   return data.data;
 }
 
-<<<<<<< Updated upstream
 export async function deleteAttendance(id: string): Promise<void> {
   await api.delete(`/attendance/${id}`);
 }
 
-export function formatClockTime(iso: string | null): string {
-=======
 export function formatClockTime(iso: string | null, timeZone = "Asia/Manila"): string {
->>>>>>> Stashed changes
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-US", {
     hour: "numeric",

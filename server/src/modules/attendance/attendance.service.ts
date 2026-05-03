@@ -28,13 +28,6 @@ function dateOnly(isoDate: string): Date {
   return new Date(`${isoDate}T00:00:00.000Z`);
 }
 
-/** Return the UTC date (midnight) for a given instant, using UTC date. */
-function dateOnlyOf(instant: Date): Date {
-  return new Date(
-    Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth(), instant.getUTCDate())
-  );
-}
-
 /**
  * Parse "H:mm AM/PM – ..." and return { hour, minute } in 24-hour format.
  * Falls back to { hour: 8, minute: 0 } if the setting is missing or unparseable.
@@ -60,20 +53,15 @@ function parseWorkStartTime(setting: string): { hour: number; minute: number } {
  * night-shift workers clocking in before the work-day start (e.g., 1 AM
  * when the day starts at 8 AM) are recorded under the previous calendar date.
  */
-<<<<<<< Updated upstream
-async function workDayDateOf(instant: Date): Promise<Date> {
-  const [tzSetting, splitTimeSetting] = await Promise.all([
-=======
 export async function workDayDateOf(instant: Date): Promise<Date> {
   const [tzSetting, workHoursSetting] = await Promise.all([
->>>>>>> Stashed changes
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
     getSetting<string>("company.default_work_hours", "05:00"),
   ]);
 
   // Extract IANA timezone name (e.g. "Asia/Manila") from "Asia/Manila (UTC+8)".
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
-  const { hour: splitHour, minute: splitMinute } = parseWorkStartTime(splitTimeSetting);
+  const { hour: splitHour, minute: splitMinute } = parseWorkStartTime(workHoursSetting);
 
   // Get local date parts in the company timezone.
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -89,19 +77,34 @@ export async function workDayDateOf(instant: Date): Promise<Date> {
   const localHour = get("hour");
   const localMinute = get("minute");
 
-  // Roll back to the previous calendar date for clock-ins before the configured Split Time
-  // (Settings → Split Time / Day Boundary). Set this to the earliest possible shift start
-  // so only true night-shift continuations (e.g. 1–4 AM) get rolled back.
-  const beforeWorkStart =
+  // If the local time is before the configured split time, this clock-in
+  // belongs to the previous calendar date.
+  const beforeSplit =
     localHour < splitHour || (localHour === splitHour && localMinute < splitMinute);
 
-  if (beforeWorkStart) {
+  if (beforeSplit) {
     const d = new Date(Date.UTC(localYear, localMonth, localDay));
     d.setUTCDate(d.getUTCDate() - 1);
     return d;
   }
 
   return new Date(Date.UTC(localYear, localMonth, localDay));
+}
+
+/**
+ * Return the local calendar date of `instant` in the company timezone, with
+ * NO split-time rollback. Used for manual attendance creation where the admin
+ * has explicitly chosen the intended date.
+ */
+async function localCalendarDateOf(instant: Date): Promise<Date> {
+  const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
+  const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(instant);
+  const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+  return new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
 }
 
 function diffMinutes(from: Date, to: Date): number {
@@ -113,19 +116,38 @@ function hoursBetween(from: Date, to: Date): number {
 }
 
 /**
- * Find the employee's scheduled shift for a given date (if any). Used to
- * compute late/undertime minutes based on the scheduled start/end.
+ * Find the employee's scheduled shift for a given date (if any).
+ * When the employee has multiple shifts on the same day, returns the one
+ * whose scheduled start time is closest to `clockInAt` (in local time).
+ * `tzOffsetMinutes` should be the company UTC offset, e.g. 480 for UTC+8.
  */
-async function findScheduledShift(employeeId: string, date: Date) {
-  const assignment = await prisma.shiftAssignment.findFirst({
-    where: {
-      employeeId,
-      shift: { date },
-    },
+async function findScheduledShift(
+  employeeId: string,
+  date: Date,
+  clockInAt?: Date,
+  tzOffsetMinutes = 480,
+) {
+  const assignments = await prisma.shiftAssignment.findMany({
+    where: { employeeId, shift: { date } },
     include: { shift: true },
     orderBy: { shift: { startTime: "asc" } },
   });
-  return assignment?.shift ?? null;
+
+  if (assignments.length === 0) return null;
+  if (assignments.length === 1 || !clockInAt) return assignments[0].shift;
+
+  // Multiple shifts on the same day — pick the one whose start is closest to clock-in.
+  let best = assignments[0].shift;
+  let minDiff = Infinity;
+  for (const { shift } of assignments) {
+    const { scheduledStart } = getScheduledTimes(date, shift, tzOffsetMinutes);
+    const diff = Math.abs(clockInAt.getTime() - scheduledStart.getTime());
+    if (diff < minDiff) {
+      minDiff = diff;
+      best = shift;
+    }
+  }
+  return best;
 }
 
 /** Combine a date (UTC midnight) with a time-of-day (from @db.Time field). */
@@ -143,40 +165,6 @@ function combineDateAndTime(date: Date, timeOfDay: Date): Date {
 }
 
 /**
-<<<<<<< Updated upstream
- * Compute how many minutes past the shift start the clock-in is.
- *
- * Shift times are stored as @db.Time() where the UTC hours/minutes equal the
- * local wall-clock hours (e.g. a 7:00 AM shift is stored as 07:00 UTC).
- * Clock-in timestamps are real UTC, so we must extract the local time of the
- * clock-in and compare against the shift's UTC hours directly — never mix the
- * two via Date arithmetic.
- */
-async function computeLateMinutes(clockInAt: Date, shiftStartTime: Date): Promise<number> {
-  const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
-  const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
-
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(clockInAt);
-
-  const localHour   = parseInt(parts.find((p) => p.type === "hour")?.value   ?? "0", 10);
-  const localMinute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
-
-  const shiftMinutes  = shiftStartTime.getUTCHours() * 60 + shiftStartTime.getUTCMinutes();
-  const clockInMinutes = localHour * 60 + localMinute;
-
-  return clockInMinutes - shiftMinutes;
-}
-
-export async function deleteAttendance(id: string) {
-  const record = await prisma.attendance.findUnique({ where: { id } });
-  if (!record) throw new AppError(404, "Attendance record not found");
-  await prisma.attendance.delete({ where: { id } });
-=======
  * Return the UTC offset in minutes for `tz` at `forDate`.
  * E.g. Asia/Manila → 480 (UTC+8). Handles DST-observing zones correctly.
  */
@@ -223,7 +211,12 @@ function getScheduledTimes(
     scheduledEnd = new Date(scheduledEnd.getTime() + 24 * 60 * 60 * 1000);
   }
   return { scheduledStart, scheduledEnd };
->>>>>>> Stashed changes
+}
+
+export async function deleteAttendance(id: string) {
+  const record = await prisma.attendance.findUnique({ where: { id } });
+  if (!record) throw new AppError(404, "Attendance record not found");
+  await prisma.attendance.delete({ where: { id } });
 }
 
 export async function listAttendance(query: ListAttendanceQuery) {
@@ -260,7 +253,7 @@ export async function getAttendance(id: string) {
  * exists for the employee on the same date (unique constraint makes this
  * deterministic).
  */
-export async function clockIn(input: ClockInInput) {
+export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGuard?: boolean }) {
   const employee = await prisma.employee.findUnique({
     where: { id: input.employeeId },
     select: { id: true, branchId: true, employmentStatus: true },
@@ -283,70 +276,86 @@ export async function clockIn(input: ClockInInput) {
     if (existing) return existing;
   }
 
-  // Block clock-in if the employee has any open record (no clock-out) from a previous date.
-  const openRecord = await prisma.attendance.findFirst({
-    where: {
-      employeeId: input.employeeId,
-      clockOut: null,
-      status: { in: ["PRESENT", "LATE"] },
-      date: { lt: dateKey },
-    },
-  });
-  if (openRecord) {
-    throw new AppError(
-      409,
-      "Employee has not clocked out from a previous shift. Please clock out first."
-    );
+  const [tzSetting, graceMinutes] = await Promise.all([
+    getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
+    getSetting<number>("attendance.late_grace_minutes", 5),
+  ]);
+  const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+  const tzOffset = getUtcOffsetMinutes(tz, clockInAt);
+
+  if (!options?.skipOpenRecordGuard) {
+    // Block if there's an open (no clock-out) record from a PREVIOUS date.
+    const openPrevRecord = await prisma.attendance.findFirst({
+      where: {
+        employeeId: input.employeeId,
+        clockOut: null,
+        status: { in: ["PRESENT", "LATE"] },
+        date: { lt: dateKey },
+      },
+    });
+    if (openPrevRecord) {
+      throw new AppError(
+        409,
+        "Employee has not clocked out from a previous shift. Please clock out first."
+      );
+    }
+
+    // Block if there's already an open record for TODAY (must clock out first).
+    const openTodayRecord = await prisma.attendance.findFirst({
+      where: {
+        employeeId: input.employeeId,
+        clockOut: null,
+        status: { in: ["PRESENT", "LATE"] },
+        date: dateKey,
+      },
+    });
+    if (openTodayRecord) {
+      throw new AppError(409, "Employee has not clocked out from the current shift. Please clock out first.");
+    }
+
+    // Block if the employee has already clocked in for all of their scheduled shifts today.
+    const [existingCount, scheduledCount] = await Promise.all([
+      prisma.attendance.count({ where: { employeeId: input.employeeId, date: dateKey } }),
+      prisma.shiftAssignment.count({ where: { employeeId: input.employeeId, shift: { date: dateKey } } }),
+    ]);
+    if (existingCount > 0 && existingCount >= Math.max(scheduledCount, 1)) {
+      throw new AppError(
+        409,
+        scheduledCount > 1
+          ? "Employee has already clocked in for all scheduled shifts today."
+          : "Employee has already clocked in for this date."
+      );
+    }
   }
 
-  const shift = await findScheduledShift(input.employeeId, dateKey);
+  const shift = await findScheduledShift(input.employeeId, dateKey, clockInAt, tzOffset);
   let status: "PRESENT" | "LATE" = "PRESENT";
   let lateMinutes: number | null = null;
 
   if (shift) {
-<<<<<<< Updated upstream
-    const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
-    const delta = await computeLateMinutes(clockInAt, shift.startTime);
-=======
-    const [graceMinutes, tzSetting] = await Promise.all([
-      getSetting<number>("attendance.late_grace_minutes", 5),
-      getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-    ]);
-    const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
-    const { scheduledStart } = getScheduledTimes(dateKey, shift, getUtcOffsetMinutes(tz, clockInAt));
+    const { scheduledStart } = getScheduledTimes(dateKey, shift, tzOffset);
     const delta = diffMinutes(scheduledStart, clockInAt);
->>>>>>> Stashed changes
     if (delta > graceMinutes) {
       status = "LATE";
       lateMinutes = delta;
     }
   }
 
-  try {
-    return await prisma.attendance.create({
-      data: {
-        employeeId: input.employeeId,
-        branchId: employee.branchId,
-        date: dateKey,
-        clockIn: clockInAt,
-        status,
-        lateMinutes: lateMinutes ?? undefined,
-        selfieIn: input.selfieIn,
-        deviceId: input.deviceId,
-        localRecordId: input.localRecordId,
-        syncStatus: "SYNCED",
-      },
-      include: attendanceInclude,
-    });
-  } catch (err) {
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
-      throw new AppError(409, "Employee has already clocked in for this date");
-    }
-    throw err;
-  }
+  return prisma.attendance.create({
+    data: {
+      employeeId: input.employeeId,
+      branchId: employee.branchId,
+      date: dateKey,
+      clockIn: clockInAt,
+      status,
+      lateMinutes: lateMinutes ?? undefined,
+      selfieIn: input.selfieIn,
+      deviceId: input.deviceId,
+      localRecordId: input.localRecordId,
+      syncStatus: "SYNCED",
+    },
+    include: attendanceInclude,
+  });
 }
 
 export async function clockOut(attendanceId: string, input: ClockOutInput) {
@@ -363,13 +372,12 @@ export async function clockOut(attendanceId: string, input: ClockOutInput) {
   let overtimeHours = 0;
   let undertimeMinutes: number | null = null;
 
-  const [shift, tzSetting] = await Promise.all([
-    findScheduledShift(record.employeeId, record.date),
-    getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-  ]);
+  const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
+  const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+  const tzOffset = getUtcOffsetMinutes(tz, clockOutAt);
+  const shift = await findScheduledShift(record.employeeId, record.date, record.clockIn, tzOffset);
   if (shift) {
-    const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
-    const { scheduledEnd } = getScheduledTimes(record.date, shift, getUtcOffsetMinutes(tz, clockOutAt));
+    const { scheduledEnd } = getScheduledTimes(record.date, shift, tzOffset);
     if (clockOutAt < scheduledEnd) {
       undertimeMinutes = diffMinutes(clockOutAt, scheduledEnd);
     }
@@ -412,14 +420,13 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
   data.clockIn = nextClockIn;
   data.clockOut = nextClockOut ?? null;
 
-  // Fetch shift + settings once for all derived field calculations.
-  const [shift, tzSetting, graceMinutes] = await Promise.all([
-    findScheduledShift(existing.employeeId, existing.date),
+  const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
     getSetting<number>("attendance.late_grace_minutes", 5),
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, nextClockIn);
+  const shift = await findScheduledShift(existing.employeeId, existing.date, nextClockIn, tzOffset);
 
   // Always recompute derived fields from the resolved clockIn/clockOut.
   if (nextClockOut) {
@@ -443,13 +450,8 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
   // Recompute late status from the (possibly updated) clockIn.
   if (input.status === undefined) {
     if (shift) {
-<<<<<<< Updated upstream
-      const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
-      const delta = await computeLateMinutes(nextClockIn, shift.startTime);
-=======
       const { scheduledStart } = getScheduledTimes(existing.date, shift, tzOffset);
       const delta = diffMinutes(scheduledStart, nextClockIn);
->>>>>>> Stashed changes
       if (delta > graceMinutes) {
         data.status = "LATE";
         data.lateMinutes = delta;
@@ -478,27 +480,52 @@ export async function manualCreate(input: ManualCreateInput) {
   if (!employee) throw new AppError(404, "Employee not found");
 
   const clockInAt = new Date(input.clockIn);
-  const dateKey = await workDayDateOf(clockInAt);
+  // Use the plain local calendar date — no split-time rollback — because the
+  // admin explicitly chose the target date in the form.
+  const dateKey = await localCalendarDateOf(clockInAt);
 
-  const [shift, tzSetting, graceMinutes] = await Promise.all([
-    findScheduledShift(input.employeeId, dateKey),
+  const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
     getSetting<number>("attendance.late_grace_minutes", 5),
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, clockInAt);
 
+  // Block if there is already an open (no clock-out) record for today.
+  const openTodayRecord = await prisma.attendance.findFirst({
+    where: {
+      employeeId: input.employeeId,
+      clockOut: null,
+      status: { in: ["PRESENT", "LATE"] },
+      date: dateKey,
+    },
+  });
+  if (openTodayRecord) {
+    throw new AppError(409, "Employee has an open shift today. Please clock out first before adding another record.");
+  }
+
+  // Block if all scheduled shifts for today already have attendance records.
+  const [existingCount, scheduledCount] = await Promise.all([
+    prisma.attendance.count({ where: { employeeId: input.employeeId, date: dateKey } }),
+    prisma.shiftAssignment.count({ where: { employeeId: input.employeeId, shift: { date: dateKey } } }),
+  ]);
+  if (existingCount > 0 && existingCount >= Math.max(scheduledCount, 1)) {
+    throw new AppError(
+      409,
+      scheduledCount > 1
+        ? "Attendance records already exist for all scheduled shifts on this date."
+        : "An attendance record already exists for this employee on that date."
+    );
+  }
+
+  const shift = await findScheduledShift(input.employeeId, dateKey, clockInAt, tzOffset);
+
   let status: "PRESENT" | "LATE" = "PRESENT";
   let lateMinutes: number | null = null;
 
   if (shift) {
-<<<<<<< Updated upstream
-    const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
-    const delta = await computeLateMinutes(clockInAt, shift.startTime);
-=======
     const { scheduledStart } = getScheduledTimes(dateKey, shift, tzOffset);
     const delta = diffMinutes(scheduledStart, clockInAt);
->>>>>>> Stashed changes
     if (delta > graceMinutes) {
       status = "LATE";
       lateMinutes = delta;
@@ -523,30 +550,23 @@ export async function manualCreate(input: ManualCreateInput) {
     }
   }
 
-  try {
-    return await prisma.attendance.create({
-      data: {
-        employeeId: input.employeeId,
-        branchId: employee.branchId,
-        date: dateKey,
-        clockIn: clockInAt,
-        clockOut: clockOutAt ?? undefined,
-        status,
-        lateMinutes: lateMinutes ?? undefined,
-        hoursWorked,
-        overtimeHours,
-        undertimeMinutes,
-        remarks: input.remarks ?? undefined,
-        syncStatus: "SYNCED",
-      },
-      include: attendanceInclude,
-    });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      throw new AppError(409, "An attendance record already exists for this employee on that date");
-    }
-    throw err;
-  }
+  return prisma.attendance.create({
+    data: {
+      employeeId: input.employeeId,
+      branchId: employee.branchId,
+      date: dateKey,
+      clockIn: clockInAt,
+      clockOut: clockOutAt ?? undefined,
+      status,
+      lateMinutes: lateMinutes ?? undefined,
+      hoursWorked,
+      overtimeHours,
+      undertimeMinutes,
+      remarks: input.remarks ?? undefined,
+      syncStatus: "SYNCED",
+    },
+    include: attendanceInclude,
+  });
 }
 
 export async function syncBatch(input: SyncBatchInput) {
@@ -554,7 +574,13 @@ export async function syncBatch(input: SyncBatchInput) {
   const skipped: string[] = [];
   const failed: { localRecordId: string; reason: string }[] = [];
 
-  for (const record of input.records) {
+  // Process in chronological order so a Day-1 clock-out is committed before
+  // the Day-2 clock-in runs, avoiding false open-record conflicts.
+  const sorted = [...input.records].sort(
+    (a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime()
+  );
+
+  for (const record of sorted) {
     try {
       const existing = await prisma.attendance.findFirst({
         where: { employeeId: record.employeeId, localRecordId: record.localRecordId },
@@ -563,13 +589,16 @@ export async function syncBatch(input: SyncBatchInput) {
         skipped.push(record.localRecordId);
         continue;
       }
-      await clockIn({
-        employeeId: record.employeeId,
-        clockIn: record.clockIn,
-        selfieIn: record.selfieIn,
-        deviceId: record.deviceId,
-        localRecordId: record.localRecordId,
-      });
+      await clockIn(
+        {
+          employeeId: record.employeeId,
+          clockIn: record.clockIn,
+          selfieIn: record.selfieIn,
+          deviceId: record.deviceId,
+          localRecordId: record.localRecordId,
+        },
+        { skipOpenRecordGuard: true },
+      );
       if (record.clockOut) {
         const row = await prisma.attendance.findFirst({
           where: { employeeId: record.employeeId, localRecordId: record.localRecordId },

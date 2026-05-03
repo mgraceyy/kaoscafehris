@@ -207,11 +207,12 @@ export function formatTime(iso: string): string {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-/** Format an ISO datetime as 12-hour time in local time. */
+/** Format an ISO datetime as 12-hour time in the company timezone (Asia/Manila). */
 export function formatLocalTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZone: "Asia/Manila",
   });
 }

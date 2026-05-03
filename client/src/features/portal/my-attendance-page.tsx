@@ -19,15 +19,14 @@ import {
   type PortalAttendance,
 } from "./portal.api";
 
+function localIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function firstOfMonth(d: Date): string {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
-    .toISOString()
-    .slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 function lastOfMonth(d: Date): string {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))
-    .toISOString()
-    .slice(0, 10);
+  return localIso(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 }
 
 function statusBadge(status: PortalAttendance["status"]) {

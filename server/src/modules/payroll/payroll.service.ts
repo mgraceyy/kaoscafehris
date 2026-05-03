@@ -294,19 +294,36 @@ export async function processRun(id: string) {
     },
     select: {
       employeeId: true,
+      overtimeApproved: true,
       shift: { select: { date: true, startTime: true, endTime: true } },
     },
   });
 
+  // Approved overtime requests for the period (employee-submitted + reviewed).
+  const approvedOtRequests = await prisma.overtimeRequest.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      status: "APPROVED",
+      date: { gte: run.periodStart, lte: run.periodEnd },
+    },
+    select: { employeeId: true, date: true },
+  });
+
   // scheduledDatesMap: empId → Set of dateKeys with a shift assignment.
   // scheduledHoursMap: empId → dateKey → scheduled shift duration (hours).
+  // overtimeApprovedDatesMap: empId → Set of dateKeys where OT is approved.
   const scheduledDatesMap = new Map<string, Set<string>>();
   const scheduledHoursMap = new Map<string, Map<string, number>>();
+  const overtimeApprovedDatesMap = new Map<string, Set<string>>();
 
   for (const sa of shiftAssignments) {
     const dateKey = sa.shift.date.toISOString().slice(0, 10);
-    const shiftMs = sa.shift.endTime.getTime() - sa.shift.startTime.getTime();
-    const shiftHrs = Math.max(0, shiftMs / 3_600_000);
+
+    // Handle overnight/graveyard shifts: endTime < startTime in @db.Time UTC storage.
+    const startMs = sa.shift.startTime.getTime();
+    const endMs = sa.shift.endTime.getTime();
+    const shiftMs = endMs >= startMs ? endMs - startMs : endMs - startMs + 24 * 3_600_000;
+    const shiftHrs = shiftMs / 3_600_000;
 
     if (!scheduledDatesMap.has(sa.employeeId)) scheduledDatesMap.set(sa.employeeId, new Set());
     scheduledDatesMap.get(sa.employeeId)!.add(dateKey);
@@ -314,6 +331,19 @@ export async function processRun(id: string) {
     if (!scheduledHoursMap.has(sa.employeeId)) scheduledHoursMap.set(sa.employeeId, new Map());
     const prev = scheduledHoursMap.get(sa.employeeId)!.get(dateKey) ?? 0;
     if (shiftHrs > prev) scheduledHoursMap.get(sa.employeeId)!.set(dateKey, shiftHrs);
+
+    // Pre-approved OT on the shift assignment itself.
+    if (sa.overtimeApproved) {
+      if (!overtimeApprovedDatesMap.has(sa.employeeId)) overtimeApprovedDatesMap.set(sa.employeeId, new Set());
+      overtimeApprovedDatesMap.get(sa.employeeId)!.add(dateKey);
+    }
+  }
+
+  // Also mark dates covered by an approved OvertimeRequest.
+  for (const ot of approvedOtRequests) {
+    const dateKey = ot.date.toISOString().slice(0, 10);
+    if (!overtimeApprovedDatesMap.has(ot.employeeId)) overtimeApprovedDatesMap.set(ot.employeeId, new Set());
+    overtimeApprovedDatesMap.get(ot.employeeId)!.add(dateKey);
   }
 
   // Attendance for the period.
@@ -338,8 +368,10 @@ export async function processRun(id: string) {
 
     const scheduledHrs = scheduledHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
     const actualHrs = toNum(rec.hoursWorked);
-    const otHrs = toNum(rec.overtimeHours);
-    // Regular hours = actual minus OT, capped at scheduled shift duration.
+    // Only count overtime hours if explicitly approved (shift-level or OvertimeRequest).
+    const isOtApproved = overtimeApprovedDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
+    const otHrs = isOtApproved ? toNum(rec.overtimeHours) : 0;
+    // Regular hours = actual minus approved OT, capped at scheduled shift duration.
     const regularHrs = Math.min(Math.max(0, actualHrs - otHrs), scheduledHrs);
     const countedHrs = round2(regularHrs + otHrs);
 

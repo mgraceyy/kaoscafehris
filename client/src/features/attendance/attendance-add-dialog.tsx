@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
@@ -65,6 +64,10 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
+  const [empSearch, setEmpSearch] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const comboboxRef = useRef<HTMLDivElement>(null);
+
   const employeesQuery = useQuery({
     queryKey: ["employees", { status: "ACTIVE" }],
     queryFn: () => listEmployees({ status: "ACTIVE" }),
@@ -72,8 +75,8 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
   });
 
   const {
-    register,
     control,
+    register,
     handleSubmit,
     reset,
     formState: { errors },
@@ -97,8 +100,30 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
         clockOutTime: "",
         remarks: "",
       });
+      setEmpSearch("");
+      setDropdownOpen(false);
     }
   }, [open, reset]);
+
+  // Close dropdown on outside click.
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (comboboxRef.current && !comboboxRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filteredEmployees = (employeesQuery.data ?? []).filter((e) => {
+    const q = empSearch.toLowerCase();
+    return (
+      e.firstName.toLowerCase().includes(q) ||
+      e.lastName.toLowerCase().includes(q) ||
+      e.employeeId.toLowerCase().includes(q)
+    );
+  });
 
   const mutation = useMutation({
     mutationFn: (values: Values) => {
@@ -136,15 +161,70 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
         noValidate
       >
         <div className="space-y-2">
-          <Label htmlFor="employeeId">Employee</Label>
-          <Select id="employeeId" {...register("employeeId")}>
-            <option value="">Select employee...</option>
-            {employeesQuery.data?.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.firstName} {e.lastName} ({e.employeeId})
-              </option>
-            ))}
-          </Select>
+          <Label>Employee</Label>
+          <Controller
+            name="employeeId"
+            control={control}
+            render={({ field }) => {
+              const selected = employeesQuery.data?.find((e) => e.id === field.value);
+              return (
+                <div ref={comboboxRef} className="relative">
+                  <div className="flex h-10 items-center rounded-md border border-input bg-background px-3 text-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ring-offset-background">
+                    <input
+                      className="flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
+                      placeholder="Search employee..."
+                      value={dropdownOpen ? empSearch : (selected ? `${selected.firstName} ${selected.lastName} (${selected.employeeId})` : "")}
+                      onChange={(e) => {
+                        setEmpSearch(e.target.value);
+                        setDropdownOpen(true);
+                        if (!e.target.value) field.onChange("");
+                      }}
+                      onFocus={() => {
+                        setEmpSearch("");
+                        setDropdownOpen(true);
+                      }}
+                    />
+                    {field.value ? (
+                      <button
+                        type="button"
+                        className="ml-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => { field.onChange(""); setEmpSearch(""); setDropdownOpen(false); }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    ) : (
+                      <ChevronDown className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                  </div>
+
+                  {dropdownOpen && (
+                    <div className="absolute z-[200] mt-1 max-h-52 w-full overflow-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                      {filteredEmployees.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-gray-400">No employees found.</p>
+                      ) : (
+                        filteredEmployees.map((e) => (
+                          <button
+                            key={e.id}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                            onMouseDown={(ev) => ev.preventDefault()}
+                            onClick={() => {
+                              field.onChange(e.id);
+                              setEmpSearch("");
+                              setDropdownOpen(false);
+                            }}
+                          >
+                            {e.firstName} {e.lastName}
+                            <span className="ml-1.5 text-xs text-gray-400">({e.employeeId})</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            }}
+          />
           {errors.employeeId && (
             <p className="text-xs text-destructive">{errors.employeeId.message}</p>
           )}

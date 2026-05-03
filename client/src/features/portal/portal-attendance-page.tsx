@@ -11,18 +11,21 @@ const MONTH_NAMES = [
 ];
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function localIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function firstOfMonth(d: Date) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 function lastOfMonth(d: Date) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+  return localIso(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 }
 
 const PERIODS = [
   { label: "This Month", get: () => { const d = new Date(); return { start: firstOfMonth(d), end: lastOfMonth(d) }; } },
-  { label: "Last Month", get: () => { const d = new Date(); d.setUTCMonth(d.getUTCMonth() - 1); return { start: firstOfMonth(d), end: lastOfMonth(d) }; } },
-  { label: "Last 7 Days", get: () => { const e = new Date(); const s = new Date(e); s.setUTCDate(s.getUTCDate() - 6); return { start: s.toISOString().slice(0, 10), end: e.toISOString().slice(0, 10) }; } },
-  { label: "Last 30 Days", get: () => { const e = new Date(); const s = new Date(e); s.setUTCDate(s.getUTCDate() - 29); return { start: s.toISOString().slice(0, 10), end: e.toISOString().slice(0, 10) }; } },
+  { label: "Last Month", get: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return { start: firstOfMonth(d), end: lastOfMonth(d) }; } },
+  { label: "Last 7 Days", get: () => { const e = new Date(); const s = new Date(e); s.setDate(s.getDate() - 6); return { start: localIso(s), end: localIso(e) }; } },
+  { label: "Last 30 Days", get: () => { const e = new Date(); const s = new Date(e); s.setDate(s.getDate() - 29); return { start: localIso(s), end: localIso(e) }; } },
 ];
 
 function StatusBadge({ record }: { record: PortalAttendance }) {

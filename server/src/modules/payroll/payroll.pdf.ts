@@ -240,9 +240,12 @@ export function renderPayslip(
     return (n / hourlyRate).toFixed(2);
   };
 
-  // Pay date = period end + 5 calendar days
   const payDate = new Date(payrollRun.periodEnd);
-  payDate.setUTCDate(payDate.getUTCDate() + 5);
+  if (payDate.getUTCDate() <= 15) {
+    payDate.setUTCDate(15);
+  } else {
+    payDate.setUTCMonth(payDate.getUTCMonth() + 1, 0);
+  }
 
   let y = margin;
 

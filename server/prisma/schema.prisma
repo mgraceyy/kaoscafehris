@@ -380,7 +380,9 @@ model Attendance {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([employeeId, date]) // one attendance record per employee per day
+  // No unique([employeeId, date]) — employees with 2 shifts on the same day
+  // can have 2 records. The service layer caps records at scheduled shift count.
+  @@index([employeeId, date])
   @@index([branchId, date])
   @@index([syncStatus])
   @@map("attendance_records")

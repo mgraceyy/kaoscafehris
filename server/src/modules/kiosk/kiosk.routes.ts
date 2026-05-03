@@ -103,12 +103,14 @@ router.get("/status/:employeeId", async (req, res, next) => {
 
     const dateKey = await workDayDateOf(new Date());
 
-    // Today's attendance — or, for graveyard/overnight shifts, the most recent
-    // open record from a previous date (employee clocked in yesterday, still no clock-out).
-    let attendance = await prisma.attendance.findUnique({
-      where: { employeeId_date: { employeeId: emp.id, date: dateKey } },
+    // Today's attendance — open record takes priority so the Time Out button
+    // shows correctly. Multiple records per day are now allowed (multi-shift).
+    let attendance = await prisma.attendance.findFirst({
+      where: { employeeId: emp.id, date: dateKey, clockOut: null, status: { in: ["PRESENT", "LATE"] } },
+      orderBy: { clockIn: "asc" },
     });
     if (!attendance) {
+      // No open record today — check for graveyard: open record from a previous date.
       const openPrev = await prisma.attendance.findFirst({
         where: {
           employeeId: emp.id,
@@ -118,7 +120,15 @@ router.get("/status/:employeeId", async (req, res, next) => {
         },
         orderBy: { date: "desc" },
       });
-      if (openPrev) attendance = openPrev;
+      if (openPrev) {
+        attendance = openPrev;
+      } else {
+        // All shifts done today — return most recent completed record for display.
+        attendance = await prisma.attendance.findFirst({
+          where: { employeeId: emp.id, date: dateKey },
+          orderBy: { clockIn: "desc" },
+        });
+      }
     }
 
     // Find today's shift, or the shift matching the open attendance record's date
