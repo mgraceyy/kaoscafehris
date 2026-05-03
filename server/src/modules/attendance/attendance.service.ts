@@ -516,12 +516,12 @@ export async function manualCreate(input: ManualCreateInput) {
     prisma.shiftAssignment.count({ where: { employeeId: input.employeeId, shift: { date: dateKey } } }),
   ]);
   if (existingCount > 0 && existingCount >= Math.max(scheduledCount, 1)) {
-    const conflicting = await prisma.attendance.findMany({
-      where: { employeeId: input.employeeId, date: dateKey },
-      select: { id: true, clockIn: true, clockOut: true, date: true },
-    });
-    const detail = conflicting.map(r => `id=${r.id} date=${r.date.toISOString()} in=${r.clockIn.toISOString()} out=${r.clockOut?.toISOString() ?? "null"}`).join(" | ");
-    throw new AppError(409, `[DEBUG] ${detail}`);
+    throw new AppError(
+      409,
+      scheduledCount > 1
+        ? "Attendance records already exist for all scheduled shifts on this date."
+        : "An attendance record already exists for this employee on that date."
+    );
   }
 
   const shift = await findScheduledShift(input.employeeId, dateKey, clockInAt, tzOffset);

@@ -21,13 +21,6 @@ function lastOfMonth(d: Date) {
   return localIso(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 }
 
-const PERIODS = [
-  { label: "This Month", get: () => { const d = new Date(); return { start: firstOfMonth(d), end: lastOfMonth(d) }; } },
-  { label: "Last Month", get: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return { start: firstOfMonth(d), end: lastOfMonth(d) }; } },
-  { label: "Last 7 Days", get: () => { const e = new Date(); const s = new Date(e); s.setDate(s.getDate() - 6); return { start: localIso(s), end: localIso(e) }; } },
-  { label: "Last 30 Days", get: () => { const e = new Date(); const s = new Date(e); s.setDate(s.getDate() - 29); return { start: localIso(s), end: localIso(e) }; } },
-];
-
 function StatusBadge({ record }: { record: PortalAttendance }) {
   const hasClockOut = !!record.clockOut;
 
@@ -109,9 +102,9 @@ function AttendanceCard({ record }: { record: PortalAttendance }) {
 }
 
 export default function PortalAttendancePage() {
-  const [periodIdx, setPeriodIdx] = useState(0);
-
-  const { start, end } = PERIODS[periodIdx].get();
+  const now = new Date();
+  const [start, setStart] = useState(firstOfMonth(now));
+  const [end, setEnd] = useState(lastOfMonth(now));
 
   const query = useQuery({
     queryKey: ["portal-attendance", start, end],
@@ -129,22 +122,23 @@ export default function PortalAttendancePage() {
       </div>
 
       <div className="px-4 pt-5 pb-6 space-y-4">
-        {/* Period filter */}
-        <div className="relative">
-          <select
-            value={periodIdx}
-            onChange={(e) => setPeriodIdx(Number(e.target.value))}
-            className="w-full appearance-none rounded-full border border-gray-200 bg-white px-5 py-3 text-sm text-gray-700 shadow-sm pr-10"
-          >
-            {PERIODS.map((p, i) => (
-              <option key={p.label} value={i}>{p.label}</option>
-            ))}
-          </select>
-          <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2">
-            <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
+        {/* Date range filter */}
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={start}
+            max={end}
+            onChange={(e) => setStart(e.target.value)}
+            className="flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 shadow-sm focus:outline-none"
+          />
+          <span className="text-xs text-gray-400 shrink-0">to</span>
+          <input
+            type="date"
+            value={end}
+            min={start}
+            onChange={(e) => setEnd(e.target.value)}
+            className="flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 shadow-sm focus:outline-none"
+          />
         </div>
 
         {/* List */}
