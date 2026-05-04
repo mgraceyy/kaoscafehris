@@ -13,9 +13,9 @@ import {
   syncBatchSchema,
 } from "./attendance.schema.js";
 import * as attendanceController from "./attendance.controller.js";
-import { uploadsDir } from "../../app.js";
 
-const selfieDir = path.join(uploadsDir, "selfies");
+const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..", "uploads");
+const selfieDir = path.join(uploadsBase, "selfies");
 fs.mkdirSync(selfieDir, { recursive: true });
 
 const selfieUpload = multer({

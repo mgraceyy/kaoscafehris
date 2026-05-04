@@ -9,9 +9,9 @@ import { AppError } from "../../middleware/error-handler.js";
 import { getSetting } from "../../lib/settings-cache.js";
 import * as attendanceService from "../attendance/attendance.service.js";
 import { workDayDateOf } from "../attendance/attendance.service.js";
-import { uploadsDir } from "../../app.js";
 
-const selfieDir = path.join(uploadsDir, "selfies");
+const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..", "uploads");
+const selfieDir = path.join(uploadsBase, "selfies");
 fs.mkdirSync(selfieDir, { recursive: true });
 
 const selfieUpload = multer({

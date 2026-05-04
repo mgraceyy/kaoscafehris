@@ -12,7 +12,7 @@ import { auditContextMiddleware } from "./lib/audit-context.js";
 import router from "./routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const uploadsDir = process.env.UPLOADS_DIR ?? path.join(__dirname, "..", "uploads");
+const uploadsDir = process.env.UPLOADS_DIR ?? path.join(__dirname, "..", "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
 
 const app = express();
