@@ -1,5 +1,4 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
@@ -14,9 +13,9 @@ import {
   syncBatchSchema,
 } from "./attendance.schema.js";
 import * as attendanceController from "./attendance.controller.js";
+import { uploadsDir } from "../../app.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const selfieDir = path.join(__dirname, "..", "..", "..", "uploads", "selfies");
+const selfieDir = path.join(uploadsDir, "selfies");
 fs.mkdirSync(selfieDir, { recursive: true });
 
 const selfieUpload = multer({

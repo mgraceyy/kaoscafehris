@@ -47,6 +47,9 @@ export default function SchedulingPage() {
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
+  const [employeeIds, setEmployeeIds] = useState<string[]>([]);
+  const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
+  const employeeDropdownRef = useRef<HTMLDivElement>(null);
   const [assignShiftDialogOpen, setAssignShiftDialogOpen] = useState(false);
   const [assignShiftInitialDate, setAssignShiftInitialDate] = useState<string | undefined>();
   const [dialogShift, setDialogShift] = useState<Shift | null>(null);
@@ -78,6 +81,9 @@ export default function SchedulingPage() {
     function handleClickOutside(e: MouseEvent) {
       if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
         setBranchDropdownOpen(false);
+      }
+      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(e.target as Node)) {
+        setEmployeeDropdownOpen(false);
       }
       if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
         setDatePickerOpen(false);
@@ -141,8 +147,15 @@ export default function SchedulingPage() {
         if (!map.has(a.employee.id)) map.set(a.employee.id, a.employee);
       }
     }
-    return Array.from(map.values());
+    return Array.from(map.values()).sort((a, b) =>
+      `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+    );
   }, [query.data]);
+
+  const filteredEmployees = useMemo(
+    () => employeeIds.length > 0 ? employees.filter((e) => employeeIds.includes(e.id)) : employees,
+    [employees, employeeIds]
+  );
 
   // Build day columns
   const weekDays = DAYS.map((label, i) => {
@@ -160,15 +173,20 @@ export default function SchedulingPage() {
     );
   }
 
-  // Shifts for a specific day (all, including unassigned)
+  // Shifts for a specific day, optionally filtered by selected employees
   function shiftsForDay(dayIso: string): Shift[] {
-    return (query.data ?? []).filter((s) => s.date.slice(0, 10) === dayIso);
+    return (query.data ?? []).filter((s) => {
+      if (s.date.slice(0, 10) !== dayIso) return false;
+      if (employeeIds.length === 0) return true;
+      return s.assignments.some((a) => employeeIds.includes(a.employee.id));
+    });
   }
 
-  // Also collect shifts not assigned to any tracked employee (unassigned shifts)
+  // Unassigned shifts — hidden when employee filter is active (they have no assignees to match)
   const unassignedShifts = useMemo(() => {
+    if (employeeIds.length > 0) return [];
     return (query.data ?? []).filter((s) => s.assignments.length === 0);
-  }, [query.data]);
+  }, [query.data, employeeIds]);
 
   const rangeLabel = `${format(calWeekStart, "MMMM d")} - ${format(
     addWeeks(calWeekStart, 1), "MMMM d, yyyy"
@@ -255,6 +273,59 @@ export default function SchedulingPage() {
               )}
             </div>
           )}
+          <div className="relative" ref={employeeDropdownRef}>
+            <button
+              onClick={() => setEmployeeDropdownOpen((o) => !o)}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              {employeeIds.length === 0
+                ? "All Employees"
+                : employeeIds.length === 1
+                ? (() => { const e = employees.find((emp) => emp.id === employeeIds[0]); return e ? `${e.firstName} ${e.lastName}` : "1 Employee"; })()
+                : `${employeeIds.length} Employees`}
+              <ChevronDown className="h-4 w-4 text-gray-400" />
+            </button>
+            {employeeDropdownOpen && (
+              <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
+                <div className="p-1 max-h-72 overflow-y-auto">
+                  <label className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5"
+                      checked={employeeIds.length === 0}
+                      onChange={() => setEmployeeIds([])}
+                    />
+                    <span className="font-medium">All Employees</span>
+                  </label>
+                  <div className="my-1 border-t border-gray-100" />
+                  {employees.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-gray-400">No employees with shifts in this period.</p>
+                  ) : (
+                    employees.map((emp) => (
+                      <label
+                        key={emp.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5"
+                          checked={employeeIds.includes(emp.id)}
+                          onChange={(e) =>
+                            setEmployeeIds((prev) =>
+                              e.target.checked
+                                ? [...prev, emp.id]
+                                : prev.filter((id) => id !== emp.id)
+                            )
+                          }
+                        />
+                        {emp.firstName} {emp.lastName}
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setTemplateDialogOpen(true)}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
@@ -393,14 +464,16 @@ export default function SchedulingPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {employees.length === 0 && unassignedShifts.length === 0 && (
+              {filteredEmployees.length === 0 && unassignedShifts.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
-                    No shifts this week. Click "+ Add Shift" to create one.
+                    {employeeIds.length > 0
+                      ? "No shifts found for the selected employees this week."
+                      : "No shifts this week. Click \"+ Add Shift\" to create one."}
                   </td>
                 </tr>
               )}
-              {employees.map((emp) => (
+              {filteredEmployees.map((emp) => (
                 <tr key={emp.id} className="hover:bg-gray-50/50">
                   <td className="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">
                     {emp.firstName} {emp.lastName}
@@ -553,7 +626,7 @@ export default function SchedulingPage() {
                           </div>
                           {s.assignments.length > 0 && (
                             <div className="mt-0.5 space-y-0.5">
-                              {s.assignments.map((a) => (
+                              {[...s.assignments].sort((a, b) => `${a.employee.firstName} ${a.employee.lastName}`.localeCompare(`${b.employee.firstName} ${b.employee.lastName}`)).map((a) => (
                                 <div key={a.id} className="truncate text-xs opacity-70">
                                   {a.employee.firstName} {a.employee.lastName}
                                   {a.assignedBranch && (

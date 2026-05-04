@@ -650,7 +650,7 @@ export default function EmployeesPage() {
                     {payType === "HOURLY" ? (
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Hourly Rate (PHP/hr) *</label>
-                        <input {...register("hourlyRate")} type="number" step="0.01" min="0" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
+                        <input {...register("hourlyRate")} type="number" step="any" min="0" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
                         {errors.hourlyRate && <p className="text-xs text-red-500 mt-1">{errors.hourlyRate.message}</p>}
                       </div>
                     ) : (

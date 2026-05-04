@@ -271,7 +271,17 @@ export async function processRun(id: string) {
 
   // OT rate setting.
   const settingRows = await prisma.systemSetting.findMany({
-    where: { key: { in: ["payroll.regular_ot_rate", "payroll.late_deduction_per_minute", "attendance.late_threshold"] } },
+    where: {
+      key: {
+        in: [
+          "payroll.regular_ot_rate",
+          "payroll.late_deduction_per_minute",
+          "payroll.night_diff_rate",
+          "attendance.late_threshold",
+          "company.timezone",
+        ],
+      },
+    },
     select: { key: true, value: true },
   });
 
@@ -282,9 +292,24 @@ export async function processRun(id: string) {
     return typeof v === "number" && Number.isFinite(v) ? v : fallback;
   }
 
-  const otRatePerHour = getSetting("payroll.regular_ot_rate", 0);
+  function getStringSetting(key: string, fallback: string): string {
+    const row = settingRows.find((r) => r.key === key);
+    if (!row) return fallback;
+    try { const v = JSON.parse(row.value); return typeof v === "string" ? v : fallback; } catch { return fallback; }
+  }
+
+  const otRatePerHour          = getSetting("payroll.regular_ot_rate", 0);
   const lateDeductionPerMinute = getSetting("payroll.late_deduction_per_minute", 0);
+  const nightDiffPct           = getSetting("payroll.night_diff_rate", 0); // percentage, e.g. 10 = 10%
   const lateThresholdMinutes = getSetting("attendance.late_threshold", 15);
+
+  // Parse UTC offset from the company timezone setting (e.g., "Asia/Manila (UTC+8)" → 480).
+  const tzRaw = getStringSetting("company.timezone", "Asia/Manila (UTC+8)");
+  const tzOffsetMinutes = (() => {
+    const m = tzRaw.match(/UTC([+-])(\d+)/);
+    if (!m) return 480; // default Asia/Manila
+    return (m[1] === "+" ? 1 : -1) * parseInt(m[2], 10) * 60;
+  })();
 
   // Shift assignments for the period — determines which days are paid.
   const shiftAssignments = await prisma.shiftAssignment.findMany({
@@ -353,32 +378,69 @@ export async function processRun(id: string) {
       employeeId: { in: employeeIds },
       date: { gte: run.periodStart, lte: run.periodEnd },
     },
-    select: { employeeId: true, date: true, hoursWorked: true, overtimeHours: true, lateMinutes: true },
+    select: { employeeId: true, date: true, clockIn: true, clockOut: true, hoursWorked: true, overtimeHours: true, lateMinutes: true, source: true },
   });
+
+  // Returns how many hours of [clockIn, clockOut] fall in the 22:00–06:00 local window.
+  function computeNightDiffHours(clockIn: Date, clockOut: Date | null): number {
+    if (!clockOut || clockOut <= clockIn) return 0;
+    const NIGHT_START_MS = 22 * 3_600_000;       // 22:00 in ms from local midnight
+    const NIGHT_END_MS   = 30 * 3_600_000;       // 06:00 next day (30h)
+    const DAY_MS         = 24 * 3_600_000;
+    const offsetMs       = tzOffsetMinutes * 60_000;
+    const localIn        = clockIn.getTime()  + offsetMs;
+    const localOut       = clockOut.getTime() + offsetMs;
+    const dayStart       = localIn - (localIn % DAY_MS);
+    let totalMs = 0;
+    const days = Math.ceil((localOut - localIn) / DAY_MS) + 2;
+    for (let i = -1; i < days; i++) {
+      const pStart = dayStart + i * DAY_MS + NIGHT_START_MS;
+      const pEnd   = dayStart + i * DAY_MS + NIGHT_END_MS;
+      const oStart = Math.max(localIn,  pStart);
+      const oEnd   = Math.min(localOut, pEnd);
+      if (oEnd > oStart) totalMs += oEnd - oStart;
+    }
+    return round2(totalMs / 3_600_000);
+  }
 
   const otHoursMap = new Map<string, number>();
   const hoursWorkedMap = new Map<string, number>();
   const lateMinutesMap = new Map<string, number>();
+  const nightDiffHoursMap = new Map<string, number>();
   // Per-employee, per-date attendance for holiday pay eligibility check.
   const attendanceDateMap = new Map<string, Map<string, { hoursWorked: number; lateMinutes: number }>>();
   for (const rec of attendanceRows) {
     const dateKey = rec.date.toISOString().slice(0, 10);
+    const hasShift = scheduledDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
 
-    // Only count attendance on days the employee has a shift assignment.
-    if (!scheduledDatesMap.get(rec.employeeId)?.has(dateKey)) continue;
+    // Kiosk records only count on days the employee has a scheduled shift.
+    // Admin-created (MANUAL) records are always counted regardless of schedule.
+    if (!hasShift && rec.source !== "MANUAL") continue;
 
     const scheduledHrs = scheduledHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
-    const actualHrs = toNum(rec.hoursWorked);
+    // If hoursWorked is null (clock-out not yet recorded) but a shift is scheduled,
+    // fall back to the shift duration so open records still count toward payroll.
+    const actualHrs = rec.hoursWorked !== null
+      ? toNum(rec.hoursWorked)
+      : scheduledHrs; // 0 when no shift — can't estimate without a clock-out
     // Only count overtime hours if explicitly approved (shift-level or OvertimeRequest).
     const isOtApproved = overtimeApprovedDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
     const otHrs = isOtApproved ? toNum(rec.overtimeHours) : 0;
     // Regular hours = actual minus approved OT, capped at scheduled shift duration.
-    const regularHrs = Math.min(Math.max(0, actualHrs - otHrs), scheduledHrs);
+    // For manually-added attendance with no shift assignment, use actual hours directly (no cap).
+    const regularHrs = scheduledHrs > 0
+      ? Math.min(Math.max(0, actualHrs - otHrs), scheduledHrs)
+      : Math.max(0, actualHrs - otHrs);
     const countedHrs = round2(regularHrs + otHrs);
 
     otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + otHrs);
     hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + countedHrs);
     lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + (rec.lateMinutes ?? 0));
+
+    const ndHrs = computeNightDiffHours(rec.clockIn, rec.clockOut);
+    if (ndHrs > 0) {
+      nightDiffHoursMap.set(rec.employeeId, (nightDiffHoursMap.get(rec.employeeId) ?? 0) + ndHrs);
+    }
 
     if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
     attendanceDateMap.get(rec.employeeId)!.set(dateKey, {
@@ -463,9 +525,8 @@ export async function processRun(id: string) {
     await tx.payslip.deleteMany({ where: { payrollRunId: run.id } });
 
     for (const emp of employees) {
-      // Employees with no shift assignments in this period are not paid
-      // and should not appear in the payroll run regardless of pay type.
-      if (!scheduledDatesMap.has(emp.id)) continue;
+      // Skip employees with neither shift assignments nor any attendance in this period.
+      if (!scheduledDatesMap.has(emp.id) && !hoursWorkedMap.has(emp.id)) continue;
 
       const totalOtHours = round2(otHoursMap.get(emp.id) ?? 0);
       const totalHoursWorked = round2(hoursWorkedMap.get(emp.id) ?? 0);
@@ -490,6 +551,20 @@ export async function processRun(id: string) {
       const overtimeEarnings: Array<{ type: "OVERTIME"; label: string; amount: number }> =
         overtimePay > 0
           ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs × ₱${otRatePerHour}/hr)`, amount: overtimePay }]
+          : [];
+
+      const totalNightDiffHours = round2(nightDiffHoursMap.get(emp.id) ?? 0);
+      // Night diff base = employee's effective hourly rate (hourly employees use their rate;
+      // monthly employees use basicSalary ÷ 26 days ÷ 8 hrs).
+      const baseHourlyRate = emp.payType === "HOURLY"
+        ? toNum(emp.hourlyRate)
+        : toNum(emp.basicSalary) / 26 / 8;
+      const nightDiffPay = totalNightDiffHours > 0 && nightDiffPct > 0 && baseHourlyRate > 0
+        ? round2(totalNightDiffHours * baseHourlyRate * (nightDiffPct / 100))
+        : 0;
+      const nightDiffEarnings: Array<{ type: "NIGHT_DIFFERENTIAL"; label: string; amount: number }> =
+        nightDiffPay > 0
+          ? [{ type: "NIGHT_DIFFERENTIAL" as const, label: `Night Differential (${totalNightDiffHours} hrs × ${nightDiffPct}%)`, amount: nightDiffPay }]
           : [];
 
       // Daily rate used for percentage-based holiday pay (8-hour equivalent).
@@ -604,7 +679,7 @@ export async function processRun(id: string) {
       const otherDeductions        = sumByDeductionType(deductionRows, "OTHER");
       const totalDeductions        = round2(deductionRows.reduce((s, r) => s + r.amount, 0));
 
-      const grossPay = round2(basicPay + overtimePay + holidayPayTotal + bonuses + allowances + paidLeaveCredits + otherEarningsTotal);
+      const grossPay = round2(basicPay + overtimePay + nightDiffPay + holidayPayTotal + bonuses + allowances + paidLeaveCredits + otherEarningsTotal);
       const netPay   = round2(grossPay - totalDeductions);
 
       await tx.payslip.create({
@@ -630,7 +705,7 @@ export async function processRun(id: string) {
           totalDeductions,
           netPay,
           status: "DRAFT",
-          earnings: { create: [...overtimeEarnings, ...holidayEarnings, ...paidLeaveEarnings, ...profileEarningRows] },
+          earnings: { create: [...overtimeEarnings, ...nightDiffEarnings, ...holidayEarnings, ...paidLeaveEarnings, ...profileEarningRows] },
           deductions: { create: deductionRows },
         },
       });
@@ -771,6 +846,7 @@ export async function adjustPayslip(id: string, input: AdjustPayslipInput) {
   const d = input.deductions;
 
   const overtimePay = sumByType(e, "OVERTIME");
+  const nightDifferential = sumByType(e, "NIGHT_DIFFERENTIAL");
   const bonuses = sumByType(e, "BONUS");
   const allowances = sumByType(e, "ALLOWANCE");
   const holidayPay = sumByType(e, "HOLIDAY_PAY");
@@ -788,7 +864,7 @@ export async function adjustPayslip(id: string, input: AdjustPayslipInput) {
   const otherDeductions = sumByType(d, "OTHER");
 
   const grossPay = round2(
-    basicPay + overtimePay + bonuses + allowances + holidayPay + paidLeaveCredits + otherEarnings
+    basicPay + overtimePay + nightDifferential + bonuses + allowances + holidayPay + paidLeaveCredits + otherEarnings
   );
   const totalDeductions = round2(
     lateDeductions +

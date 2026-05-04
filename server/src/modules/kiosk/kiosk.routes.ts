@@ -1,5 +1,4 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -10,9 +9,9 @@ import { AppError } from "../../middleware/error-handler.js";
 import { getSetting } from "../../lib/settings-cache.js";
 import * as attendanceService from "../attendance/attendance.service.js";
 import { workDayDateOf } from "../attendance/attendance.service.js";
+import { uploadsDir } from "../../app.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const selfieDir = path.join(__dirname, "..", "..", "..", "uploads", "selfies");
+const selfieDir = path.join(uploadsDir, "selfies");
 fs.mkdirSync(selfieDir, { recursive: true });
 
 const selfieUpload = multer({

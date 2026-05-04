@@ -352,6 +352,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
       selfieIn: input.selfieIn,
       deviceId: input.deviceId,
       localRecordId: input.localRecordId,
+      source: "KIOSK",
       syncStatus: "SYNCED",
     },
     include: attendanceInclude,
@@ -366,6 +367,10 @@ export async function clockOut(attendanceId: string, input: ClockOutInput) {
   const clockOutAt = input.clockOut ? new Date(input.clockOut) : new Date();
   if (clockOutAt <= record.clockIn) {
     throw new AppError(400, "Clock-out time must be after clock-in");
+  }
+  const minClockOutAt = new Date(record.clockIn.getTime() + 60 * 60 * 1000);
+  if (clockOutAt < minClockOutAt) {
+    throw new AppError(400, "Cannot clock out within 1 hour of clocking in");
   }
 
   const hoursWorked = hoursBetween(record.clockIn, clockOutAt);
@@ -569,6 +574,7 @@ export async function manualCreate(input: ManualCreateInput) {
       overtimeHours,
       undertimeMinutes,
       remarks: input.remarks ?? undefined,
+      source: "MANUAL",
       syncStatus: "SYNCED",
     },
     include: attendanceInclude,

@@ -14,6 +14,7 @@ const schema = z.object({
     .min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRES_IN: z.string().default("7d"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  UPLOADS_DIR: z.string().optional(),
   BCRYPT_ROUNDS: z
     .string()
     .default("12")

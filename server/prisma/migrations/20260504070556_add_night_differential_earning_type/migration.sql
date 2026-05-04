@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "EarningType" ADD VALUE 'NIGHT_DIFFERENTIAL';

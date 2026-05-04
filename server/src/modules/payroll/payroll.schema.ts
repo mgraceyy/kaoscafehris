@@ -25,6 +25,7 @@ export const earningTypeEnum = z.enum([
   "BONUS",
   "ALLOWANCE",
   "HOLIDAY_PAY",
+  "NIGHT_DIFFERENTIAL",
   "OTHER",
 ]);
 
