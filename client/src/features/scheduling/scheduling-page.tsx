@@ -236,8 +236,8 @@ export default function SchedulingPage() {
                 <ChevronDown className="h-4 w-4 text-gray-400" />
               </button>
               {branchDropdownOpen && (
-                <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-gray-200 bg-white shadow-lg">
-                  <div className="p-1">
+                <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-gray-200 bg-white shadow-lg">
+                  <div className="p-1 bg-white rounded-lg">
                     <label className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50">
                       <input
                         type="checkbox"
@@ -286,8 +286,8 @@ export default function SchedulingPage() {
               <ChevronDown className="h-4 w-4 text-gray-400" />
             </button>
             {employeeDropdownOpen && (
-              <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
-                <div className="p-1 max-h-72 overflow-y-auto">
+              <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
+                <div className="p-1 max-h-72 overflow-y-auto bg-white rounded-lg">
                   <label className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50">
                     <input
                       type="checkbox"
@@ -492,7 +492,7 @@ export default function SchedulingPage() {
                                 style={{ backgroundColor: col.bg, color: col.text }}
                                 onClick={() => { setDialogShift(s); setDialogOpen(true); }}
                               >
-                                <div className="font-medium truncate">{emp.firstName} {emp.lastName}</div>
+                                <div className="font-medium truncate">{s.name}</div>
                                 <div>{formatShiftTime(s.startTime)} - {formatShiftTime(s.endTime)}</div>
                                 <div className="absolute right-1 top-1 hidden gap-0.5 group-hover:flex">
                                   <button
