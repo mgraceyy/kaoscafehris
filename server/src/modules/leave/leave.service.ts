@@ -122,6 +122,7 @@ export async function createRequest(input: CreateLeaveRequestInput) {
     select: { email: true },
   });
   const managerEmails = managers.map((u) => u.email);
+  console.log(`[leave] Notifying ${managerEmails.length} admin(s)/manager(s):`, managerEmails);
   if (managerEmails.length > 0) {
     const empName = `${created.employee.firstName} ${created.employee.lastName}`;
     const leaveLabel = LEAVE_LABEL[created.leaveType] ?? created.leaveType;
