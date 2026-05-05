@@ -117,10 +117,16 @@ export async function createRequest(input: CreateLeaveRequestInput) {
   });
 
   // Notify admins/managers
-  const managers = await prisma.user.findMany({
-    where: { role: { in: ["ADMIN", "MANAGER"] }, isActive: true },
-    select: { email: true },
-  });
+  const [managers, employeeUser] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "MANAGER"] }, isActive: true },
+      select: { email: true },
+    }),
+    prisma.user.findFirst({
+      where: { employee: { id: input.employeeId } },
+      select: { email: true },
+    }),
+  ]);
   const managerEmails = managers.map((u) => u.email);
   console.log(`[leave] Notifying ${managerEmails.length} admin(s)/manager(s):`, managerEmails);
   if (managerEmails.length > 0) {
@@ -130,6 +136,7 @@ export async function createRequest(input: CreateLeaveRequestInput) {
     const end = created.endDate.toISOString().slice(0, 10);
     sendMail({
       to: managerEmails,
+      replyTo: employeeUser?.email,
       subject: `Leave Request — ${empName} (${leaveLabel})`,
       html: `
         <p>A new leave request has been filed and is awaiting your review.</p>
