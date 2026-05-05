@@ -340,8 +340,6 @@ export async function processRun(id: string) {
   const scheduledDatesMap = new Map<string, Set<string>>();
   const scheduledHoursMap = new Map<string, Map<string, number>>();
   const overtimeApprovedDatesMap = new Map<string, Set<string>>();
-  // Dates where the employee has an overnight (graveyard) shift that crosses midnight into the next day.
-  const overnightShiftDates = new Map<string, Set<string>>();
 
   for (const sa of shiftAssignments) {
     const dateKey = sa.shift.date.toISOString().slice(0, 10);
@@ -364,12 +362,6 @@ export async function processRun(id: string) {
     if (sa.overtimeApproved) {
       if (!overtimeApprovedDatesMap.has(sa.employeeId)) overtimeApprovedDatesMap.set(sa.employeeId, new Set());
       overtimeApprovedDatesMap.get(sa.employeeId)!.add(dateKey);
-    }
-
-    // Track overnight shifts (endTime < startTime) so holiday pay can be attributed to the shift start date.
-    if (endMs < startMs) {
-      if (!overnightShiftDates.has(sa.employeeId)) overnightShiftDates.set(sa.employeeId, new Set());
-      overnightShiftDates.get(sa.employeeId)!.add(dateKey);
     }
   }
 
@@ -416,7 +408,11 @@ export async function processRun(id: string) {
   const lateMinutesMap = new Map<string, number>();
   const nightDiffHoursMap = new Map<string, number>();
   // Per-employee, per-date attendance for holiday pay eligibility check.
-  const attendanceDateMap = new Map<string, Map<string, { hoursWorked: number; lateMinutes: number }>>();
+  // isOvernight = true when clockOut falls on a different calendar date than clockIn
+  // (i.e. the shift spans midnight). When a date has both a daytime and an overnight
+  // record (e.g. employee works two shifts on the same day), the daytime record wins
+  // so that holiday-pay eligibility is not incorrectly discarded.
+  const attendanceDateMap = new Map<string, Map<string, { hoursWorked: number; lateMinutes: number; isOvernight: boolean }>>();
   for (const rec of attendanceRows) {
     const dateKey = rec.date.toISOString().slice(0, 10);
     const hasShift = scheduledDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
@@ -450,11 +446,20 @@ export async function processRun(id: string) {
       nightDiffHoursMap.set(rec.employeeId, (nightDiffHoursMap.get(rec.employeeId) ?? 0) + ndHrs);
     }
 
+    // Detect overnight: clockOut is on a different calendar date than clockIn.
+    const isOvernight = !!(rec.clockOut &&
+      rec.clockOut.toISOString().slice(0, 10) !== rec.clockIn.toISOString().slice(0, 10));
+
     if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
-    attendanceDateMap.get(rec.employeeId)!.set(dateKey, {
-      hoursWorked: countedHrs,
-      lateMinutes: rec.lateMinutes ?? 0,
-    });
+    const existingAtt = attendanceDateMap.get(rec.employeeId)!.get(dateKey);
+    // Prefer daytime (non-overnight) record when both exist on the same date.
+    if (!existingAtt || (existingAtt.isOvernight && !isOvernight)) {
+      attendanceDateMap.get(rec.employeeId)!.set(dateKey, {
+        hoursWorked: countedHrs,
+        lateMinutes: rec.lateMinutes ?? 0,
+        isOvernight,
+      });
+    }
   }
 
   // Supplemental holiday-pay boundary lookup: if any holiday falls on the very first day of
@@ -470,33 +475,20 @@ export async function processRun(id: string) {
   );
 
   if (hasHolidayOnPeriodStart) {
-    const [boundaryShifts, boundaryAttendance] = await Promise.all([
-      prisma.shiftAssignment.findMany({
-        where: { employeeId: { in: employeeIds }, shift: { date: dayBeforePeriod } },
-        select: { employeeId: true, shift: { select: { startTime: true, endTime: true } } },
-      }),
-      prisma.attendance.findMany({
-        where: { employeeId: { in: employeeIds }, date: dayBeforePeriod },
-        select: { employeeId: true, hoursWorked: true, lateMinutes: true, source: true },
-      }),
-    ]);
-
-    for (const sa of boundaryShifts) {
-      const startMs = sa.shift.startTime.getTime();
-      const endMs = sa.shift.endTime.getTime();
-      if (endMs < startMs) {
-        if (!overnightShiftDates.has(sa.employeeId)) overnightShiftDates.set(sa.employeeId, new Set());
-        overnightShiftDates.get(sa.employeeId)!.add(dayBeforePeriodKey);
-      }
-    }
+    const boundaryAttendance = await prisma.attendance.findMany({
+      where: { employeeId: { in: employeeIds }, date: dayBeforePeriod },
+      select: { employeeId: true, clockIn: true, clockOut: true, hoursWorked: true, lateMinutes: true },
+    });
 
     for (const rec of boundaryAttendance) {
       if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
-      // Don't overwrite if already present (shouldn't happen, but guard anyway).
       if (!attendanceDateMap.get(rec.employeeId)!.has(dayBeforePeriodKey)) {
+        const isOvernight = !!(rec.clockOut &&
+          rec.clockOut.toISOString().slice(0, 10) !== rec.clockIn.toISOString().slice(0, 10));
         attendanceDateMap.get(rec.employeeId)!.set(dayBeforePeriodKey, {
           hoursWorked: toNum(rec.hoursWorked),
           lateMinutes: rec.lateMinutes ?? 0,
+          isOvernight,
         });
       }
     }
@@ -632,25 +624,23 @@ export async function processRun(id: string) {
             const holidayDateKey = h.date.toISOString().slice(0, 10);
             let att = empAttendanceDates?.get(holidayDateKey);
 
-            // A graveyard shift that STARTS on the holiday (e.g. May 1 11pm → May 2 8am) does NOT
-            // get holiday pay. Holiday pay belongs to the shift that crosses INTO the holiday from
-            // the previous night (e.g. Apr 30 11pm → May 1 8am). Discard the holiday-date attendance
-            // when it belongs to an overnight shift so the previous-day lookup takes over.
-            if (att && overnightShiftDates.get(emp.id)?.has(holidayDateKey)) {
-              att = undefined;
-            }
+            // An overnight shift that STARTS on the holiday (clockOut on the next day) does NOT
+            // receive holiday pay — only the shift that crosses INTO the holiday from the previous
+            // night qualifies. When an employee has both a daytime and an overnight record on the
+            // holiday date, attendanceDateMap already stores the daytime one (preferred above), so
+            // this guard handles the case where only an overnight record exists for that date.
+            if (att?.isOvernight) att = undefined;
 
-            // Check if the previous day had an overnight shift that extends into this holiday.
+            // Check if the previous night had an overnight shift that extends into this holiday
+            // (clockOut fell on the holiday date).
             if (!att) {
               const prevDate = new Date(h.date);
               prevDate.setUTCDate(prevDate.getUTCDate() - 1);
-              const prevDateKey = prevDate.toISOString().slice(0, 10);
-              if (overnightShiftDates.get(emp.id)?.has(prevDateKey)) {
-                att = empAttendanceDates?.get(prevDateKey);
-              }
+              const prevAtt = empAttendanceDates?.get(prevDate.toISOString().slice(0, 10));
+              if (prevAtt?.isOvernight) att = prevAtt;
             }
 
-            // No qualifying attendance found = day off or no crossing shift, no holiday pay.
+            // No qualifying attendance = day off or no crossing shift, no holiday pay.
             if (!att) return null;
 
             // Holiday pay covers the first 8 hours only; minutes late reduce eligible hours.
