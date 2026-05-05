@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listEmployees } from "@/features/employees/employees.api";
+import { listShiftTypes } from "@/features/scheduling/shift-types.api";
 import { createAttendance } from "./attendance.api";
 
 function todayIso() {
@@ -45,8 +46,18 @@ function nextDayIso(date: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function formatShiftTime(isoTime: string): string {
+  const d = new Date(isoTime);
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 const schema = z.object({
   employeeId: z.string().uuid("Select an employee"),
+  shiftTypeId: z.string().uuid("Select a shift"),
   date: z.string().min(1, "Required"),
   clockInTime: z.string().min(1, "Required"),
   clockOutTime: z.string().optional(),
@@ -74,16 +85,24 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
     enabled: open,
   });
 
+  const shiftTypesQuery = useQuery({
+    queryKey: ["shiftTypes"],
+    queryFn: () => listShiftTypes(),
+    enabled: open,
+  });
+
   const {
     control,
     register,
     handleSubmit,
+    watch,
     reset,
     formState: { errors },
   } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
       employeeId: "",
+      shiftTypeId: "",
       date: todayIso(),
       clockInTime: "08:00",
       clockOutTime: "",
@@ -91,10 +110,14 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
     },
   });
 
+  const selectedShiftTypeId = watch("shiftTypeId");
+  const selectedShiftType = shiftTypesQuery.data?.find((s) => s.id === selectedShiftTypeId);
+
   useEffect(() => {
     if (open) {
       reset({
         employeeId: "",
+        shiftTypeId: "",
         date: todayIso(),
         clockInTime: "08:00",
         clockOutTime: "",
@@ -133,6 +156,7 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
           : values.date;
       return createAttendance({
         employeeId: values.employeeId,
+        shiftTypeId: values.shiftTypeId,
         clockIn: toIso(values.date, values.clockInTime),
         clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime) : null,
         remarks: values.remarks?.trim() || null,
@@ -227,6 +251,37 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
           />
           {errors.employeeId && (
             <p className="text-xs text-destructive">{errors.employeeId.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="shiftTypeId">Shift</Label>
+          <Controller
+            name="shiftTypeId"
+            control={control}
+            render={({ field }) => (
+              <select
+                id="shiftTypeId"
+                value={field.value}
+                onChange={field.onChange}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Select a shift...</option>
+                {(shiftTypesQuery.data ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({formatShiftTime(s.startTime)} – {formatShiftTime(s.endTime)})
+                  </option>
+                ))}
+              </select>
+            )}
+          />
+          {errors.shiftTypeId && (
+            <p className="text-xs text-destructive">{errors.shiftTypeId.message}</p>
+          )}
+          {selectedShiftType && (
+            <p className="text-xs text-muted-foreground">
+              Scheduled: {formatShiftTime(selectedShiftType.startTime)} – {formatShiftTime(selectedShiftType.endTime)}. Late/overtime will be calculated against these times.
+            </p>
           )}
         </div>
 

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
@@ -14,7 +15,7 @@ import {
 } from "./attendance.schema.js";
 import * as attendanceController from "./attendance.controller.js";
 
-const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..", "uploads");
+const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "uploads");
 const selfieDir = path.join(uploadsBase, "selfies");
 fs.mkdirSync(selfieDir, { recursive: true });
 

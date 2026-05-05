@@ -529,18 +529,18 @@ export async function manualCreate(input: ManualCreateInput) {
     );
   }
 
-  const shift = await findScheduledShift(input.employeeId, dateKey, clockInAt, tzOffset);
+  const shiftType = await prisma.shiftType.findUnique({ where: { id: input.shiftTypeId } });
+  if (!shiftType) throw new AppError(404, "Shift type not found");
+
+  const { scheduledStart, scheduledEnd } = getScheduledTimes(dateKey, shiftType, tzOffset);
 
   let status: "PRESENT" | "LATE" = "PRESENT";
   let lateMinutes: number | null = null;
 
-  if (shift) {
-    const { scheduledStart } = getScheduledTimes(dateKey, shift, tzOffset);
-    const delta = diffMinutes(scheduledStart, clockInAt);
-    if (delta > graceMinutes) {
-      status = "LATE";
-      lateMinutes = delta;
-    }
+  const delta = diffMinutes(scheduledStart, clockInAt);
+  if (delta > graceMinutes) {
+    status = "LATE";
+    lateMinutes = delta;
   }
 
   let clockOutAt: Date | null = null;
@@ -554,11 +554,8 @@ export async function manualCreate(input: ManualCreateInput) {
       throw new AppError(400, "Clock-out time must be after clock-in");
     }
     hoursWorked = hoursBetween(clockInAt, clockOutAt);
-    if (shift) {
-      const { scheduledEnd } = getScheduledTimes(dateKey, shift, tzOffset);
-      if (clockOutAt < scheduledEnd) undertimeMinutes = diffMinutes(clockOutAt, scheduledEnd);
-      if (clockOutAt > scheduledEnd) overtimeHours = hoursBetween(scheduledEnd, clockOutAt);
-    }
+    if (clockOutAt < scheduledEnd) undertimeMinutes = diffMinutes(clockOutAt, scheduledEnd);
+    if (clockOutAt > scheduledEnd) overtimeHours = hoursBetween(scheduledEnd, clockOutAt);
   }
 
   return prisma.attendance.create({

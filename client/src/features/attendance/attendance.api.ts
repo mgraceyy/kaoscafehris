@@ -49,6 +49,7 @@ export interface ManualCreateInput {
   clockIn: string; // ISO datetime
   clockOut?: string | null;
   remarks?: string | null;
+  shiftTypeId: string;
 }
 
 export interface ListAttendanceParams {

@@ -64,6 +64,7 @@ export const manualCreateSchema = z.object({
   clockIn: isoDateTime,
   clockOut: isoDateTime.nullable().optional(),
   remarks: z.string().max(500).nullable().optional(),
+  shiftTypeId: z.string().uuid("A shift type must be selected"),
 });
 
 export type ClockInInput = z.infer<typeof clockInSchema>;

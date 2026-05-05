@@ -340,6 +340,8 @@ export async function processRun(id: string) {
   const scheduledDatesMap = new Map<string, Set<string>>();
   const scheduledHoursMap = new Map<string, Map<string, number>>();
   const overtimeApprovedDatesMap = new Map<string, Set<string>>();
+  // Dates where the employee has an overnight (graveyard) shift that crosses midnight into the next day.
+  const overnightShiftDates = new Map<string, Set<string>>();
 
   for (const sa of shiftAssignments) {
     const dateKey = sa.shift.date.toISOString().slice(0, 10);
@@ -362,6 +364,12 @@ export async function processRun(id: string) {
     if (sa.overtimeApproved) {
       if (!overtimeApprovedDatesMap.has(sa.employeeId)) overtimeApprovedDatesMap.set(sa.employeeId, new Set());
       overtimeApprovedDatesMap.get(sa.employeeId)!.add(dateKey);
+    }
+
+    // Track overnight shifts (endTime < startTime) so holiday pay can be attributed to the shift start date.
+    if (endMs < startMs) {
+      if (!overnightShiftDates.has(sa.employeeId)) overnightShiftDates.set(sa.employeeId, new Set());
+      overnightShiftDates.get(sa.employeeId)!.add(dateKey);
     }
   }
 
@@ -577,8 +585,20 @@ export async function processRun(id: string) {
         periodHolidays
           .map((h) => {
             const holidayDateKey = h.date.toISOString().slice(0, 10);
-            const att = empAttendanceDates?.get(holidayDateKey);
-            // No attendance on that date = day off, no holiday pay.
+            let att = empAttendanceDates?.get(holidayDateKey);
+
+            // For overnight/graveyard shifts: the shift start date is the day before the holiday.
+            // Holiday pay is attributed to the shift start date (clock-in date), not the holiday date.
+            if (!att) {
+              const prevDate = new Date(h.date);
+              prevDate.setUTCDate(prevDate.getUTCDate() - 1);
+              const prevDateKey = prevDate.toISOString().slice(0, 10);
+              if (overnightShiftDates.get(emp.id)?.has(prevDateKey)) {
+                att = empAttendanceDates?.get(prevDateKey);
+              }
+            }
+
+            // No attendance on that date (or previous overnight date) = day off, no holiday pay.
             if (!att) return null;
 
             // Holiday pay covers the first 8 hours only; minutes late reduce eligible hours.
