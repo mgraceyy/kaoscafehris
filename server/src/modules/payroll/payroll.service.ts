@@ -587,8 +587,15 @@ export async function processRun(id: string) {
             const holidayDateKey = h.date.toISOString().slice(0, 10);
             let att = empAttendanceDates?.get(holidayDateKey);
 
-            // For overnight/graveyard shifts: the shift start date is the day before the holiday.
-            // Holiday pay is attributed to the shift start date (clock-in date), not the holiday date.
+            // A graveyard shift that STARTS on the holiday (e.g. May 1 11pm → May 2 8am) does NOT
+            // get holiday pay. Holiday pay belongs to the shift that crosses INTO the holiday from
+            // the previous night (e.g. Apr 30 11pm → May 1 8am). Discard the holiday-date attendance
+            // when it belongs to an overnight shift so the previous-day lookup takes over.
+            if (att && overnightShiftDates.get(emp.id)?.has(holidayDateKey)) {
+              att = undefined;
+            }
+
+            // Check if the previous day had an overnight shift that extends into this holiday.
             if (!att) {
               const prevDate = new Date(h.date);
               prevDate.setUTCDate(prevDate.getUTCDate() - 1);
@@ -598,7 +605,7 @@ export async function processRun(id: string) {
               }
             }
 
-            // No attendance on that date (or previous overnight date) = day off, no holiday pay.
+            // No qualifying attendance found = day off or no crossing shift, no holiday pay.
             if (!att) return null;
 
             // Holiday pay covers the first 8 hours only; minutes late reduce eligible hours.
