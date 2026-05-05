@@ -1,23 +1,33 @@
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export async function sendMail(opts: {
   to: string | string[];
   subject: string;
   html: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.error("[email] RESEND_API_KEY is not set — skipping email send");
+  if (!process.env.BREVO_API_KEY) {
+    console.error("[email] BREVO_API_KEY is not set — skipping email send");
     return;
   }
-  const { error } = await resend.emails.send({
-    from: "HRIS <onboarding@resend.dev>",
-    to: Array.isArray(opts.to) ? opts.to : [opts.to],
-    subject: opts.subject,
-    html: opts.html,
+
+  const recipients = (Array.isArray(opts.to) ? opts.to : [opts.to]).map(
+    (email) => ({ email })
+  );
+
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": process.env.BREVO_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: "KAOS HRIS", email: process.env.BREVO_SENDER_EMAIL },
+      to: recipients,
+      subject: opts.subject,
+      htmlContent: opts.html,
+    }),
   });
-  if (error) {
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => res.statusText);
     console.error("[email] Failed to send email:", error);
   }
 }
