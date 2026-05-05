@@ -172,7 +172,7 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
       r.employee.employeeId,
       `${r.employee.firstName} ${r.employee.lastName}`,
       r.employee.position ?? "",
-      r.clockIn.slice(0, 10),
+      r.date.slice(0, 10),
       formatClockTime(r.clockIn, companyTimezone),
       r.clockOut ? formatClockTime(r.clockOut, companyTimezone) : "",
       r.status,
@@ -334,7 +334,7 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
                     </div>
                   </td>
                   <td className="px-5 py-4 text-gray-600">{r.employee.position ?? "—"}</td>
-                  <td className="px-5 py-4 text-gray-600">{formatDate(r.clockIn, companyTimezone)}</td>
+                  <td className="px-5 py-4 text-gray-600">{formatDate(r.date.slice(0, 10) + "T12:00:00Z")}</td>
                   <td className="px-5 py-4 tabular-nums font-medium text-gray-800">
                     {formatClockTime(r.clockIn, companyTimezone)}
                   </td>

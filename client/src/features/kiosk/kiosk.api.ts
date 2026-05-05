@@ -23,6 +23,9 @@ export interface KioskStatusData {
   shift: KioskShift | null;
   attendance: KioskAttendance | null;
   lastClockIn: { date: string; clockIn: string } | null;
+  /** ISO timestamp of the scheduled shift end when an open record from a
+   *  previous day has already passed its end time (stale unclosed shift). */
+  staleShiftEnd: string | null;
 }
 
 function h(pin: string) {
@@ -56,10 +59,15 @@ export async function kioskClockIn(employeeId: string, selfieIn: string | undefi
   return data.data;
 }
 
-export async function kioskClockOut(attendanceId: string, selfieOut: string | undefined, pin: string): Promise<KioskAttendance> {
+export async function kioskClockOut(
+  attendanceId: string,
+  selfieOut: string | undefined,
+  pin: string,
+  clockOut?: string,
+): Promise<KioskAttendance> {
   const { data } = await api.post<{ data: KioskAttendance }>(
     `/kiosk/clock-out/${attendanceId}`,
-    { selfieOut, kioskPin: pin },
+    { selfieOut, clockOut, kioskPin: pin },
     { headers: h(pin) }
   );
   return data.data;

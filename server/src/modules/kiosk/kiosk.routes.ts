@@ -9,7 +9,7 @@ import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { getSetting } from "../../lib/settings-cache.js";
 import * as attendanceService from "../attendance/attendance.service.js";
-import { workDayDateOf } from "../attendance/attendance.service.js";
+import { workDayDateOf, getScheduledTimes, getUtcOffsetMinutes } from "../attendance/attendance.service.js";
 
 const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "uploads");
 const selfieDir = path.join(uploadsBase, "selfies");
@@ -101,7 +101,8 @@ router.get("/status/:employeeId", async (req, res, next) => {
     });
     if (!emp) throw new AppError(404, "Employee not found");
 
-    const dateKey = await workDayDateOf(new Date());
+    const now = new Date();
+    const dateKey = await workDayDateOf(now);
 
     // Today's attendance — open record takes priority so the Time Out button
     // shows correctly. Multiple records per day are now allowed (multi-shift).
@@ -109,6 +110,7 @@ router.get("/status/:employeeId", async (req, res, next) => {
       where: { employeeId: emp.id, date: dateKey, clockOut: null, status: { in: ["PRESENT", "LATE"] } },
       orderBy: { clockIn: "asc" },
     });
+    let isFromPrevDay = false;
     if (!attendance) {
       // No open record today — check for graveyard: open record from a previous date.
       const openPrev = await prisma.attendance.findFirst({
@@ -122,6 +124,7 @@ router.get("/status/:employeeId", async (req, res, next) => {
       });
       if (openPrev) {
         attendance = openPrev;
+        isFromPrevDay = true;
       } else {
         // All shifts done today — return most recent completed record for display.
         attendance = await prisma.attendance.findFirst({
@@ -139,6 +142,20 @@ router.get("/status/:employeeId", async (req, res, next) => {
       include: { shift: true },
       orderBy: { shift: { startTime: "asc" } },
     });
+
+    // Detect stale unclosed record: open record from a previous day whose
+    // scheduled shift end has already passed. Surface this so the kiosk can
+    // prompt the employee to close it before clocking in for tonight.
+    let staleShiftEnd: string | null = null;
+    if (isFromPrevDay && attendance && assignment?.shift) {
+      const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
+      const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+      const tzOffset = getUtcOffsetMinutes(tz, now);
+      const { scheduledEnd } = getScheduledTimes(attendance.date, assignment.shift, tzOffset);
+      if (now > scheduledEnd) {
+        staleShiftEnd = scheduledEnd.toISOString();
+      }
+    }
 
     // Last clock-in (any completed record before today, for display only)
     const lastAttendance = await prisma.attendance.findFirst({
@@ -175,6 +192,7 @@ router.get("/status/:employeeId", async (req, res, next) => {
               clockIn: lastAttendance.clockIn,
             }
           : null,
+        staleShiftEnd,
       },
     });
   } catch (err) { next(err); }
@@ -188,6 +206,7 @@ const kioskClockInSchema = z.object({
 
 const kioskClockOutSchema = z.object({
   selfieOut: z.string().optional(),
+  clockOut: z.string().datetime({ offset: true }).optional(),
   kioskPin: z.string().optional(),
 });
 
@@ -207,7 +226,10 @@ router.post("/clock-in", async (req, res, next) => {
 router.post("/clock-out/:attendanceId", async (req, res, next) => {
   try {
     const body = kioskClockOutSchema.parse(req.body);
-    const record = await attendanceService.clockOut(req.params.attendanceId, { selfieOut: body.selfieOut });
+    const record = await attendanceService.clockOut(req.params.attendanceId, {
+      selfieOut: body.selfieOut,
+      clockOut: body.clockOut,
+    });
     res.json({ data: record });
   } catch (err) { next(err); }
 });

@@ -168,7 +168,7 @@ function combineDateAndTime(date: Date, timeOfDay: Date): Date {
  * Return the UTC offset in minutes for `tz` at `forDate`.
  * E.g. Asia/Manila → 480 (UTC+8). Handles DST-observing zones correctly.
  */
-function getUtcOffsetMinutes(tz: string, forDate: Date): number {
+export function getUtcOffsetMinutes(tz: string, forDate: Date): number {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
     year: "numeric", month: "2-digit", day: "2-digit",
@@ -198,7 +198,7 @@ function combineDateAndTimeLocal(date: Date, timeOfDay: Date, tzOffsetMinutes: n
  * Handles overnight/graveyard shifts where endTime < startTime by adding one
  * day to scheduledEnd so it lands on the correct calendar day.
  */
-function getScheduledTimes(
+export function getScheduledTimes(
   date: Date,
   shift: { startTime: Date; endTime: Date },
   tzOffsetMinutes: number,

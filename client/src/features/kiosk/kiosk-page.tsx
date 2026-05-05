@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Building2, CheckCircle2, Clock, LogOut, RefreshCw, User, XCircle } from "lucide-react";
+import { AlertCircle, AlertTriangle, Building2, CheckCircle2, Clock, LogOut, RefreshCw, User, XCircle } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import {
   getKioskStatus, kioskClockIn, kioskClockOut, pingKiosk, uploadKioskSelfie,
@@ -217,29 +217,112 @@ function CameraView({
   );
 }
 
+function StaleShiftCard({
+  shift, attendance, staleShiftEnd, onClose, loading, error,
+}: {
+  shift: KioskShift | null;
+  attendance: KioskAttendance;
+  staleShiftEnd: string;
+  onClose: () => void;
+  loading: boolean;
+  error: string;
+}) {
+  const shiftLabel = shift ? `${shift.name} (${shift.startTime} – ${shift.endTime})` : "your previous shift";
+  const shiftDate = shift
+    ? new Date(shift.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+    : new Date(attendance.clockIn).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  return (
+    <div style={{ background: "#fffbeb", border: "1.5px solid #f59e0b", borderRadius: 16, padding: "18px", boxShadow: "0 2px 10px rgba(245,158,11,0.12)" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+        <AlertTriangle size={22} color="#d97706" style={{ flexShrink: 0, marginTop: 1 }} />
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#92400e" }}>Missed Clock-Out Detected</div>
+          <div style={{ fontSize: 13, color: "#78350f", marginTop: 4, lineHeight: 1.5 }}>
+            {shiftLabel} on {shiftDate} was not clocked out. Close it before clocking in for tonight.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 12, color: "#a16207", marginBottom: 14 }}>
+        Clocked in at {fmtTime(attendance.clockIn)} · Will be closed at {fmtTime(staleShiftEnd)}
+      </div>
+
+      {error && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+          <AlertCircle size={13} color="#dc2626" />
+          <span style={{ fontSize: 12, color: "#dc2626" }}>{error}</span>
+        </div>
+      )}
+
+      <button
+        onClick={onClose}
+        disabled={loading}
+        style={{
+          width: "100%", padding: "14px", borderRadius: 12, border: "none",
+          background: loading ? "#d97706" : "#b45309",
+          color: "#fff", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          opacity: loading ? 0.8 : 1,
+        }}
+      >
+        {loading ? (
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        ) : (
+          <CheckCircle2 size={16} color="#fff" />
+        )}
+        {loading ? "Closing…" : "Close Unclosed Shift"}
+      </button>
+    </div>
+  );
+}
+
 function MainScreen({
-  statusData, videoRef, onCapture, onLogout, cameraReady,
+  statusData, videoRef, onCapture, onLogout, cameraReady, onCloseStale, closingStale, staleError, actionError,
 }: {
   statusData: KioskStatusData;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   onCapture: () => void;
   onLogout: () => void;
   cameraReady: boolean;
+  onCloseStale: () => void;
+  closingStale: boolean;
+  staleError: string;
+  actionError: string;
 }) {
-  const { employee, shift, attendance, lastClockIn } = statusData;
+  const { employee, shift, attendance, lastClockIn, staleShiftEnd } = statusData;
   const isClockedIn = !!attendance && !attendance.clockOut;
   const isDone = !!attendance?.clockOut;
+  const isStale = !!staleShiftEnd && isClockedIn;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: BLUSH, fontFamily: "'Inter', sans-serif" }}>
       <KioskHeader name={`${employee.firstName} ${employee.lastName}`} />
 
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 12px" }}>
+        {actionError && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
+            <AlertCircle size={15} color="#dc2626" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: "#991b1b", fontWeight: 500 }}>{actionError}</span>
+          </div>
+        )}
+
         <div style={{ marginBottom: 14 }}>
           <ShiftCard shift={shift} attendance={attendance} lastClockIn={lastClockIn} />
         </div>
 
-        {!isDone ? (
+        {isStale ? (
+          <div style={{ marginBottom: 14 }}>
+            <StaleShiftCard
+              shift={shift}
+              attendance={attendance!}
+              staleShiftEnd={staleShiftEnd}
+              onClose={onCloseStale}
+              loading={closingStale}
+              error={staleError}
+            />
+          </div>
+        ) : !isDone ? (
           <div style={{ marginBottom: 14 }}>
             <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={isClockedIn} cameraReady={cameraReady} />
           </div>
@@ -528,11 +611,14 @@ export default function KioskPage() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState("");
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   const [statusData, setStatusData] = useState<KioskStatusData | null>(null);
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
   const [photoUrl, setPhotoUrl] = useState("");
   const [actionWasClockIn, setActionWasClockIn] = useState(false);
   const [recordedTime, setRecordedTime] = useState("");
+  const [closingStale, setClosingStale] = useState(false);
+  const [staleError, setStaleError] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -599,6 +685,7 @@ export default function KioskPage() {
       if (!blob) return;
       setPhotoBlob(blob);
       setPhotoUrl(URL.createObjectURL(blob));
+      setConfirmError("");
       const isClockedIn = !!statusData?.attendance && !statusData.attendance.clockOut;
       setActionWasClockIn(!isClockedIn);
       setScreen("confirm");
@@ -608,6 +695,7 @@ export default function KioskPage() {
   async function handleConfirm() {
     if (!statusData) return;
     setConfirmLoading(true);
+    setConfirmError("");
     try {
       let selfieUrl: string | undefined;
       if (photoBlob) selfieUrl = await uploadKioskSelfie(photoBlob, pin);
@@ -621,10 +709,26 @@ export default function KioskPage() {
         new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
       );
       setScreen("success");
-    } catch {
+    } catch (err) {
+      setConfirmError(extractErrorMessage(err, "Action failed. Please try again."));
       setScreen("main");
     } finally {
       setConfirmLoading(false);
+    }
+  }
+
+  async function handleCloseStale() {
+    if (!statusData?.attendance || !statusData.staleShiftEnd) return;
+    setClosingStale(true);
+    setStaleError("");
+    try {
+      await kioskClockOut(statusData.attendance.id, undefined, pin, statusData.staleShiftEnd);
+      const fresh = await getKioskStatus(statusData.employee.employeeId, pin);
+      setStatusData(fresh);
+    } catch (err) {
+      setStaleError(extractErrorMessage(err, "Failed to close shift. Please try again."));
+    } finally {
+      setClosingStale(false);
     }
   }
 
@@ -655,7 +759,19 @@ export default function KioskPage() {
     return <IdEntryScreen onLookup={handleLookup} loading={lookupLoading} error={lookupError} />;
   }
   if (screen === "main" && statusData) {
-    return <MainScreen statusData={statusData} videoRef={videoRef} onCapture={handleCapture} onLogout={handleLogout} cameraReady={cameraReady} />;
+    return (
+      <MainScreen
+        statusData={statusData}
+        videoRef={videoRef}
+        onCapture={handleCapture}
+        onLogout={handleLogout}
+        cameraReady={cameraReady}
+        onCloseStale={handleCloseStale}
+        closingStale={closingStale}
+        staleError={staleError}
+        actionError={confirmError}
+      />
+    );
   }
   if (screen === "confirm" && statusData && photoUrl) {
     const isClockedIn = !!statusData.attendance && !statusData.attendance.clockOut;
