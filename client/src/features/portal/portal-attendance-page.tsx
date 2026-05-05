@@ -121,7 +121,7 @@ export default function PortalAttendancePage() {
         </div>
       </div>
 
-      <div className="px-4 pt-5 pb-6 space-y-4">
+      <div className="px-4 pt-5 pb-24 space-y-4">
         {/* Date range filter */}
         <div className="flex items-center gap-2">
           <input

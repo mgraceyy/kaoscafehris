@@ -119,7 +119,7 @@ function WeeklyView({
           <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
         </div>
       ) : (
-        <div className="px-4 pb-6 space-y-3">
+        <div className="px-4 pb-24 space-y-3">
           {days.map((d) => {
             const key = ymd(d);
             const shifts = shiftsByDay.get(key) ?? [];
@@ -252,7 +252,7 @@ function MonthlyView({
         </button>
       </div>
 
-      <div className="px-4 pb-6">
+      <div className="px-4 pb-24">
         {/* Day headers */}
         <div className="grid grid-cols-7 mb-1">
           {DAY_SHORT.map((d) => (

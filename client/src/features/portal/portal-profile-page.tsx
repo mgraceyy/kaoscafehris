@@ -138,7 +138,7 @@ function ChangePasswordSheet({ onClose }: { onClose: () => void }) {
   const inputClass = "w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700";
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col overflow-hidden bg-white">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-white">
       <div className="flex items-center justify-between px-5 pt-14 pb-5" style={{ backgroundColor: BRAND }}>
         <h2 className="text-xl font-bold text-white">Change Password</h2>
         <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white">
@@ -292,7 +292,7 @@ export default function PortalProfilePage() {
         <p className="text-white/70 text-sm">{emp?.position ?? profile?.role}</p>
       </div>
 
-      <div className="px-4 pt-5 pb-10 space-y-4">
+      <div className="px-4 pt-5 pb-24 space-y-4">
         {/* Personal Information */}
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between mb-3">

@@ -81,7 +81,7 @@ export default function PortalHomePage() {
         </div>
       </div>
 
-      <div className="px-4 py-5 space-y-6">
+      <div className="px-4 pt-5 pb-24 space-y-6">
         {/* Today's Shift */}
         <div className="animate-fade-up stagger-2 bg-white rounded-2xl p-5 shadow-sm" style={{ borderLeft: `4px solid ${BRAND}` }}>
           <div className="flex items-center justify-between mb-3">

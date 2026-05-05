@@ -13,11 +13,18 @@ export async function sendMail(opts: {
   subject: string;
   html: string;
 }) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
-  await transporter.sendMail({
-    from: `"HRIS" <${process.env.EMAIL_USER}>`,
-    to: Array.isArray(opts.to) ? opts.to.join(", ") : opts.to,
-    subject: opts.subject,
-    html: opts.html,
-  });
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.error("[email] EMAIL_USER or EMAIL_PASS is not set — skipping email send");
+    return;
+  }
+  try {
+    await transporter.sendMail({
+      from: `"HRIS" <${process.env.EMAIL_USER}>`,
+      to: Array.isArray(opts.to) ? opts.to.join(", ") : opts.to,
+      subject: opts.subject,
+      html: opts.html,
+    });
+  } catch (err) {
+    console.error("[email] Failed to send email:", err);
+  }
 }
