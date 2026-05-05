@@ -457,6 +457,51 @@ export async function processRun(id: string) {
     });
   }
 
+  // Supplemental holiday-pay boundary lookup: if any holiday falls on the very first day of
+  // the period, the overnight shift that crosses into it started the day before the period —
+  // outside the main query range. Fetch that one extra day so the overnight-shift credit
+  // logic works for every holiday, including those at the period boundary.
+  const dayBeforePeriod = new Date(run.periodStart);
+  dayBeforePeriod.setUTCDate(dayBeforePeriod.getUTCDate() - 1);
+  const dayBeforePeriodKey = dayBeforePeriod.toISOString().slice(0, 10);
+
+  const hasHolidayOnPeriodStart = periodHolidays.some(
+    (h) => h.date.toISOString().slice(0, 10) === run.periodStart.toISOString().slice(0, 10),
+  );
+
+  if (hasHolidayOnPeriodStart) {
+    const [boundaryShifts, boundaryAttendance] = await Promise.all([
+      prisma.shiftAssignment.findMany({
+        where: { employeeId: { in: employeeIds }, shift: { date: dayBeforePeriod } },
+        select: { employeeId: true, shift: { select: { startTime: true, endTime: true } } },
+      }),
+      prisma.attendance.findMany({
+        where: { employeeId: { in: employeeIds }, date: dayBeforePeriod },
+        select: { employeeId: true, hoursWorked: true, lateMinutes: true, source: true },
+      }),
+    ]);
+
+    for (const sa of boundaryShifts) {
+      const startMs = sa.shift.startTime.getTime();
+      const endMs = sa.shift.endTime.getTime();
+      if (endMs < startMs) {
+        if (!overnightShiftDates.has(sa.employeeId)) overnightShiftDates.set(sa.employeeId, new Set());
+        overnightShiftDates.get(sa.employeeId)!.add(dayBeforePeriodKey);
+      }
+    }
+
+    for (const rec of boundaryAttendance) {
+      if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
+      // Don't overwrite if already present (shouldn't happen, but guard anyway).
+      if (!attendanceDateMap.get(rec.employeeId)!.has(dayBeforePeriodKey)) {
+        attendanceDateMap.get(rec.employeeId)!.set(dayBeforePeriodKey, {
+          hoursWorked: toNum(rec.hoursWorked),
+          lateMinutes: rec.lateMinutes ?? 0,
+        });
+      }
+    }
+  }
+
   // Approved UNPAID leave days per employee within the payroll period.
   const unpaidLeaveRows = await prisma.leaveRequest.findMany({
     where: {
