@@ -28,7 +28,7 @@ export function Dialog({ open, onOpenChange, children, className }: DialogProps)
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-10 sm:items-center sm:pt-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <button
         type="button"
         aria-label="Close dialog"
@@ -38,18 +38,20 @@ export function Dialog({ open, onOpenChange, children, className }: DialogProps)
       <div
         role="dialog"
         aria-modal="true"
-        className={cn("relative z-10 w-full max-w-lg rounded-lg border bg-card p-6 text-card-foreground shadow-xl", className)}
+        className={cn("relative z-10 flex w-full max-w-lg flex-col rounded-lg border bg-card text-card-foreground shadow-xl max-h-[90vh]", className)}
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="absolute right-4 top-4 z-10 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           onClick={() => onOpenChange(false)}
           aria-label="Close"
         >
           <X className="h-4 w-4" />
         </button>
-        {children}
+        <div className="overflow-y-auto p-6">
+          {children}
+        </div>
       </div>
     </div>,
     document.body
