@@ -521,8 +521,20 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
       }
     }
   } else {
-    // Status was explicitly set; keep provided lateMinutes if any, else clear.
-    data.lateMinutes = input.lateMinutes ?? null;
+    data.status = input.status;
+    if (input.status === "LATE" && shift) {
+      // Recompute lateMinutes from the updated clock-in; admin-provided value takes precedence.
+      if (input.lateMinutes !== undefined) {
+        data.lateMinutes = input.lateMinutes;
+      } else {
+        const { scheduledStart } = getScheduledTimes(nextDate, shift, tzOffset);
+        const delta = computeLateMinutes(scheduledStart, nextClockIn);
+        data.lateMinutes = delta > 0 ? delta : null;
+      }
+    } else {
+      // Non-LATE status or no shift: no late deduction.
+      data.lateMinutes = input.lateMinutes ?? null;
+    }
   }
 
   return prisma.attendance.update({

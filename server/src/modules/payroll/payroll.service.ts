@@ -534,7 +534,7 @@ export async function processRun(id: string) {
       const dayMs   = 24 * 3_600_000;
       const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
       const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
-      const localOutDateKey = new Date(localOutDay * dayMs - tzOffMs).toISOString().slice(0, 10);
+      const localOutDateKey = new Date(localOutDay * dayMs).toISOString().slice(0, 10);
       const isCrossing = localInDay !== localOutDay;
       // Crossing: hours from local midnight of clock-out date to actual clock-out (e.g. 7hr for
       //   a 3rd shift ending 7AM). Same-day: countedHrs (break-adjusted, consistent with pay calc).
@@ -601,7 +601,7 @@ export async function processRun(id: string) {
           const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
           const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
           if (localInDay !== localOutDay) {
-            const localOutDateKey = new Date(localOutDay * dayMs - tzOffMs).toISOString().slice(0, 10);
+            const localOutDateKey = new Date(localOutDay * dayMs).toISOString().slice(0, 10);
             const midnightUTC = localOutDay * dayMs - tzOffMs;
             const hoursOnDate = Math.max(0, round2((rec.clockOut.getTime() - midnightUTC) / 3_600_000));
             if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
