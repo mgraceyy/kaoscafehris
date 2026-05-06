@@ -587,20 +587,17 @@ export async function processRun(id: string) {
           lateMinutes: effectiveLate,
           isOvernight,
         });
-        // Carry boundary late minutes into the period's deduction accumulator so
-        // a late-deduction line appears in the payslip.
-        if (effectiveLate > 0) {
-          lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + effectiveLate);
-        }
-
-        // If this boundary shift crosses into the holiday (local clock-out date = period start),
-        // add a crossing entry to holidayAttMap so holiday pay is correctly credited.
+        // Only crossing (overnight) shifts carry into this period's deductions and holiday map.
+        // Same-day April 30 shifts belong to the previous payroll period and must not be double-counted.
         if (rec.clockOut) {
           const tzOffMs = tzOffsetMinutes * 60_000;
           const dayMs   = 24 * 3_600_000;
           const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
           const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
           if (localInDay !== localOutDay) {
+            if (effectiveLate > 0) {
+              lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + effectiveLate);
+            }
             const localOutDateKey = new Date(localOutDay * dayMs).toISOString().slice(0, 10);
             const midnightUTC = localOutDay * dayMs - tzOffMs;
             const hoursOnDate = Math.max(0, round2((rec.clockOut.getTime() - midnightUTC) / 3_600_000));
