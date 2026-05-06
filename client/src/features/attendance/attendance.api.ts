@@ -2,6 +2,7 @@ import api from "@/lib/api";
 
 export type AttendanceStatus = "PRESENT" | "LATE" | "ABSENT" | "HALF_DAY";
 export type SyncStatus = "PENDING" | "SYNCED" | "FAILED";
+export type AttendanceSource = "KIOSK" | "MANUAL";
 
 export interface AttendanceRecord {
   id: string;
@@ -21,6 +22,7 @@ export interface AttendanceRecord {
   selfieOut: string | null;
   deviceId: string | null;
   localRecordId: string | null;
+  source: AttendanceSource;
   syncStatus: SyncStatus;
   createdAt: string;
   updatedAt: string;

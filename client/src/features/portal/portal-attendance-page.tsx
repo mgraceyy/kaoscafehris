@@ -93,9 +93,16 @@ function AttendanceCard({ record }: { record: PortalAttendance }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5">
-        <Building2 className="h-4 w-4 text-gray-400 shrink-0" />
-        <span className="text-sm text-gray-600">{record.branch.name}</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <Building2 className="h-4 w-4 text-gray-400 shrink-0" />
+          <span className="text-sm text-gray-600">{record.branch.name}</span>
+        </div>
+        {record.source === "MANUAL" && (
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-blue-50 text-blue-500 ring-1 ring-inset ring-blue-200">
+            Manual Entry
+          </span>
+        )}
       </div>
     </div>
   );

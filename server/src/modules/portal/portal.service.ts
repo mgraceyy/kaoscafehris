@@ -194,6 +194,7 @@ export async function getAttendanceHistory(
       lateMinutes: true,
       undertimeMinutes: true,
       remarks: true,
+      source: true,
       branch: { select: { id: true, name: true } },
     },
     orderBy: [{ date: "desc" }, { clockIn: "desc" }],

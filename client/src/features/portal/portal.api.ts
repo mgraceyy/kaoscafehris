@@ -84,6 +84,7 @@ export interface PortalAttendance {
   lateMinutes: number | null;
   undertimeMinutes: number | null;
   remarks: string | null;
+  source: "KIOSK" | "MANUAL";
   branch: PortalBranch;
 }
 

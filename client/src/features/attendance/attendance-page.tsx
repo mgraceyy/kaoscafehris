@@ -342,9 +342,16 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
                     {r.clockOut ? formatClockTime(r.clockOut, companyTimezone) : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-5 py-4">
-                    {!r.hasShift && r.clockOut
-                      ? <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500">No Shift</span>
-                      : <StatusBadge status={r.status} hasClockOut={!!r.clockOut} />}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {!r.hasShift && r.clockOut
+                        ? <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500">No Shift</span>
+                        : <StatusBadge status={r.status} hasClockOut={!!r.clockOut} />}
+                      {r.source === "MANUAL" && (
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-blue-50 text-blue-500 ring-1 ring-inset ring-blue-200">
+                          Manual
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
