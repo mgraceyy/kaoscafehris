@@ -326,7 +326,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
 
   const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-    getSetting<number>("attendance.late_grace_minutes", 5),
+    getSetting<number>("attendance.late_grace_minutes", 0),
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, clockInAt);
@@ -482,7 +482,7 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
 
   const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-    getSetting<number>("attendance.late_grace_minutes", 5),
+    getSetting<number>("attendance.late_grace_minutes", 0),
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, nextClockIn);
@@ -558,7 +558,7 @@ export async function manualCreate(input: ManualCreateInput) {
 
   const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-    getSetting<number>("attendance.late_grace_minutes", 5),
+    getSetting<number>("attendance.late_grace_minutes", 0),
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, clockInAt);
