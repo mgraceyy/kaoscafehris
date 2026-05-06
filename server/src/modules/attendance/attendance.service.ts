@@ -231,12 +231,33 @@ export async function listAttendance(query: ListAttendanceQuery) {
     if (query.endDate) where.date.lte = dateOnly(query.endDate);
   }
 
-  return prisma.attendance.findMany({
+  const records = await prisma.attendance.findMany({
     where,
     include: attendanceInclude,
     orderBy: [{ date: "desc" }, { clockIn: "desc" }],
     take: 500,
   });
+
+  if (records.length === 0) return records.map((r) => ({ ...r, hasShift: false }));
+
+  // Collect unique dates to query shift assignments in one batch
+  const uniqueDates = [...new Set(records.map((r) => r.date.toISOString().slice(0, 10)))];
+  const assignments = await prisma.shiftAssignment.findMany({
+    where: {
+      shift: { date: { in: uniqueDates.map((d) => dateOnly(d)) } },
+      ...(query.employeeId ? { employeeId: query.employeeId } : {}),
+    },
+    select: { employeeId: true, shift: { select: { date: true } } },
+  });
+
+  const shiftKeys = new Set(
+    assignments.map((a) => `${a.employeeId}:${a.shift.date.toISOString().slice(0, 10)}`),
+  );
+
+  return records.map((r) => ({
+    ...r,
+    hasShift: shiftKeys.has(`${r.employeeId}:${r.date.toISOString().slice(0, 10)}`),
+  }));
 }
 
 export async function getAttendance(id: string) {

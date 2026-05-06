@@ -32,6 +32,7 @@ export interface AttendanceRecord {
     position: string;
   };
   branch: { id: string; name: string };
+  hasShift: boolean;
 }
 
 export interface AdjustAttendanceInput {
