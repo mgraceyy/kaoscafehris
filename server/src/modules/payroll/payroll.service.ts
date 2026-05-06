@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { logAudit } from "../../lib/audit.js";
+import { getScheduledTimes } from "../attendance/attendance.service.js";
 import type {
   AdjustPayslipInput,
   CreatePayrollRunInput,
@@ -301,7 +302,7 @@ export async function processRun(id: string) {
   const otRatePerHour          = getSetting("payroll.regular_ot_rate", 0);
   const lateDeductionPerMinute = getSetting("payroll.late_deduction_per_minute", 0);
   const nightDiffPct           = getSetting("payroll.night_diff_rate", 0); // percentage, e.g. 10 = 10%
-  const lateThresholdMinutes = getSetting("attendance.late_threshold", 15);
+  const lateThresholdMinutes = getSetting("attendance.late_threshold", 0); // 0 = no grace period if not configured
 
   // Parse UTC offset from the company timezone setting (e.g., "Asia/Manila (UTC+8)" → 480).
   const tzRaw = getStringSetting("company.timezone", "Asia/Manila (UTC+8)");
@@ -334,11 +335,13 @@ export async function processRun(id: string) {
     select: { employeeId: true, date: true },
   });
 
-  // scheduledDatesMap: empId → Set of dateKeys with a shift assignment.
-  // scheduledHoursMap: empId → dateKey → scheduled shift duration (hours).
+  // scheduledDatesMap:    empId → Set of dateKeys with a shift assignment.
+  // scheduledHoursMap:    empId → dateKey → scheduled shift duration (hours).
+  // scheduledShiftEndMap: empId → dateKey → scheduled shift end (UTC Date).
   // overtimeApprovedDatesMap: empId → Set of dateKeys where OT is approved.
   const scheduledDatesMap = new Map<string, Set<string>>();
   const scheduledHoursMap = new Map<string, Map<string, number>>();
+  const scheduledShiftEndMap = new Map<string, Map<string, Date>>();
   const overtimeApprovedDatesMap = new Map<string, Set<string>>();
 
   for (const sa of shiftAssignments) {
@@ -357,6 +360,10 @@ export async function processRun(id: string) {
     if (!scheduledHoursMap.has(sa.employeeId)) scheduledHoursMap.set(sa.employeeId, new Map());
     const prev = scheduledHoursMap.get(sa.employeeId)!.get(dateKey) ?? 0;
     if (shiftHrs > prev) scheduledHoursMap.get(sa.employeeId)!.set(dateKey, shiftHrs);
+
+    if (!scheduledShiftEndMap.has(sa.employeeId)) scheduledShiftEndMap.set(sa.employeeId, new Map());
+    const { scheduledEnd } = getScheduledTimes(sa.shift.date, sa.shift, tzOffsetMinutes);
+    scheduledShiftEndMap.get(sa.employeeId)!.set(dateKey, scheduledEnd);
 
     // Pre-approved OT on the shift assignment itself.
     if (sa.overtimeApproved) {
@@ -441,7 +448,13 @@ export async function processRun(id: string) {
     hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + countedHrs);
     lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + (rec.lateMinutes ?? 0));
 
-    const ndHrs = computeNightDiffHours(rec.clockIn, rec.clockOut);
+    // Cap clockOut at scheduled shift end for night diff so excess minutes beyond
+    // the shift (when OT is not approved) are not credited as night differential.
+    const shiftEnd = scheduledShiftEndMap.get(rec.employeeId)?.get(dateKey);
+    const ndClockOut = (!isOtApproved && rec.clockOut && shiftEnd && rec.clockOut > shiftEnd)
+      ? shiftEnd
+      : rec.clockOut;
+    const ndHrs = computeNightDiffHours(rec.clockIn, ndClockOut);
     if (ndHrs > 0) {
       nightDiffHoursMap.set(rec.employeeId, (nightDiffHoursMap.get(rec.employeeId) ?? 0) + ndHrs);
     }
@@ -644,7 +657,9 @@ export async function processRun(id: string) {
             if (!att) return null;
 
             // Holiday pay covers the first 8 hours only; minutes late reduce eligible hours.
-            const eligibleHours = Math.max(0, 8 - att.lateMinutes / 60);
+            // Also cap by actual hours worked so a late overnight shift (where lateMinutes may be
+            // 0 due to date-mismatch in calculation) doesn't inflate the credit beyond real time.
+            const eligibleHours = Math.max(0, Math.min(att.hoursWorked, 8 - att.lateMinutes / 60));
             const prorationFactor = round2(eligibleHours / 8);
 
             const pct = toNum(h.percentage);
@@ -700,7 +715,9 @@ export async function processRun(id: string) {
         amount: round2(toNum(ed.amount ?? ed.deduction.amount)),
       }));
 
-      // Auto-compute late deduction: only minutes exceeding the late threshold are charged.
+      // Auto-compute late deduction: only minutes exceeding the configured late threshold are
+      // charged, at the rate set in payroll.late_deduction_per_minute. Both must be configured
+      // in settings — no defaults are assumed.
       const totalLateMinutes = lateMinutesMap.get(emp.id) ?? 0;
       const deductibleMinutes = Math.max(0, totalLateMinutes - lateThresholdMinutes);
       if (lateDeductionPerMinute > 0 && deductibleMinutes > 0) {

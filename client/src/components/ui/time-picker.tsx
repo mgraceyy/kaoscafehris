@@ -29,20 +29,33 @@ function toHHMM(h: number, m: number, period: "AM" | "PM"): string {
   return `${String(hour24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-interface DropdownPos { top: number; left: number; width: number; openUp: boolean }
+function parseTypedTime(text: string, fallbackPeriod: "AM" | "PM"): { h: number; m: number; p: "AM" | "PM" } | null {
+  const match = text.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/i);
+  if (!match) return null;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const p = (match[3]?.toUpperCase() as "AM" | "PM") ?? fallbackPeriod;
+  if (h < 1 || h > 12 || m < 0 || m > 59) return null;
+  return { h, m, p };
+}
 
-const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
+interface DropdownPos { top: number; left: number; width: number }
+
+const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
   ({ value, onChange, disabled, id, className }, ref) => {
     const [open, setOpen] = React.useState(false);
     const [pos, setPos] = React.useState<DropdownPos | null>(null);
     const [hour, setHour] = React.useState<number>(() => parseHHMM(value).h);
     const [minute, setMinute] = React.useState<number>(() => parseHHMM(value).m);
     const [period, setPeriod] = React.useState<"AM" | "PM">(() => parseHHMM(value).period);
-    const triggerRef = React.useRef<HTMLButtonElement>(null);
+    const [inputText, setInputText] = React.useState<string>("");
+    const [isEditing, setIsEditing] = React.useState(false);
+
+    const inputRef = React.useRef<HTMLInputElement>(null);
+    const wrapperRef = React.useRef<HTMLDivElement>(null);
     const dropdownRef = React.useRef<HTMLDivElement>(null);
 
-    // Merge forwarded ref with internal ref.
-    React.useImperativeHandle(ref, () => triggerRef.current!);
+    React.useImperativeHandle(ref, () => inputRef.current!);
 
     // Sync internal state when controlled value changes.
     React.useEffect(() => {
@@ -52,15 +65,12 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
       setPeriod(p.period);
     }, [value]);
 
-    // Close on outside click.
+    // Close dropdown on outside click.
     React.useEffect(() => {
       if (!open) return;
       function handler(e: MouseEvent) {
         const target = e.target as Node;
-        if (
-          triggerRef.current?.contains(target) ||
-          dropdownRef.current?.contains(target)
-        ) return;
+        if (wrapperRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
         setOpen(false);
       }
       document.addEventListener("mousedown", handler);
@@ -76,15 +86,9 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
     }, [open]);
 
     function openDropdown() {
-      if (!triggerRef.current) return;
-      const rect = triggerRef.current.getBoundingClientRect();
-      const openUp = false;
-      setPos({
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-        openUp,
-      });
+      if (!wrapperRef.current) return;
+      const rect = wrapperRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
       setOpen(true);
     }
 
@@ -94,11 +98,39 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
 
     function selectHour(h: number) { setHour(h); emit(h, minute, period); }
     function selectMinute(m: number) { setMinute(m); emit(hour, m, period); }
-    function selectPeriod(p: "AM" | "PM") { setPeriod(p); emit(hour, minute, p); }
+    function selectPeriod(p: "AM" | "PM") { setPeriod(p); emit(hour, minute, p); setOpen(false); }
+
+    function handleFocus() {
+      const display = value
+        ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`
+        : "";
+      setInputText(display);
+      setIsEditing(true);
+    }
+
+    function commitInput(text: string) {
+      const parsed = parseTypedTime(text, period);
+      if (parsed) {
+        setHour(parsed.h);
+        setMinute(parsed.m);
+        setPeriod(parsed.p);
+        emit(parsed.h, parsed.m, parsed.p);
+      }
+      setIsEditing(false);
+    }
+
+    function handleBlur() {
+      commitInput(inputText);
+    }
+
+    function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+      if (e.key === "Enter") { e.preventDefault(); commitInput(inputText); inputRef.current?.blur(); }
+      if (e.key === "Escape") { setIsEditing(false); inputRef.current?.blur(); }
+    }
 
     const displayValue = value
       ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`
-      : "Select time";
+      : "";
 
     const dropdown = open && pos
       ? ReactDOM.createPortal(
@@ -150,7 +182,7 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
                   <button
                     key={p}
                     type="button"
-                    onClick={() => { selectPeriod(p); setOpen(false); }}
+                    onClick={() => selectPeriod(p)}
                     className={cn(
                       "px-2 py-1.5 text-xs font-medium hover:bg-muted transition-colors",
                       p === period && "bg-primary text-primary-foreground hover:bg-primary/90"
@@ -167,21 +199,31 @@ const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
       : null;
 
     return (
-      <div className={cn("relative", className)}>
-        <button
-          ref={triggerRef}
+      <div ref={wrapperRef} className={cn("relative flex h-10 w-full items-center rounded-md border border-input bg-background ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2", disabled && "cursor-not-allowed opacity-50", className)}>
+        <input
+          ref={inputRef}
           id={id}
+          type="text"
+          disabled={disabled}
+          placeholder="hh:mm AM/PM"
+          value={isEditing ? inputText : displayValue}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="flex-1 bg-transparent px-3 py-2 text-sm tabular-nums outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+        />
+        <button
           type="button"
           disabled={disabled}
-          onClick={() => (open ? setOpen(false) : openDropdown())}
-          className={cn(
-            "flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            value ? "text-foreground" : "text-muted-foreground"
-          )}
+          onMouseDown={(e) => {
+            // Prevent the input from losing focus and triggering blur commit prematurely.
+            e.preventDefault();
+            open ? setOpen(false) : openDropdown();
+          }}
+          className="px-2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed"
+          tabIndex={-1}
         >
-          <span className="flex-1 text-left tabular-nums">{displayValue}</span>
           <svg className="h-4 w-4 opacity-50 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <polyline points="12 6 12 12 16 14" />
