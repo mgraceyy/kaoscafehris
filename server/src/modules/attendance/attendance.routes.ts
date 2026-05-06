@@ -52,6 +52,7 @@ router.post("/:id/clock-out", validate(clockOutSchema), attendanceController.clo
 router.post("/sync", validate(syncBatchSchema), attendanceController.sync);
 
 router.get("/", authorize("ADMIN", "MANAGER"), attendanceController.list);
+router.get("/assigned-shift", authorize("ADMIN", "MANAGER"), attendanceController.assignedShift);
 router.get("/:id", authorize("ADMIN", "MANAGER"), attendanceController.getById);
 router.put(
   "/:id",

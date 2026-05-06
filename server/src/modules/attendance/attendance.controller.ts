@@ -28,6 +28,17 @@ export async function getById(
   }
 }
 
+export async function assignedShift(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { employeeId, date } = req.query as { employeeId?: string; date?: string };
+    if (!employeeId || !date) throw new AppError(400, "employeeId and date are required");
+    const data = await attendanceService.getAssignedShift(employeeId, date);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function clockIn(req: Request, res: Response, next: NextFunction) {
   try {
     const data = await attendanceService.clockIn(req.body);

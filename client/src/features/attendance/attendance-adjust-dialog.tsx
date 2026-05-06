@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,7 @@ import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import {
   adjustAttendance,
+  getAssignedShift,
   type AdjustAttendanceInput,
   type AttendanceRecord,
 } from "./attendance.api";
@@ -57,6 +58,13 @@ function isoToDateStr(iso: string | null): string {
   const mo = parts.find((p) => p.type === "month")?.value ?? "01";
   const d = parts.find((p) => p.type === "day")?.value ?? "01";
   return `${y}-${mo}-${d}`;
+}
+
+function fmtShiftTime(iso: string): string {
+  // Shift times come as UTC Date objects serialized to ISO — only the time portion matters.
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric", minute: "2-digit", hour12: true, timeZone: "UTC",
+  });
 }
 
 /** Extract HH:mm in the company timezone so it matches the +08:00 offset used by toIso(). */
@@ -131,6 +139,12 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
       onOpenChange(false);
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const shiftQuery = useQuery({
+    queryKey: ["assigned-shift", record?.employeeId, record?.date.slice(0, 10)],
+    queryFn: () => getAssignedShift(record!.employeeId, record!.date.slice(0, 10)),
+    enabled: open && !!record,
   });
 
   return (
@@ -228,6 +242,17 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
             <p className="text-xs text-muted-foreground">
               Leave blank if still clocked in. If earlier than clock-in, treated as next day.
             </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Assigned Shift</Label>
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+            {shiftQuery.isLoading
+              ? <span className="text-muted-foreground italic">Loading…</span>
+              : shiftQuery.data
+                ? <span>{shiftQuery.data.name} &middot; {fmtShiftTime(shiftQuery.data.startTime)} – {fmtShiftTime(shiftQuery.data.endTime)}</span>
+                : <span className="text-muted-foreground italic">No shift assigned</span>}
           </div>
         </div>
 

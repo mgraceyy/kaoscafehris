@@ -101,6 +101,22 @@ export async function deleteAttendance(id: string): Promise<void> {
   await api.delete(`/attendance/${id}`);
 }
 
+export interface AssignedShift {
+  name: string;
+  startTime: string;
+  endTime: string;
+}
+
+export async function getAssignedShift(
+  employeeId: string,
+  date: string
+): Promise<AssignedShift | null> {
+  const { data } = await api.get<{ data: AssignedShift | null }>("/attendance/assigned-shift", {
+    params: { employeeId, date },
+  });
+  return data.data;
+}
+
 export function formatClockTime(iso: string | null, timeZone = "Asia/Manila"): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-US", {

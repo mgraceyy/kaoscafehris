@@ -269,6 +269,15 @@ export async function getAttendance(id: string) {
   return record;
 }
 
+export async function getAssignedShift(employeeId: string, date: string) {
+  const assignment = await prisma.shiftAssignment.findFirst({
+    where: { employeeId, shift: { date: dateOnly(date) } },
+    include: { shift: { select: { name: true, startTime: true, endTime: true } } },
+    orderBy: { shift: { startTime: "asc" } },
+  });
+  return assignment?.shift ?? null;
+}
+
 /**
  * Clock-in creates a new attendance record for today. Rejects if one already
  * exists for the employee on the same date (unique constraint makes this
