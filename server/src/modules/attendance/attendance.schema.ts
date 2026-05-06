@@ -17,6 +17,7 @@ export const clockInSchema = z.object({
 export const clockOutSchema = z.object({
   clockOut: isoDateTime.optional(),
   selfieOut: z.string().url().optional(),
+  clockOutNote: z.string().max(500).optional(),
 });
 
 export const manualAdjustSchema = z.object({

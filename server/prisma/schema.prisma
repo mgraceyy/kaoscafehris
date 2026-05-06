@@ -381,7 +381,8 @@ model Attendance {
   lateMinutes    Int?         // minutes late vs. scheduled start
   undertimeMinutes Int?       // minutes left early vs. scheduled end
 
-  remarks    String?
+  remarks      String?
+  clockOutNote String?  // employee-entered note explaining early/late clock-out
 
   employee Employee @relation(fields: [employeeId], references: [id])
   branch   Branch   @relation(fields: [branchId], references: [id])

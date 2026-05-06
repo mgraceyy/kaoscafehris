@@ -207,6 +207,7 @@ const kioskClockInSchema = z.object({
 const kioskClockOutSchema = z.object({
   selfieOut: z.string().optional(),
   clockOut: z.string().datetime({ offset: true }).optional(),
+  clockOutNote: z.string().max(500).optional(),
   kioskPin: z.string().optional(),
 });
 
@@ -229,6 +230,7 @@ router.post("/clock-out/:attendanceId", async (req, res, next) => {
     const record = await attendanceService.clockOut(req.params.attendanceId, {
       selfieOut: body.selfieOut,
       clockOut: body.clockOut,
+      clockOutNote: body.clockOutNote,
     });
     res.json({ data: record });
   } catch (err) { next(err); }

@@ -16,6 +16,7 @@ export interface AttendanceRecord {
   lateMinutes: number | null;
   undertimeMinutes: number | null;
   remarks: string | null;
+  clockOutNote: string | null;
   selfieIn: string | null;
   selfieOut: string | null;
   deviceId: string | null;

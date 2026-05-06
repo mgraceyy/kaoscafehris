@@ -353,7 +353,7 @@ function MainScreen({
 // ─── Screen 3: Photo Confirmation ────────────────────────────────────────────
 
 function ConfirmScreen({
-  employee, photoUrl, isClockedIn, onRetake, onConfirm, loading,
+  employee, photoUrl, isClockedIn, onRetake, onConfirm, loading, clockOutNote, onClockOutNoteChange,
 }: {
   employee: KioskEmployee;
   photoUrl: string;
@@ -361,6 +361,8 @@ function ConfirmScreen({
   onRetake: () => void;
   onConfirm: () => void;
   loading: boolean;
+  clockOutNote: string;
+  onClockOutNoteChange: (v: string) => void;
 }) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -385,6 +387,28 @@ function ConfirmScreen({
           <div style={{ borderRadius: 14, overflow: "hidden", aspectRatio: "4/3", marginBottom: 16 }}>
             <img src={photoUrl} alt="Selfie" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
+
+          {isClockedIn && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginBottom: 6 }}>
+                Reason for clocking out (optional)
+              </div>
+              <textarea
+                value={clockOutNote}
+                onChange={(e) => onClockOutNoteChange(e.target.value)}
+                placeholder="e.g. Early dismissal, overtime approved…"
+                maxLength={500}
+                rows={3}
+                disabled={loading}
+                style={{
+                  width: "100%", borderRadius: 10, border: "1.5px solid #e5e5e5",
+                  padding: "10px 12px", fontSize: 13, color: NEAR_BLACK, resize: "none",
+                  outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                  background: loading ? "#f9f9f9" : "#fff",
+                }}
+              />
+            </div>
+          )}
 
           <div style={{ display: "flex", gap: 12, marginBottom: 18 }}>
             <button
@@ -619,6 +643,7 @@ export default function KioskPage() {
   const [recordedTime, setRecordedTime] = useState("");
   const [closingStale, setClosingStale] = useState(false);
   const [staleError, setStaleError] = useState("");
+  const [clockOutNote, setClockOutNote] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -686,6 +711,7 @@ export default function KioskPage() {
       setPhotoBlob(blob);
       setPhotoUrl(URL.createObjectURL(blob));
       setConfirmError("");
+      setClockOutNote("");
       const isClockedIn = !!statusData?.attendance && !statusData.attendance.clockOut;
       setActionWasClockIn(!isClockedIn);
       setScreen("confirm");
@@ -701,7 +727,7 @@ export default function KioskPage() {
       if (photoBlob) selfieUrl = await uploadKioskSelfie(photoBlob, pin);
       const isClockedIn = !!statusData.attendance && !statusData.attendance.clockOut;
       if (isClockedIn && statusData.attendance) {
-        await kioskClockOut(statusData.attendance.id, selfieUrl, pin);
+        await kioskClockOut(statusData.attendance.id, selfieUrl, pin, undefined, clockOutNote.trim() || undefined);
       } else {
         await kioskClockIn(statusData.employee.employeeId, selfieUrl, pin);
       }
@@ -736,6 +762,7 @@ export default function KioskPage() {
     setStatusData(null);
     setPhotoBlob(null);
     setPhotoUrl("");
+    setClockOutNote("");
     setScreen("id-entry");
   }
 
@@ -743,6 +770,7 @@ export default function KioskPage() {
     setStatusData(null);
     setPhotoBlob(null);
     setPhotoUrl("");
+    setClockOutNote("");
     setScreen("id-entry");
   }, []);
 
@@ -783,6 +811,8 @@ export default function KioskPage() {
         onRetake={() => setScreen("main")}
         onConfirm={handleConfirm}
         loading={confirmLoading}
+        clockOutNote={clockOutNote}
+        onClockOutNoteChange={setClockOutNote}
       />
     );
   }

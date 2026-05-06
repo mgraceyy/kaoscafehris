@@ -396,6 +396,7 @@ export async function clockOut(attendanceId: string, input: ClockOutInput) {
     data: {
       clockOut: clockOutAt,
       selfieOut: input.selfieOut,
+      clockOutNote: input.clockOutNote ?? undefined,
       hoursWorked,
       overtimeHours,
       undertimeMinutes: undertimeMinutes ?? undefined,

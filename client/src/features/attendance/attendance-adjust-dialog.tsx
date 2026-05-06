@@ -241,6 +241,15 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
           </Select>
         </div>
 
+        {record?.clockOutNote && (
+          <div className="space-y-2">
+            <Label>Employee Clock-out Note</Label>
+            <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+              {record.clockOutNote}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="remarks">Remarks</Label>
           <Textarea

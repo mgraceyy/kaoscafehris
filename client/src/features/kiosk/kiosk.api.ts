@@ -64,10 +64,11 @@ export async function kioskClockOut(
   selfieOut: string | undefined,
   pin: string,
   clockOut?: string,
+  clockOutNote?: string,
 ): Promise<KioskAttendance> {
   const { data } = await api.post<{ data: KioskAttendance }>(
     `/kiosk/clock-out/${attendanceId}`,
-    { selfieOut, clockOut, kioskPin: pin },
+    { selfieOut, clockOut, clockOutNote, kioskPin: pin },
     { headers: h(pin) }
   );
   return data.data;

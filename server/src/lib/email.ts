@@ -14,9 +14,9 @@ export async function sendMail(opts: {
   }
 
   const { error } = await resend.emails.send({
-    from: "KAOS HRIS <hris@xn--kaoscaf-hya.com>",
+    from: "KAOS HRIS <kaoshris@xn--kaoscaf-hya.com>",
     to: Array.isArray(opts.to) ? opts.to : [opts.to],
-    reply_to: opts.replyTo,
+    replyTo: opts.replyTo,
     subject: opts.subject,
     html: opts.html,
   });
