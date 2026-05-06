@@ -36,6 +36,15 @@ export async function pingKiosk(): Promise<void> {
   await api.get("/kiosk/ping");
 }
 
+export async function validateKioskPin(pin: string): Promise<boolean> {
+  try {
+    await api.get("/kiosk/validate-pin", { headers: h(pin) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getKioskStatus(employeeId: string, pin: string): Promise<KioskStatusData> {
   const { data } = await api.get<{ data: KioskStatusData }>(`/kiosk/status/${employeeId}`, { headers: h(pin) });
   return data.data;

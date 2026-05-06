@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, AlertTriangle, Building2, CheckCircle2, Clock, LogOut, RefreshCw, User, XCircle } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import {
-  getKioskStatus, kioskClockIn, kioskClockOut, pingKiosk, uploadKioskSelfie,
+  getKioskStatus, kioskClockIn, kioskClockOut, pingKiosk, uploadKioskSelfie, validateKioskPin,
   type KioskAttendance, type KioskEmployee, type KioskShift, type KioskStatusData,
 } from "./kiosk.api";
 
@@ -595,11 +595,20 @@ function BlockedScreen() {
 function PinSetupScreen({ onDone }: { onDone: (pin: string) => void }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
-  function submit() {
-    if (pin.trim().length < 4) { setError("PIN must be at least 4 characters"); return; }
-    localStorage.setItem(PIN_KEY, pin.trim());
-    onDone(pin.trim());
+  const [loading, setLoading] = useState(false);
+
+  async function submit() {
+    const trimmed = pin.trim();
+    if (trimmed.length < 4) { setError("PIN must be at least 4 characters"); return; }
+    setLoading(true);
+    setError("");
+    const valid = await validateKioskPin(trimmed);
+    setLoading(false);
+    if (!valid) { setError("Incorrect PIN. Please try again."); return; }
+    localStorage.setItem(PIN_KEY, trimmed);
+    onDone(trimmed);
   }
+
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-8 gap-6"
       style={{ backgroundImage: "url('/login-bg.jpg')", backgroundSize: "cover", backgroundPosition: "center" }}>
@@ -613,12 +622,13 @@ function PinSetupScreen({ onDone }: { onDone: (pin: string) => void }) {
         <input
           type="password" placeholder="Enter kiosk PIN" value={pin}
           onChange={(e) => setPin(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          className="w-full rounded-full bg-white px-5 py-3 text-center text-sm text-gray-700 placeholder-gray-400 outline-none"
+          onKeyDown={(e) => e.key === "Enter" && !loading && submit()}
+          disabled={loading}
+          className="w-full rounded-full bg-white px-5 py-3 text-center text-sm text-gray-700 placeholder-gray-400 outline-none disabled:opacity-60"
         />
         {error && <p className="text-center text-xs text-red-300">{error}</p>}
-        <button onClick={submit} className="w-full rounded-full bg-white/20 py-3 text-sm font-medium text-white hover:bg-white/30">
-          Confirm PIN
+        <button onClick={submit} disabled={loading} className="w-full rounded-full bg-white/20 py-3 text-sm font-medium text-white hover:bg-white/30 disabled:opacity-60">
+          {loading ? "Verifying…" : "Confirm PIN"}
         </button>
       </div>
     </div>
@@ -692,7 +702,13 @@ export default function KioskPage() {
       const data = await getKioskStatus(empId, pin);
       setStatusData(data);
       setScreen("main");
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        localStorage.removeItem(PIN_KEY);
+        setPin("");
+        setScreen("pin-setup");
+        return;
+      }
       setLookupError(extractErrorMessage(err, "Employee not found"));
     } finally {
       setLookupLoading(false);

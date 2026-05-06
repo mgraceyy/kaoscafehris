@@ -211,6 +211,8 @@ const kioskClockOutSchema = z.object({
   kioskPin: z.string().optional(),
 });
 
+router.get("/validate-pin", (_req, res) => res.json({ ok: true }));
+
 router.post("/clock-in", async (req, res, next) => {
   try {
     const body = kioskClockInSchema.parse(req.body);
