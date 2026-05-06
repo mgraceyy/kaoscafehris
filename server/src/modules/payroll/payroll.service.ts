@@ -707,8 +707,8 @@ export async function processRun(id: string) {
     await tx.payslip.deleteMany({ where: { payrollRunId: run.id } });
 
     for (const emp of employees) {
-      // Skip employees with neither shift assignments nor any attendance in this period.
-      if (!scheduledDatesMap.has(emp.id) && !hoursWorkedMap.has(emp.id)) continue;
+      // Skip employees with no work in this period and no holiday pay from a crossing shift.
+      if (!scheduledDatesMap.has(emp.id) && !hoursWorkedMap.has(emp.id) && !holidayAttMap.has(emp.id)) continue;
 
       const totalOtHours = round2(otHoursMap.get(emp.id) ?? 0);
       const totalHoursWorked = round2(hoursWorkedMap.get(emp.id) ?? 0);
