@@ -269,6 +269,7 @@ export async function processRun(id: string) {
     where: { date: { gte: run.periodStart, lte: run.periodEnd } },
     select: { date: true, name: true, amount: true, percentage: true },
   });
+  const periodHolidayDateKeys = new Set(periodHolidays.map((h) => h.date.toISOString().slice(0, 10)));
 
   // OT rate setting.
   const settingRows = await prisma.systemSetting.findMany({
@@ -481,9 +482,10 @@ export async function processRun(id: string) {
     const dateKey = rec.date.toISOString().slice(0, 10);
     const hasShift = scheduledDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
 
-    // Kiosk records only count on days the employee has a scheduled shift.
+    // Kiosk records only count on scheduled days or public holidays (shift generation
+    // commonly excludes holidays, so no shift assignment exists even though the employee worked).
     // Admin-created (MANUAL) records are always counted regardless of schedule.
-    if (!hasShift && rec.source !== "MANUAL") continue;
+    if (!hasShift && rec.source !== "MANUAL" && !periodHolidayDateKeys.has(dateKey)) continue;
 
     const scheduledHrs = scheduledHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
     // If hoursWorked is null (clock-out not yet recorded) but a shift is scheduled,
@@ -625,7 +627,8 @@ export async function processRun(id: string) {
             if (!empHMap.has(localOutDateKey)) {
               empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: true });
             }
-            hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + hoursOnDate);
+            // Do NOT update hoursWorkedMap here: the April payroll already paid basic pay
+            // for the full crossing shift. Only the holiday premium belongs in May.
           }
         }
       }
