@@ -265,17 +265,21 @@ export async function listAttendance(query: ListAttendanceQuery) {
       shift: { date: { in: uniqueDates.map((d) => dateOnly(d)) } },
       ...(query.employeeId ? { employeeId: query.employeeId } : {}),
     },
-    select: { employeeId: true, shift: { select: { date: true } } },
+    select: { employeeId: true, shift: { select: { date: true, name: true } } },
   });
 
-  const shiftKeys = new Set(
-    assignments.map((a) => `${a.employeeId}:${a.shift.date.toISOString().slice(0, 10)}`),
+  const shiftMap = new Map(
+    assignments.map((a) => [`${a.employeeId}:${a.shift.date.toISOString().slice(0, 10)}`, a.shift.name]),
   );
 
-  return records.map((r) => ({
-    ...r,
-    hasShift: shiftKeys.has(`${r.employeeId}:${r.date.toISOString().slice(0, 10)}`),
-  }));
+  return records.map((r) => {
+    const key = `${r.employeeId}:${r.date.toISOString().slice(0, 10)}`;
+    return {
+      ...r,
+      hasShift: shiftMap.has(key),
+      shiftName: shiftMap.get(key) ?? null,
+    };
+  });
 }
 
 export async function getAttendance(id: string) {
@@ -507,8 +511,12 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
     data.undertimeMinutes = null;
   }
 
-  // Recompute late status from the (possibly updated) clockIn.
-  if (input.status === undefined) {
+  // ABSENT and HALF_DAY are admin-only overrides; LATE/PRESENT are always auto-computed.
+  if (input.status === "ABSENT" || input.status === "HALF_DAY") {
+    data.status = input.status;
+    data.lateMinutes = null;
+  } else {
+    // Auto-compute PRESENT vs LATE from clock-in vs scheduled shift start.
     if (shift) {
       const { scheduledStart } = getScheduledTimes(nextDate, shift, tzOffset);
       const delta = computeLateMinutes(scheduledStart, nextClockIn);
@@ -519,21 +527,9 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
         data.status = "PRESENT";
         data.lateMinutes = null;
       }
-    }
-  } else {
-    data.status = input.status;
-    if (input.status === "LATE" && shift) {
-      // Recompute lateMinutes from the updated clock-in; admin-provided value takes precedence.
-      if (input.lateMinutes !== undefined) {
-        data.lateMinutes = input.lateMinutes;
-      } else {
-        const { scheduledStart } = getScheduledTimes(nextDate, shift, tzOffset);
-        const delta = computeLateMinutes(scheduledStart, nextClockIn);
-        data.lateMinutes = delta > 0 ? delta : null;
-      }
     } else {
-      // Non-LATE status or no shift: no late deduction.
-      data.lateMinutes = input.lateMinutes ?? null;
+      data.status = "PRESENT";
+      data.lateMinutes = null;
     }
   }
 

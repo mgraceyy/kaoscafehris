@@ -35,6 +35,7 @@ export interface AttendanceRecord {
   };
   branch: { id: string; name: string };
   hasShift: boolean;
+  shiftName: string | null;
 }
 
 export interface AdjustAttendanceInput {

@@ -291,31 +291,33 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
             <tr style={{ borderBottom: "1px solid #F5EDED" }}>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Employee</th>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Role</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Branch</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Shift</th>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Date</th>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Time In</th>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Time Out</th>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Status</th>
-              <th className="px-5 py-3 w-10" />
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y" style={{ borderColor: "#F5EDED" }}>
             {query.isLoading && (
               <tr>
-                <td colSpan={7} className="py-12 text-center">
+                <td colSpan={9} className="py-12 text-center">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" />
                 </td>
               </tr>
             )}
             {query.isError && (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-sm text-red-500">
+                <td colSpan={9} className="py-12 text-center text-sm text-red-500">
                   {extractErrorMessage(query.error, "Failed to load attendance")}
                 </td>
               </tr>
             )}
             {!query.isLoading && records.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
+                <td colSpan={9} className="py-12 text-center text-sm text-gray-400">
                   No records match these filters.
                 </td>
               </tr>
@@ -334,6 +336,8 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
                     </div>
                   </td>
                   <td className="px-5 py-4 text-gray-600">{r.employee.position ?? "—"}</td>
+                  <td className="px-5 py-4 text-gray-600">{r.branch?.name ?? "—"}</td>
+                  <td className="px-5 py-4 text-gray-600">{r.shiftName ?? "—"}</td>
                   <td className="px-5 py-4 text-gray-600">{formatDate(r.date.slice(0, 10) + "T12:00:00Z")}</td>
                   <td className="px-5 py-4 tabular-nums font-medium text-gray-800">
                     {formatClockTime(r.clockIn, companyTimezone)}

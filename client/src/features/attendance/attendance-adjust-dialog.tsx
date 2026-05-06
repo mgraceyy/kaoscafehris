@@ -30,7 +30,7 @@ const schema = z.object({
   date: z.string().min(1, "Required"),
   clockInTime: z.string().min(1, "Required"),
   clockOutTime: z.string().optional(),
-  status: z.enum(["PRESENT", "LATE", "ABSENT", "HALF_DAY"]),
+  status: z.enum(["AUTO", "ABSENT", "HALF_DAY"]),
   remarks: z.string().max(500).optional(),
 });
 
@@ -101,7 +101,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
       date: "",
       clockInTime: "",
       clockOutTime: "",
-      status: "PRESENT",
+      status: "AUTO",
       remarks: "",
     },
   });
@@ -113,7 +113,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
       date: isoToDateStr(record.clockIn),
       clockInTime: isoToTimeStr(record.clockIn),
       clockOutTime: isoToTimeStr(record.clockOut),
-      status: record.status,
+      status: (record.status === "ABSENT" || record.status === "HALF_DAY") ? record.status : "AUTO",
       remarks: record.remarks ?? "",
     });
   }, [open, record, reset]);
@@ -128,7 +128,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
       const payload: AdjustAttendanceInput = {
         clockIn: toIso(values.date, values.clockInTime),
         clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime) : null,
-        status: values.status,
+        status: values.status === "AUTO" ? undefined : values.status,
         remarks: values.remarks?.trim() ? values.remarks : null,
       };
       return adjustAttendance(record.id, payload);
@@ -257,13 +257,15 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="status">Status</Label>
+          <Label htmlFor="status">Status Override</Label>
           <Select id="status" {...register("status")}>
-            <option value="PRESENT">Present</option>
-            <option value="LATE">Late</option>
+            <option value="AUTO">Auto (Late / Present)</option>
             <option value="ABSENT">Absent</option>
             <option value="HALF_DAY">Half-day</option>
           </Select>
+          <p className="text-xs text-muted-foreground">
+            Auto computes Late or Present from clock-in vs shift start. Set manually only for Absent or Half-day.
+          </p>
         </div>
 
         <div className="space-y-2">
