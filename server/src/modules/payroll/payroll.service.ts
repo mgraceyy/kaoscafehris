@@ -614,9 +614,9 @@ export async function processRun(id: string) {
           const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
           const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
           if (localInDay !== localOutDay) {
-            if (effectiveLate > 0) {
-              lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + effectiveLate);
-            }
+            // Late minutes for crossing shifts are already stored on the attendance record
+            // and counted in the payroll period that covers the clock-in date — do not
+            // carry them here to avoid double-counting.
             const localOutDateKey = new Date(localOutDay * dayMs).toISOString().slice(0, 10);
             const midnightUTC = localOutDay * dayMs - tzOffMs;
             const hoursOnDate = Math.max(0, round2((rec.clockOut.getTime() - midnightUTC) / 3_600_000));
