@@ -467,6 +467,12 @@ export async function processRun(id: string) {
   // record (e.g. employee works two shifts on the same day), the daytime record wins
   // so that holiday-pay eligibility is not incorrectly discarded.
   const attendanceDateMap = new Map<string, Map<string, { hoursWorked: number; lateMinutes: number; isOvernight: boolean }>>();
+  // Holiday pay map keyed by LOCAL clock-out date (not attendance start date).
+  // Rule: a shift qualifies for holiday pay on the date its clock-out falls in local time.
+  //  • Apr 30 3rd shift (clock-out 7AM May 1 local) → May 1 holiday, hours = midnight→7AM
+  //  • May 1 3rd shift (clock-out 7AM May 2 local) → NOT May 1 holiday
+  //  • May 1 day shift / 12hr shift → May 1 holiday, hours capped at 8 (standard daily rate basis)
+  const holidayAttMap = new Map<string, Map<string, { hoursOnDate: number; lateMinutes: number; isCrossing: boolean }>>();
   for (const rec of attendanceRows) {
     const dateKey = rec.date.toISOString().slice(0, 10);
     const hasShift = scheduledDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
@@ -520,12 +526,36 @@ export async function processRun(id: string) {
         isOvernight,
       });
     }
+
+    // Build holidayAttMap using local clock-out date so crossing shifts are credited to the
+    // correct holiday (e.g. Apr 30 3rd shift clock-out on May 1 local → May 1 holiday entry).
+    if (rec.clockOut) {
+      const tzOffMs = tzOffsetMinutes * 60_000;
+      const dayMs   = 24 * 3_600_000;
+      const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
+      const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
+      const localOutDateKey = new Date(localOutDay * dayMs - tzOffMs).toISOString().slice(0, 10);
+      const isCrossing = localInDay !== localOutDay;
+      // Crossing: hours from local midnight of clock-out date to actual clock-out (e.g. 7hr for
+      //   a 3rd shift ending 7AM). Same-day: countedHrs (break-adjusted, consistent with pay calc).
+      const hoursOnDate = isCrossing
+        ? Math.max(0, round2((rec.clockOut.getTime() - (localOutDay * dayMs - tzOffMs)) / 3_600_000))
+        : countedHrs;
+
+      if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
+      const empHMap = holidayAttMap.get(rec.employeeId)!;
+      const existingH = empHMap.get(localOutDateKey);
+      // Prefer same-day records over crossing records when both land on the same local date.
+      if (!existingH || (existingH.isCrossing && !isCrossing)) {
+        empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: rec.lateMinutes ?? 0, isCrossing });
+      }
+    }
   }
 
-  // Supplemental holiday-pay boundary lookup: if any holiday falls on the very first day of
-  // the period, the overnight shift that crosses into it started the day before the period —
-  // outside the main query range. Fetch that one extra day so the overnight-shift credit
-  // logic works for every holiday, including those at the period boundary.
+  // Boundary late-minutes lookup: when the period starts on a holiday, employees who worked
+  // the overnight shift the day before (ending in the early hours of period start) may have
+  // unrecorded late minutes because the clock-in date mismatch causes the late calc to
+  // report 0. Fetch that one extra day to carry their late minutes into this period's deduction.
   const dayBeforePeriod = new Date(run.periodStart);
   dayBeforePeriod.setUTCDate(dayBeforePeriod.getUTCDate() - 1);
   const dayBeforePeriodKey = dayBeforePeriod.toISOString().slice(0, 10);
@@ -561,6 +591,25 @@ export async function processRun(id: string) {
         // a late-deduction line appears in the payslip.
         if (effectiveLate > 0) {
           lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + effectiveLate);
+        }
+
+        // If this boundary shift crosses into the holiday (local clock-out date = period start),
+        // add a crossing entry to holidayAttMap so holiday pay is correctly credited.
+        if (rec.clockOut) {
+          const tzOffMs = tzOffsetMinutes * 60_000;
+          const dayMs   = 24 * 3_600_000;
+          const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
+          const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
+          if (localInDay !== localOutDay) {
+            const localOutDateKey = new Date(localOutDay * dayMs - tzOffMs).toISOString().slice(0, 10);
+            const midnightUTC = localOutDay * dayMs - tzOffMs;
+            const hoursOnDate = Math.max(0, round2((rec.clockOut.getTime() - midnightUTC) / 3_600_000));
+            if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
+            const empHMap = holidayAttMap.get(rec.employeeId)!;
+            if (!empHMap.has(localOutDateKey)) {
+              empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: true });
+            }
+          }
         }
       }
     }
@@ -689,36 +738,22 @@ export async function processRun(id: string) {
         ? round2(toNum(emp.hourlyRate) * 8)
         : round2(toNum(emp.basicSalary) / 26);
 
-      const empAttendanceDates = attendanceDateMap.get(emp.id);
       const holidayEarnings: Array<{ type: "HOLIDAY_PAY"; label: string; amount: number }> =
         periodHolidays
           .map((h) => {
             const holidayDateKey = h.date.toISOString().slice(0, 10);
-            let att = empAttendanceDates?.get(holidayDateKey);
+            const entry = holidayAttMap.get(emp.id)?.get(holidayDateKey);
 
-            // An overnight shift that STARTS on the holiday (clockOut on the next day) does NOT
-            // receive holiday pay — only the shift that crosses INTO the holiday from the previous
-            // night qualifies. When an employee has both a daytime and an overnight record on the
-            // holiday date, attendanceDateMap already stores the daytime one (preferred above), so
-            // this guard handles the case where only an overnight record exists for that date.
-            if (att?.isOvernight) att = undefined;
+            // No qualifying attendance on this holiday date = day off, no holiday pay.
+            if (!entry) return null;
 
-            // Check if the previous night had an overnight shift that extends into this holiday
-            // (clockOut fell on the holiday date).
-            if (!att) {
-              const prevDate = new Date(h.date);
-              prevDate.setUTCDate(prevDate.getUTCDate() - 1);
-              const prevAtt = empAttendanceDates?.get(prevDate.toISOString().slice(0, 10));
-              if (prevAtt?.isOvernight) att = prevAtt;
-            }
-
-            // No qualifying attendance = day off or no crossing shift, no holiday pay.
-            if (!att) return null;
-
-            // Holiday pay covers the first 8 hours only; minutes late reduce eligible hours.
-            // Also cap by actual hours worked so a late overnight shift (where lateMinutes may be
-            // 0 due to date-mismatch in calculation) doesn't inflate the credit beyond real time.
-            const eligibleHours = Math.max(0, Math.min(att.hoursWorked, 8 - att.lateMinutes / 60));
+            // Eligible hours are capped at 8 (standard daily rate basis, covers both 8hr and 12hr
+            // shifts). For crossing shifts (Apr 30 3rd → May 1), lateMinutes applied to the prior
+            // day and don't reduce the holiday portion — just cap at actual hours on the holiday.
+            // For same-day shifts, late reduces eligibility as before.
+            const eligibleHours = entry.isCrossing
+              ? Math.min(entry.hoursOnDate, 8)
+              : Math.max(0, Math.min(entry.hoursOnDate, 8 - entry.lateMinutes / 60));
             const prorationFactor = round2(eligibleHours / 8);
 
             const pct = toNum(h.percentage);
