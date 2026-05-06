@@ -607,23 +607,51 @@ export async function manualCreate(input: ManualCreateInput) {
     if (clockOutAt > scheduledEnd) overtimeHours = hoursBetween(scheduledEnd, clockOutAt);
   }
 
-  return prisma.attendance.create({
-    data: {
-      employeeId: input.employeeId,
-      branchId: employee.branchId,
-      date: dateKey,
-      clockIn: clockInAt,
-      clockOut: clockOutAt ?? undefined,
-      status,
-      lateMinutes: lateMinutes ?? undefined,
-      hoursWorked,
-      overtimeHours,
-      undertimeMinutes,
-      remarks: input.remarks ?? undefined,
-      source: "MANUAL",
-      syncStatus: "SYNCED",
-    },
-    include: attendanceInclude,
+  return prisma.$transaction(async (tx) => {
+    // Ensure a Shift record exists for this date + shift type + branch so the
+    // assignment shows up in the Schedule tab. Reuse an existing one if present.
+    const existingShift = await tx.shift.findFirst({
+      where: { date: dateKey, shiftTypeId: shiftType.id, branchId: employee.branchId },
+      select: { id: true },
+    });
+    const shift = existingShift ?? await tx.shift.create({
+      data: {
+        branchId: employee.branchId,
+        shiftTypeId: shiftType.id,
+        name: shiftType.name,
+        date: dateKey,
+        startTime: shiftType.startTime,
+        endTime: shiftType.endTime,
+        status: "PUBLISHED",
+      },
+      select: { id: true },
+    });
+
+    // Upsert the ShiftAssignment (unique on shiftId + employeeId).
+    await tx.shiftAssignment.upsert({
+      where: { shiftId_employeeId: { shiftId: shift.id, employeeId: input.employeeId } },
+      create: { shiftId: shift.id, employeeId: input.employeeId },
+      update: {},
+    });
+
+    return tx.attendance.create({
+      data: {
+        employeeId: input.employeeId,
+        branchId: employee.branchId,
+        date: dateKey,
+        clockIn: clockInAt,
+        clockOut: clockOutAt ?? undefined,
+        status,
+        lateMinutes: lateMinutes ?? undefined,
+        hoursWorked,
+        overtimeHours,
+        undertimeMinutes,
+        remarks: input.remarks ?? undefined,
+        source: "MANUAL",
+        syncStatus: "SYNCED",
+      },
+      include: attendanceInclude,
+    });
   });
 }
 

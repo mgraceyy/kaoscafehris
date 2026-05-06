@@ -17,6 +17,7 @@ import { listDeductions } from "@/features/deductions/deductions.api";
 import {
   adjustPayslip,
   formatCurrency,
+  formatRate,
   getPayslip,
   type AdjustPayslipInput,
   type EarningType,
@@ -226,14 +227,14 @@ export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Pro
                   <>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Hourly Rate</span>
-                      <span className="tabular-nums font-medium">{formatCurrency(hourlyRate)}/hr</span>
+                      <span className="tabular-nums font-medium">{formatRate(hourlyRate)}/hr</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total Hours Worked</span>
                       <span className="tabular-nums font-medium">{totalHrs.toFixed(2)} hrs</span>
                     </div>
                     <div className="flex justify-between pl-3 text-muted-foreground">
-                      <span>Regular ({regularHrs.toFixed(2)} hrs × {formatCurrency(hourlyRate)})</span>
+                      <span>Regular ({regularHrs.toFixed(2)} hrs × {formatRate(hourlyRate)})</span>
                       <span className="tabular-nums">{formatCurrency(regularHrs * hourlyRate)}</span>
                     </div>
                     {otHrs > 0 && (

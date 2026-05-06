@@ -313,3 +313,13 @@ export function formatCurrency(value: string | number): string {
     maximumFractionDigits: 2,
   }).format(Number.isFinite(n) ? n : 0);
 }
+
+export function formatRate(value: string | number): string {
+  const n = typeof value === "string" ? Number(value) : value;
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(Number.isFinite(n) ? n : 0);
+}

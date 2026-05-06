@@ -388,6 +388,53 @@ export async function processRun(id: string) {
     select: { employeeId: true, date: true, clockIn: true, clockOut: true, hoursWorked: true, overtimeHours: true, lateMinutes: true, source: true },
   });
 
+  // For MANUAL attendance records that have no matching ShiftAssignment (e.g., created before
+  // the automatic ShiftAssignment creation was added), look up published shifts for the branch
+  // on those dates and use the max shift duration as a cap reference. This prevents uncapped
+  // accumulation of raw clock-in/out hours beyond what any shift on that day allows.
+  {
+    const manualNoShiftMap = new Map<string, Set<string>>();
+    for (const rec of attendanceRows) {
+      if (rec.source !== "MANUAL") continue;
+      const dateKey = rec.date.toISOString().slice(0, 10);
+      if (scheduledDatesMap.get(rec.employeeId)?.has(dateKey)) continue;
+      if (!manualNoShiftMap.has(rec.employeeId)) manualNoShiftMap.set(rec.employeeId, new Set());
+      manualNoShiftMap.get(rec.employeeId)!.add(dateKey);
+    }
+
+    if (manualNoShiftMap.size > 0) {
+      const allDates = [...new Set([...manualNoShiftMap.values()].flatMap((s) => [...s]))];
+      const fallbackShifts = await prisma.shift.findMany({
+        where: {
+          branchId: run.branchId,
+          date: { in: allDates.map((d) => new Date(d + "T00:00:00.000Z")) },
+        },
+        select: {
+          date: true,
+          startTime: true,
+          endTime: true,
+          shiftType: { select: { breakDuration: true } },
+        },
+      });
+
+      for (const shift of fallbackShifts) {
+        const dateKey = shift.date.toISOString().slice(0, 10);
+        const startMs = shift.startTime.getTime();
+        const endMs = shift.endTime.getTime();
+        const shiftMs = endMs >= startMs ? endMs - startMs : endMs - startMs + 24 * 3_600_000;
+        const breakMins = shift.shiftType?.breakDuration ?? 60;
+        const shiftHrs = shiftMs / 3_600_000 - breakMins / 60;
+
+        for (const [empId, dates] of manualNoShiftMap) {
+          if (!dates.has(dateKey)) continue;
+          if (!scheduledHoursMap.has(empId)) scheduledHoursMap.set(empId, new Map());
+          const prev = scheduledHoursMap.get(empId)!.get(dateKey) ?? 0;
+          if (shiftHrs > prev) scheduledHoursMap.get(empId)!.set(dateKey, shiftHrs);
+        }
+      }
+    }
+  }
+
   // Returns how many hours of [clockIn, clockOut] fall in the 22:00–06:00 local window.
   function computeNightDiffHours(clockIn: Date, clockOut: Date | null): number {
     if (!clockOut || clockOut <= clockIn) return 0;
