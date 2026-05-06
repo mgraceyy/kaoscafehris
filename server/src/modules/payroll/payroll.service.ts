@@ -338,10 +338,12 @@ export async function processRun(id: string) {
   // scheduledDatesMap:    empId → Set of dateKeys with a shift assignment.
   // scheduledHoursMap:    empId → dateKey → scheduled shift duration (hours).
   // scheduledShiftEndMap: empId → dateKey → scheduled shift end (UTC Date).
+  // scheduledShiftStartMap: empId → dateKey → scheduled shift start (UTC Date).
   // overtimeApprovedDatesMap: empId → Set of dateKeys where OT is approved.
   const scheduledDatesMap = new Map<string, Set<string>>();
   const scheduledHoursMap = new Map<string, Map<string, number>>();
   const scheduledShiftEndMap = new Map<string, Map<string, Date>>();
+  const scheduledShiftStartMap = new Map<string, Map<string, Date>>();
   const overtimeApprovedDatesMap = new Map<string, Set<string>>();
 
   for (const sa of shiftAssignments) {
@@ -362,7 +364,9 @@ export async function processRun(id: string) {
     if (shiftHrs > prev) scheduledHoursMap.get(sa.employeeId)!.set(dateKey, shiftHrs);
 
     if (!scheduledShiftEndMap.has(sa.employeeId)) scheduledShiftEndMap.set(sa.employeeId, new Map());
-    const { scheduledEnd } = getScheduledTimes(sa.shift.date, sa.shift, tzOffsetMinutes);
+    if (!scheduledShiftStartMap.has(sa.employeeId)) scheduledShiftStartMap.set(sa.employeeId, new Map());
+    const { scheduledStart: shiftStart, scheduledEnd } = getScheduledTimes(sa.shift.date, sa.shift, tzOffsetMinutes);
+    scheduledShiftStartMap.get(sa.employeeId)!.set(dateKey, shiftStart);
     scheduledShiftEndMap.get(sa.employeeId)!.set(dateKey, scheduledEnd);
 
     // Pre-approved OT on the shift assignment itself.
@@ -497,9 +501,24 @@ export async function processRun(id: string) {
       : Math.max(0, actualHrs - otHrs);
     const countedHrs = round2(regularHrs + otHrs);
 
+    // Compute late minutes live from clock-in vs scheduled shift start so stale or
+    // missing lateMinutes on the attendance record never bleed into the deduction.
+    const shiftStartForDate = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey);
+    const computedLateMinutes = (() => {
+      if (!shiftStartForDate) return rec.lateMinutes ?? 0;
+      const delta = Math.round((rec.clockIn.getTime() - shiftStartForDate.getTime()) / 60_000);
+      // Overnight correction: if delta < -6 h the clock-in is in the early-morning tail of
+      // a graveyard shift that started the previous calendar day — re-anchor to prev-day start.
+      if (delta < -6 * 60) {
+        const prevDay = new Date(shiftStartForDate.getTime() - 24 * 60 * 60 * 1000);
+        return Math.max(0, Math.round((rec.clockIn.getTime() - prevDay.getTime()) / 60_000));
+      }
+      return Math.max(0, delta);
+    })();
+
     otHoursMap.set(rec.employeeId, (otHoursMap.get(rec.employeeId) ?? 0) + otHrs);
     hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + countedHrs);
-    lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + (rec.lateMinutes ?? 0));
+    lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + computedLateMinutes);
 
     // Cap clockOut at scheduled shift end for night diff so excess minutes beyond
     // the shift (when OT is not approved) are not credited as night differential.
@@ -522,7 +541,7 @@ export async function processRun(id: string) {
     if (!existingAtt || (existingAtt.isOvernight && !isOvernight)) {
       attendanceDateMap.get(rec.employeeId)!.set(dateKey, {
         hoursWorked: countedHrs,
-        lateMinutes: rec.lateMinutes ?? 0,
+        lateMinutes: computedLateMinutes,
         isOvernight,
       });
     }
@@ -547,7 +566,7 @@ export async function processRun(id: string) {
       const existingH = empHMap.get(localOutDateKey);
       // Prefer same-day records over crossing records when both land on the same local date.
       if (!existingH || (existingH.isCrossing && !isCrossing)) {
-        empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: rec.lateMinutes ?? 0, isCrossing });
+        empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: computedLateMinutes, isCrossing });
       }
     }
   }
