@@ -625,6 +625,7 @@ export async function processRun(id: string) {
             if (!empHMap.has(localOutDateKey)) {
               empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: true });
             }
+            hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + hoursOnDate);
           }
         }
       }
