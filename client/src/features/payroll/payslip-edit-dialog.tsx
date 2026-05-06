@@ -209,6 +209,68 @@ export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Pro
             </div>
           )}
 
+          {/* Pay computation summary */}
+          {(() => {
+            const d = payslipQuery.data!;
+            const payType = d.employee.payType;
+            const totalHrs = Number(d.totalHoursWorked);
+            const otHrs = Number(d.totalOtHours);
+            const regularHrs = Math.max(0, totalHrs - otHrs);
+            const lateMin = d.totalLateMinutes;
+            const hourlyRate = Number(d.employee.hourlyRate ?? 0);
+            const basicSalary = Number(d.employee.basicSalary ?? 0);
+            return (
+              <div className="rounded-md border bg-muted/30 p-3 space-y-1.5 text-xs">
+                <p className="font-medium text-sm text-gray-700">Pay Computation</p>
+                {payType === "HOURLY" ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Hourly Rate</span>
+                      <span className="tabular-nums font-medium">{formatCurrency(hourlyRate)}/hr</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total Hours Worked</span>
+                      <span className="tabular-nums font-medium">{totalHrs.toFixed(2)} hrs</span>
+                    </div>
+                    <div className="flex justify-between pl-3 text-muted-foreground">
+                      <span>Regular ({regularHrs.toFixed(2)} hrs × {formatCurrency(hourlyRate)})</span>
+                      <span className="tabular-nums">{formatCurrency(regularHrs * hourlyRate)}</span>
+                    </div>
+                    {otHrs > 0 && (
+                      <div className="flex justify-between pl-3 text-muted-foreground">
+                        <span>Approved OT ({otHrs.toFixed(2)} hrs)</span>
+                        <span className="tabular-nums">{formatCurrency(Number(d.overtimePay))}</span>
+                      </div>
+                    )}
+                    {lateMin > 0 && (
+                      <div className="flex justify-between pl-3 text-muted-foreground">
+                        <span>Late ({lateMin} min)</span>
+                        <span className="tabular-nums text-destructive">− {formatCurrency(Number(d.lateDeductions))}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Monthly Salary</span>
+                      <span className="tabular-nums font-medium">{formatCurrency(basicSalary)}/mo</span>
+                    </div>
+                    <div className="flex justify-between pl-3 text-muted-foreground">
+                      <span>Semi-monthly (÷ 2)</span>
+                      <span className="tabular-nums">{formatCurrency(basicSalary / 2)}</span>
+                    </div>
+                    {lateMin > 0 && (
+                      <div className="flex justify-between pl-3 text-muted-foreground">
+                        <span>Late ({lateMin} min)</span>
+                        <span className="tabular-nums text-destructive">− {formatCurrency(Number(d.lateDeductions))}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Basic pay */}
           <div className="space-y-1.5">
             <Label htmlFor="bp">Basic Pay (this period)</Label>

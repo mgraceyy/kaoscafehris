@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "payslips" ADD COLUMN     "totalHoursWorked" DECIMAL(8,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "totalLateMinutes" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "totalOtHours" DECIMAL(8,2) NOT NULL DEFAULT 0;

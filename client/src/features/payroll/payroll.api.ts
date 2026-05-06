@@ -59,6 +59,9 @@ export interface PayslipSummary {
   otherDeductions: string;
   totalDeductions: string;
   netPay: string;
+  totalHoursWorked: string;
+  totalOtHours: string;
+  totalLateMinutes: number;
   status: PayslipStatus;
   createdAt: string;
   updatedAt: string;
