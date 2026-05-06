@@ -111,6 +111,24 @@ function diffMinutes(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / 60_000);
 }
 
+/**
+ * Compute late minutes relative to scheduledStart, with an overnight correction.
+ * When an attendance date is set to the same calendar day as the shift but the
+ * clock-in is in the early-morning portion of an overnight shift (i.e. the shift
+ * actually started the previous day), the naive delta is a large negative number.
+ * If delta < -6 hours we re-anchor against (scheduledStart − 24 h) to recover the
+ * true lateness (e.g. 3rd-shift start 11 PM on date D, clock-in 2 AM on date D →
+ * re-anchored to 11 PM on date D−1, yielding +180 min late).
+ */
+function computeLateMinutes(scheduledStart: Date, clockIn: Date): number {
+  const delta = diffMinutes(scheduledStart, clockIn);
+  if (delta >= -6 * 60) return delta; // normal case or small negative (grace)
+  // Clock-in is in the early-morning tail of an overnight shift that started the
+  // previous calendar day — re-anchor to the previous day's shift start.
+  const prevDayStart = new Date(scheduledStart.getTime() - 24 * 60 * 60 * 1000);
+  return diffMinutes(prevDayStart, clockIn);
+}
+
 function hoursBetween(from: Date, to: Date): number {
   return Math.max(0, Math.round(((to.getTime() - from.getTime()) / 3_600_000) * 100) / 100);
 }
@@ -364,7 +382,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
 
   if (shift) {
     const { scheduledStart } = getScheduledTimes(dateKey, shift, tzOffset);
-    const delta = diffMinutes(scheduledStart, clockInAt);
+    const delta = computeLateMinutes(scheduledStart, clockInAt);
     if (delta > graceMinutes) {
       status = "LATE";
       lateMinutes = delta;
@@ -493,7 +511,7 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
   if (input.status === undefined) {
     if (shift) {
       const { scheduledStart } = getScheduledTimes(nextDate, shift, tzOffset);
-      const delta = diffMinutes(scheduledStart, nextClockIn);
+      const delta = computeLateMinutes(scheduledStart, nextClockIn);
       if (delta > graceMinutes) {
         data.status = "LATE";
         data.lateMinutes = delta;
@@ -568,7 +586,7 @@ export async function manualCreate(input: ManualCreateInput) {
   let status: "PRESENT" | "LATE" = "PRESENT";
   let lateMinutes: number | null = null;
 
-  const delta = diffMinutes(scheduledStart, clockInAt);
+  const delta = computeLateMinutes(scheduledStart, clockInAt);
   if (delta > graceMinutes) {
     status = "LATE";
     lateMinutes = delta;

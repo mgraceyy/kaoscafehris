@@ -498,11 +498,23 @@ export async function processRun(id: string) {
       if (!attendanceDateMap.get(rec.employeeId)!.has(dayBeforePeriodKey)) {
         const isOvernight = !!(rec.clockOut &&
           rec.clockOut.toISOString().slice(0, 10) !== rec.clockIn.toISOString().slice(0, 10));
+        const hoursWorked = toNum(rec.hoursWorked);
+        // Stored lateMinutes may be 0 due to overnight date-mismatch in the late
+        // calculation (clock-in at 2AM on date D looks early when scheduledStart is
+        // 11PM on date D). Derive effective late from the unworked portion of the
+        // standard 8-hour shift so the deduction reflects reality.
+        const storedLate = rec.lateMinutes ?? 0;
+        const effectiveLate = storedLate > 0 ? storedLate : Math.round(Math.max(0, 8 - hoursWorked) * 60);
         attendanceDateMap.get(rec.employeeId)!.set(dayBeforePeriodKey, {
-          hoursWorked: toNum(rec.hoursWorked),
-          lateMinutes: rec.lateMinutes ?? 0,
+          hoursWorked,
+          lateMinutes: effectiveLate,
           isOvernight,
         });
+        // Carry boundary late minutes into the period's deduction accumulator so
+        // a late-deduction line appears in the payslip.
+        if (effectiveLate > 0) {
+          lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + effectiveLate);
+        }
       }
     }
   }
