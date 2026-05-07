@@ -576,16 +576,22 @@ export async function processRun(id: string) {
       // hours worked on that date are credited to its holiday (if one exists).
       // Examples: 2nd shift 3PM May 1 → May 2 (~9 hrs on May 1), PM 12-Hour 7PM May 1
       // → May 2 (5 hrs on May 1). hoursOnDate here = clock-in to local midnight.
+      // Night shifts starting at or after 22:00 local (e.g. 3rd shift 11PM) are excluded —
+      // their holiday coverage comes from the prior day's crossing shift instead.
       if (isCrossing) {
         const hoursOnInDate = Math.max(0, round2((midnightOfOutDay - rec.clockIn.getTime()) / 3_600_000));
-        // Only credit the clock-in date when the employee worked meaningfully on it (> 1 hr).
-        // This excludes 3rd-shift workers who clock in at 11PM (exactly 1 hr before midnight)
-        // since their holiday coverage comes from the prior day's crossing shift instead.
-        if (hoursOnInDate > 1) {
-          const localInDateKey = new Date(localInDay * dayMs).toISOString().slice(0, 10);
-          const existingIn = empHMap.get(localInDateKey);
-          if (!existingIn) {
-            empHMap.set(localInDateKey, { hoursOnDate: hoursOnInDate, lateMinutes: computedLateMinutes, isCrossing: true });
+        if (hoursOnInDate > 0) {
+          // Use the scheduled shift start to determine if this is a late-night shift.
+          // Fall back to the actual clock-in time when no shift assignment exists.
+          const shiftStart = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey) ?? rec.clockIn;
+          const localShiftStartMinutes = (shiftStart.getUTCHours() * 60 + shiftStart.getUTCMinutes() + tzOffsetMinutes) % (24 * 60);
+          const isNightShift = localShiftStartMinutes >= 22 * 60; // starts at or after 22:00 local
+          if (!isNightShift) {
+            const localInDateKey = new Date(localInDay * dayMs).toISOString().slice(0, 10);
+            const existingIn = empHMap.get(localInDateKey);
+            if (!existingIn) {
+              empHMap.set(localInDateKey, { hoursOnDate: hoursOnInDate, lateMinutes: computedLateMinutes, isCrossing: true });
+            }
           }
         }
       }
