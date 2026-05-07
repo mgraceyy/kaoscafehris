@@ -9,7 +9,7 @@ import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { getSetting } from "../../lib/settings-cache.js";
 import * as attendanceService from "../attendance/attendance.service.js";
-import { workDayDateOf, getScheduledTimes, getUtcOffsetMinutes } from "../attendance/attendance.service.js";
+import { localCalendarDateOf, getScheduledTimes, getUtcOffsetMinutes } from "../attendance/attendance.service.js";
 
 const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "uploads");
 const selfieDir = path.join(uploadsBase, "selfies");
@@ -102,7 +102,7 @@ router.get("/status/:employeeId", async (req, res, next) => {
     if (!emp) throw new AppError(404, "Employee not found");
 
     const now = new Date();
-    const dateKey = await workDayDateOf(now);
+    const dateKey = await localCalendarDateOf(now);
 
     // Today's attendance — open record takes priority so the Time Out button
     // shows correctly. Multiple records per day are now allowed (multi-shift).

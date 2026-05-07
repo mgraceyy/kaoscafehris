@@ -103,7 +103,7 @@ export async function workDayDateOf(instant: Date): Promise<Date> {
  * NO split-time rollback. Used for manual attendance creation where the admin
  * has explicitly chosen the intended date.
  */
-async function localCalendarDateOf(instant: Date): Promise<Date> {
+export async function localCalendarDateOf(instant: Date): Promise<Date> {
   const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -323,7 +323,11 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
   }
 
   const clockInAt = input.clockIn ? new Date(input.clockIn) : new Date();
-  const dateKey = await workDayDateOf(clockInAt);
+  // Always attribute to the actual local calendar date the employee clocks in.
+  // The split-time rollback (workDayDateOf) was causing early-morning clock-ins
+  // to land on the previous day even when the employee had a shift on the current
+  // day or no shift at all on the previous day.
+  const effectiveDateKey = await localCalendarDateOf(clockInAt);
 
   // Idempotency for offline sync: if a localRecordId matches an existing row,
   // return it instead of creating a duplicate.
@@ -349,7 +353,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
         employeeId: input.employeeId,
         clockOut: null,
         status: { in: ["PRESENT", "LATE"] },
-        date: { lt: dateKey },
+        date: { lt: effectiveDateKey },
       },
     });
     if (openPrevRecord) {
@@ -365,7 +369,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
         employeeId: input.employeeId,
         clockOut: null,
         status: { in: ["PRESENT", "LATE"] },
-        date: dateKey,
+        date: effectiveDateKey,
       },
     });
     if (openTodayRecord) {
@@ -374,8 +378,8 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
 
     // Block if the employee has already clocked in for all of their scheduled shifts today.
     const [existingCount, scheduledCount] = await Promise.all([
-      prisma.attendance.count({ where: { employeeId: input.employeeId, date: dateKey } }),
-      prisma.shiftAssignment.count({ where: { employeeId: input.employeeId, shift: { date: dateKey } } }),
+      prisma.attendance.count({ where: { employeeId: input.employeeId, date: effectiveDateKey } }),
+      prisma.shiftAssignment.count({ where: { employeeId: input.employeeId, shift: { date: effectiveDateKey } } }),
     ]);
     if (existingCount > 0 && existingCount >= Math.max(scheduledCount, 1)) {
       throw new AppError(
@@ -387,12 +391,12 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
     }
   }
 
-  const shift = await findScheduledShift(input.employeeId, dateKey, clockInAt, tzOffset);
+  const shift = await findScheduledShift(input.employeeId, effectiveDateKey, clockInAt, tzOffset);
   let status: "PRESENT" | "LATE" = "PRESENT";
   let lateMinutes: number | null = null;
 
   if (shift) {
-    const { scheduledStart } = getScheduledTimes(dateKey, shift, tzOffset);
+    const { scheduledStart } = getScheduledTimes(effectiveDateKey, shift, tzOffset);
     const delta = computeLateMinutes(scheduledStart, clockInAt);
     if (delta > graceMinutes) {
       status = "LATE";
@@ -404,7 +408,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
     data: {
       employeeId: input.employeeId,
       branchId: employee.branchId,
-      date: dateKey,
+      date: effectiveDateKey,
       clockIn: clockInAt,
       status,
       lateMinutes: lateMinutes ?? undefined,

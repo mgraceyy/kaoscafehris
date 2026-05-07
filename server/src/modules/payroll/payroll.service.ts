@@ -634,20 +634,23 @@ export async function processRun(id: string) {
           lateMinutes: effectiveLate,
           isOvernight,
         });
-        // Only crossing (overnight) shifts carry into this period's deductions and holiday map.
-        // Same-day April 30 shifts belong to the previous payroll period and must not be double-counted.
+        // Credit holiday pay for any boundary record whose actual work time falls on the
+        // period-start date — covers both true crossing shifts (clockIn Apr 30, clockOut
+        // May 1) and rollback-artifact records where the date field was pushed back one
+        // day by the old split-time logic but both timestamps are on May 1 local time.
         if (rec.clockOut) {
           const tzOffMs = tzOffsetMinutes * 60_000;
           const dayMs   = 24 * 3_600_000;
           const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
           const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
-          if (localInDay !== localOutDay) {
-            // Late minutes for crossing shifts are already stored on the attendance record
-            // and counted in the payroll period that covers the clock-in date — do not
-            // carry them here to avoid double-counting.
+          const periodStartLocalDay = Math.floor((run.periodStart.getTime() + tzOffMs) / dayMs);
+          if (localOutDay === periodStartLocalDay) {
             const localOutDateKey = new Date(localOutDay * dayMs).toISOString().slice(0, 10);
             const midnightUTC = localOutDay * dayMs - tzOffMs;
-            const hoursOnDate = Math.max(0, round2((rec.clockOut.getTime() - midnightUTC) / 3_600_000));
+            // Crossing shift: credit from midnight to clockOut.
+            // Same-day shift on the holiday (date field rolled back): credit full worked hours.
+            const creditFromMs = localInDay === localOutDay ? rec.clockIn.getTime() : midnightUTC;
+            const hoursOnDate = Math.max(0, round2((rec.clockOut.getTime() - creditFromMs) / 3_600_000));
             if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
             const empHMap = holidayAttMap.get(rec.employeeId)!;
             if (!empHMap.has(localOutDateKey)) {
