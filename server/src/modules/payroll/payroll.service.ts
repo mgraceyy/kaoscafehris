@@ -508,12 +508,12 @@ export async function processRun(id: string) {
     const shiftStartForDate = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey);
     const computedLateMinutes = (() => {
       if (!shiftStartForDate) return rec.lateMinutes ?? 0;
-      const delta = Math.round((rec.clockIn.getTime() - shiftStartForDate.getTime()) / 60_000);
+      const delta = Math.floor((rec.clockIn.getTime() - shiftStartForDate.getTime()) / 60_000);
       // Overnight correction: if delta < -6 h the clock-in is in the early-morning tail of
       // a graveyard shift that started the previous calendar day — re-anchor to prev-day start.
       if (delta < -6 * 60) {
         const prevDay = new Date(shiftStartForDate.getTime() - 24 * 60 * 60 * 1000);
-        return Math.max(0, Math.round((rec.clockIn.getTime() - prevDay.getTime()) / 60_000));
+        return Math.max(0, Math.floor((rec.clockIn.getTime() - prevDay.getTime()) / 60_000));
       }
       return Math.max(0, delta);
     })();
@@ -559,8 +559,9 @@ export async function processRun(id: string) {
       const isCrossing = localInDay !== localOutDay;
       // Crossing: hours from local midnight of clock-out date to actual clock-out (e.g. 7hr for
       //   a 3rd shift ending 7AM). Same-day: countedHrs (break-adjusted, consistent with pay calc).
+      const midnightOfOutDay = localOutDay * dayMs - tzOffMs;
       const hoursOnDate = isCrossing
-        ? Math.max(0, round2((rec.clockOut.getTime() - (localOutDay * dayMs - tzOffMs)) / 3_600_000))
+        ? Math.max(0, round2((rec.clockOut.getTime() - midnightOfOutDay) / 3_600_000))
         : countedHrs;
 
       if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
@@ -569,6 +570,24 @@ export async function processRun(id: string) {
       // Prefer same-day records over crossing records when both land on the same local date.
       if (!existingH || (existingH.isCrossing && !isCrossing)) {
         empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: computedLateMinutes, isCrossing });
+      }
+
+      // For crossing shifts, also store an entry under the clock-IN date so that any
+      // hours worked on that date are credited to its holiday (if one exists).
+      // Examples: 2nd shift 3PM May 1 → May 2 (~9 hrs on May 1), PM 12-Hour 7PM May 1
+      // → May 2 (5 hrs on May 1). hoursOnDate here = clock-in to local midnight.
+      if (isCrossing) {
+        const hoursOnInDate = Math.max(0, round2((midnightOfOutDay - rec.clockIn.getTime()) / 3_600_000));
+        // Only credit the clock-in date when the employee worked meaningfully on it (> 1 hr).
+        // This excludes 3rd-shift workers who clock in at 11PM (exactly 1 hr before midnight)
+        // since their holiday coverage comes from the prior day's crossing shift instead.
+        if (hoursOnInDate > 1) {
+          const localInDateKey = new Date(localInDay * dayMs).toISOString().slice(0, 10);
+          const existingIn = empHMap.get(localInDateKey);
+          if (!existingIn) {
+            empHMap.set(localInDateKey, { hoursOnDate: hoursOnInDate, lateMinutes: computedLateMinutes, isCrossing: true });
+          }
+        }
       }
     }
   }
