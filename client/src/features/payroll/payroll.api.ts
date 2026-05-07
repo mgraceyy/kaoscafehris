@@ -4,12 +4,15 @@ export type PayrollStatus = "DRAFT" | "PROCESSING" | "COMPLETED" | "CANCELLED";
 export type PayslipStatus = "DRAFT" | "FINALIZED";
 export type EarningType =
   | "OVERTIME"
+  | "NIGHT_DIFFERENTIAL"
   | "BONUS"
   | "ALLOWANCE"
   | "HOLIDAY_PAY"
+  | "PAID_LEAVE"
   | "OTHER";
 export type DeductionType =
   | "LATE"
+  | "UNPAID_LEAVE"
   | "CASH_ADVANCE"
   | "SALARY_LOAN"
   | "SSS"

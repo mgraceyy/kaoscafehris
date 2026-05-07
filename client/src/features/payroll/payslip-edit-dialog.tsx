@@ -48,9 +48,11 @@ interface DeductionRow {
 
 const EARNING_TYPES: { value: EarningType; label: string }[] = [
   { value: "OVERTIME", label: "Overtime" },
+  { value: "NIGHT_DIFFERENTIAL", label: "Night Differential" },
   { value: "BONUS", label: "Bonus" },
   { value: "ALLOWANCE", label: "Allowance" },
   { value: "HOLIDAY_PAY", label: "Holiday Pay" },
+  { value: "PAID_LEAVE", label: "Paid Leave" },
   { value: "OTHER", label: "Other" },
 ];
 
@@ -59,7 +61,7 @@ function defaultEarningLabel(type: EarningType): string {
 }
 
 function tabTypeToDeductionType(type: string | null | undefined): DeductionType {
-  const valid: DeductionType[] = ["SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX", "LATE", "CASH_ADVANCE", "SALARY_LOAN", "OTHER"];
+  const valid: DeductionType[] = ["SSS", "PHILHEALTH", "PAGIBIG", "BIR_TAX", "LATE", "UNPAID_LEAVE", "CASH_ADVANCE", "SALARY_LOAN", "OTHER"];
   return valid.includes(type as DeductionType) ? (type as DeductionType) : "OTHER";
 }
 

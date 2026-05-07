@@ -522,13 +522,14 @@ export async function processRun(id: string) {
     hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + countedHrs);
     lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + computedLateMinutes);
 
-    // Cap clockOut at scheduled shift end for night diff so excess minutes beyond
-    // the shift (when OT is not approved) are not credited as night differential.
+    // Cap both ends of the night diff window to the scheduled shift so early
+    // clock-ins and unapproved late clock-outs don't inflate night diff hours.
     const shiftEnd = scheduledShiftEndMap.get(rec.employeeId)?.get(dateKey);
+    const ndClockIn  = shiftStartForDate && rec.clockIn < shiftStartForDate ? shiftStartForDate : rec.clockIn;
     const ndClockOut = (!isOtApproved && rec.clockOut && shiftEnd && rec.clockOut > shiftEnd)
       ? shiftEnd
       : rec.clockOut;
-    const ndHrs = computeNightDiffHours(rec.clockIn, ndClockOut);
+    const ndHrs = computeNightDiffHours(ndClockIn, ndClockOut);
     if (ndHrs > 0) {
       nightDiffHoursMap.set(rec.employeeId, (nightDiffHoursMap.get(rec.employeeId) ?? 0) + ndHrs);
     }
