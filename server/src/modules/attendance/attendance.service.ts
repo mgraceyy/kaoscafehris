@@ -56,12 +56,19 @@ function parseWorkStartTime(setting: string): { hour: number; minute: number } {
 export async function workDayDateOf(instant: Date): Promise<Date> {
   const [tzSetting, workHoursSetting] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-    getSetting<string>("company.default_work_hours", "05:00"),
+    getSetting<string>("company.default_work_hours", "07:00"),
   ]);
 
   // Extract IANA timezone name (e.g. "Asia/Manila") from "Asia/Manila (UTC+8)".
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const { hour: splitHour, minute: splitMinute } = parseWorkStartTime(workHoursSetting);
+
+  // Allow employees to clock in up to 1 hour before the configured split time
+  // and still be attributed to the current date (e.g. 6:57 AM with a 7:00 AM split).
+  const splitTotalMinutes = splitHour * 60 + splitMinute;
+  const effectiveTotalMinutes = Math.max(0, splitTotalMinutes - 60);
+  const effectiveSplitHour = Math.floor(effectiveTotalMinutes / 60);
+  const effectiveSplitMinute = effectiveTotalMinutes % 60;
 
   // Get local date parts in the company timezone.
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -77,10 +84,10 @@ export async function workDayDateOf(instant: Date): Promise<Date> {
   const localHour = get("hour");
   const localMinute = get("minute");
 
-  // If the local time is before the configured split time, this clock-in
-  // belongs to the previous calendar date.
+  // If the local time is before the effective split time (configured split minus
+  // 1 hour), this clock-in belongs to the previous calendar date.
   const beforeSplit =
-    localHour < splitHour || (localHour === splitHour && localMinute < splitMinute);
+    localHour < effectiveSplitHour || (localHour === effectiveSplitHour && localMinute < effectiveSplitMinute);
 
   if (beforeSplit) {
     const d = new Date(Date.UTC(localYear, localMonth, localDay));
@@ -330,7 +337,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
 
   const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-    getSetting<number>("attendance.late_grace_minutes", 0),
+    getSetting<number>("attendance.late_threshold", 0),
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, clockInAt);
@@ -486,7 +493,7 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
 
   const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-    getSetting<number>("attendance.late_grace_minutes", 0),
+    getSetting<number>("attendance.late_threshold", 0),
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, nextClockIn);
@@ -554,7 +561,7 @@ export async function manualCreate(input: ManualCreateInput) {
 
   const [tzSetting, graceMinutes] = await Promise.all([
     getSetting<string>("company.timezone", "Asia/Manila (UTC+8)"),
-    getSetting<number>("attendance.late_grace_minutes", 0),
+    getSetting<number>("attendance.late_threshold", 0),
   ]);
   const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
   const tzOffset = getUtcOffsetMinutes(tz, clockInAt);

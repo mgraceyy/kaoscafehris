@@ -218,11 +218,10 @@ function CameraView({
 }
 
 function StaleShiftCard({
-  shift, attendance, staleShiftEnd, onClose, loading, error,
+  shift, attendance, onClose, loading, error,
 }: {
   shift: KioskShift | null;
   attendance: KioskAttendance;
-  staleShiftEnd: string;
   onClose: () => void;
   loading: boolean;
   error: string;
@@ -245,7 +244,7 @@ function StaleShiftCard({
       </div>
 
       <div style={{ fontSize: 12, color: "#a16207", marginBottom: 14 }}>
-        Clocked in at {fmtTime(attendance.clockIn)} · Will be closed at {fmtTime(staleShiftEnd)}
+        Clocked in at {fmtTime(attendance.clockIn)} · Will be closed at current time
       </div>
 
       {error && (
@@ -271,7 +270,7 @@ function StaleShiftCard({
         ) : (
           <CheckCircle2 size={16} color="#fff" />
         )}
-        {loading ? "Closing…" : "Close Unclosed Shift"}
+        {loading ? "Closing…" : "Close Previous Shift"}
       </button>
     </div>
   );
@@ -316,7 +315,6 @@ function MainScreen({
             <StaleShiftCard
               shift={shift}
               attendance={attendance!}
-              staleShiftEnd={staleShiftEnd}
               onClose={onCloseStale}
               loading={closingStale}
               error={staleError}
@@ -752,7 +750,15 @@ export default function KioskPage() {
       );
       setScreen("success");
     } catch (err) {
-      setConfirmError(extractErrorMessage(err, "Action failed. Please try again."));
+      const msg = extractErrorMessage(err, "Action failed. Please try again.");
+      // Re-fetch status so the screen reflects the actual DB state after failure.
+      try {
+        const fresh = await getKioskStatus(statusData.employee.employeeId, pin);
+        setStatusData(fresh);
+      } catch {
+        // If refresh also fails, keep the stale data — error is still shown.
+      }
+      setConfirmError(msg);
       setScreen("main");
     } finally {
       setConfirmLoading(false);
@@ -764,7 +770,7 @@ export default function KioskPage() {
     setClosingStale(true);
     setStaleError("");
     try {
-      await kioskClockOut(statusData.attendance.id, undefined, pin, statusData.staleShiftEnd);
+      await kioskClockOut(statusData.attendance.id, undefined, pin, undefined);
       const fresh = await getKioskStatus(statusData.employee.employeeId, pin);
       setStatusData(fresh);
     } catch (err) {

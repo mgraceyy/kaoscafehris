@@ -145,7 +145,9 @@ router.get("/status/:employeeId", async (req, res, next) => {
 
     // Detect stale unclosed record: open record from a previous day whose
     // scheduled shift end has already passed. Surface this so the kiosk can
-    // prompt the employee to close it before clocking in for tonight.
+    // prompt the employee to close it. The employee will clock out at the
+    // current time when they press the button — payroll disregards unapproved
+    // overtime so inflated hours are not paid regardless of when they close.
     let staleShiftEnd: string | null = null;
     if (isFromPrevDay && attendance && assignment?.shift) {
       const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
