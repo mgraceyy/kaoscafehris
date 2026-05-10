@@ -18,14 +18,15 @@ import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const schema = z.object({
   date: z.string().min(1, "Required"),
-  otHours: z.preprocess(
-    (v) => (v === "" || v === undefined ? undefined : Number(v)),
-    z.number().positive("Must be > 0").max(24, "Max 24h").optional()
-  ),
+  otHours: z.number().positive("Must be > 0").max(24, "Max 24h").optional(),
   reason: z.string().trim().min(1, "Required").max(500),
 });
 
-type Values = z.infer<typeof schema>;
+interface FormValues {
+  date: string;
+  otHours?: number;
+  reason: string;
+}
 
 interface Props {
   open: boolean;
@@ -36,7 +37,7 @@ export default function OvertimeRequestDialog({ open, onOpenChange }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<Values>({
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { date: "", otHours: undefined, reason: "" },
   });
@@ -46,7 +47,7 @@ export default function OvertimeRequestDialog({ open, onOpenChange }: Props) {
   }, [open, reset]);
 
   const mutation = useMutation({
-    mutationFn: (v: Values) => createOvertimeRequest({ date: v.date, reason: v.reason, otHours: v.otHours }),
+    mutationFn: (v: FormValues) => createOvertimeRequest({ date: v.date, reason: v.reason, otHours: v.otHours }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["overtime"] });
       toast("Overtime request submitted", "success");
@@ -83,7 +84,7 @@ export default function OvertimeRequestDialog({ open, onOpenChange }: Props) {
             min="0.5"
             max="24"
             placeholder="e.g. 2"
-            {...register("otHours")}
+            {...register("otHours", { setValueAs: (v) => v === "" || v === undefined ? undefined : Number(v) })}
           />
           {errors.otHours && <p className="text-xs text-destructive">{errors.otHours.message}</p>}
         </div>

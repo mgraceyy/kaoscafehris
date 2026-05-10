@@ -118,10 +118,10 @@ export default function OvertimePage() {
 
   const attendanceOtApprove = useMutation({
     mutationFn: ({ shiftId, employeeId, approved }: { shiftId: string; employeeId: string; approved: boolean }) =>
-      setShiftOvertimeApproval(shiftId, employeeId, approved),
+      setShiftOvertimeApproval(shiftId, employeeId, approved ? { overtimeApproved: true } : { overtimeApproved: false }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] });
-      toast("Overtime approval updated", "success");
+      toast("Overtime approved", "success");
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
@@ -144,8 +144,7 @@ export default function OvertimePage() {
       combined = combined.filter((r) => r.kind === "schedule");
     } else if (statusFilter === "PENDING") {
       combined = combined.filter(
-        (r) => (r.kind === "request" && r.data.status === "PENDING") ||
-               (r.kind === "attendance-ot" && !r.data.overtimeApproved)
+        (r) => r.kind === "request" && r.data.status === "PENDING"
       );
     } else if (statusFilter === "APPROVED") {
       combined = combined.filter(
@@ -154,7 +153,13 @@ export default function OvertimePage() {
       );
     } else if (statusFilter === "REJECTED") {
       combined = combined.filter(
-        (r) => r.kind === "request" && r.data.status === "REJECTED"
+        (r) => (r.kind === "request" && r.data.status === "REJECTED") ||
+               (r.kind === "attendance-ot" && r.data.overtimeRejected)
+      );
+    } else {
+      // "All Statuses" – hide attendance-ot that hasn't been decided yet
+      combined = combined.filter((r) =>
+        r.kind !== "attendance-ot" || r.data.overtimeApproved || r.data.overtimeRejected
       );
     }
 
@@ -380,25 +385,22 @@ export default function OvertimePage() {
                     <td className="px-5 py-4">
                       {r.overtimeApproved
                         ? <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#DCFCE7", color: "#16A34A" }}>Approved</span>
+                        : r.overtimeRejected
+                        ? <StatusBadge status="REJECTED" />
                         : <StatusBadge status="PENDING" />}
                     </td>
                     {canReview && (
                       <td className="px-5 py-4">
-                        {r.shiftId ? (
+                        {r.shiftId && r.overtimeApproved ? (
                           <button
-                            onClick={() => attendanceOtApprove.mutate({ shiftId: r.shiftId!, employeeId: r.employee.id, approved: !r.overtimeApproved })}
+                            onClick={() => attendanceOtApprove.mutate({ shiftId: r.shiftId!, employeeId: r.employee.id, approved: false })}
                             disabled={attendanceOtApprove.isPending}
-                            className={[
-                              "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
-                              r.overtimeApproved
-                                ? "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                                : "bg-green-500 text-white hover:bg-green-600",
-                            ].join(" ")}
+                            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                           >
-                            {r.overtimeApproved ? "Revoke" : "Approve"}
+                            Revoke
                           </button>
                         ) : (
-                          <span className="text-xs text-gray-300">No shift</span>
+                          <span className="text-xs text-gray-300">{r.overtimeRejected ? "Rejected" : "No shift"}</span>
                         )}
                       </td>
                     )}

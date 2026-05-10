@@ -125,9 +125,9 @@ export async function deleteOvertimeSchedule(id: string): Promise<void> {
 export async function setShiftOvertimeApproval(
   shiftId: string,
   employeeId: string,
-  overtimeApproved: boolean
+  body: { overtimeApproved?: boolean; overtimeRejected?: boolean }
 ): Promise<void> {
-  await api.patch(`/overtime/shift/${shiftId}/employee/${employeeId}`, { overtimeApproved });
+  await api.patch(`/overtime/shift/${shiftId}/employee/${employeeId}`, body);
 }
 
 export interface AttendanceOvertimeRecord {
@@ -135,6 +135,7 @@ export interface AttendanceOvertimeRecord {
   date: string;
   overtimeHours: string;
   overtimeApproved: boolean;
+  overtimeRejected: boolean;
   shiftId: string | null;
   employee: {
     id: string;

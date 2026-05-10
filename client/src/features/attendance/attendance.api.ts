@@ -109,6 +109,7 @@ export interface AssignedShift {
   startTime: string;
   endTime: string;
   overtimeApproved: boolean;
+  overtimeRejected: boolean;
 }
 
 export async function getAssignedShift(

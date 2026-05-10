@@ -70,6 +70,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
   const { toast } = useToast();
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [otDecision, setOtDecision] = useState<"approved" | "rejected" | null>(null);
+  const [overrideOtHours, setOverrideOtHours] = useState<string>("");
 
   const {
     register,
@@ -91,9 +92,10 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
   const tz = COMPANY_TZ;
 
   useEffect(() => {
-    if (!open) { setLightbox(null); setOtDecision(null); return; }
+    if (!open) { setLightbox(null); setOtDecision(null); setOverrideOtHours(""); return; }
     if (!record) return;
     setOtDecision(null);
+    setOverrideOtHours("");
     reset({
       date: isoToDateStr(record.clockIn, tz),
       clockInTime: isoToTimeStr(record.clockIn, tz),
@@ -115,6 +117,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
         clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime, tz) : null,
         status: values.status === "AUTO" ? undefined : values.status,
         remarks: values.remarks?.trim() ? values.remarks : null,
+        overtimeHours: overrideOtHours !== "" ? Number(overrideOtHours) : undefined,
       };
       return adjustAttendance(record.id, payload);
     },
@@ -158,18 +161,22 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
   const shift = shiftQuery.data;
 
   const otApprovalMutation = useMutation({
-    mutationFn: (approved: boolean) => {
+    mutationFn: (body: { overtimeApproved?: boolean; overtimeRejected?: boolean }) => {
       if (!shift?.id || !record) throw new Error("Missing shift or record");
-      return setShiftOvertimeApproval(shift.id, record.employeeId, approved);
+      return setShiftOvertimeApproval(shift.id, record.employeeId, body);
     },
-    onSuccess: (_, approved) => {
+    onSuccess: (_, body) => {
       qc.invalidateQueries({ queryKey: ["assigned-shift", record?.employeeId, record?.date.slice(0, 10)] });
-      if (approved) {
+      qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] });
+      if (body.overtimeApproved) {
         setOtDecision("approved");
         toast("Overtime approved", "success");
+      } else if (body.overtimeRejected) {
+        setOtDecision("rejected");
+        toast("Overtime rejected", "success");
       } else {
         setOtDecision(null);
-        toast("Overtime approval revoked", "success");
+        toast("Overtime decision undone", "success");
       }
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
@@ -323,24 +330,34 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-foreground">Overtime</span>
-              {attendanceSummary.otMins > 0 ? (
-                <span className={[
-                  "font-semibold",
-                  otDecision === "approved" || shift?.overtimeApproved ? "text-green-600" :
-                  otDecision === "rejected" ? "text-destructive" : "text-amber-600",
-                ].join(" ")}>
-                  {fmtMinutes(attendanceSummary.otMins)}
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+              {attendanceSummary.otMins > 0 || overrideOtHours !== "" ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="24"
+                    placeholder={(attendanceSummary.otMins / 60).toFixed(1)}
+                    value={overrideOtHours}
+                    onChange={(e) => setOverrideOtHours(e.target.value)}
+                    className={[
+                      "w-20 rounded-md border px-2 py-1 text-sm font-semibold text-right",
+                      otDecision === "approved" || shift?.overtimeApproved ? "border-green-300 text-green-600" :
+                      otDecision === "rejected" || shift?.overtimeRejected ? "border-red-300 text-destructive" : "border-amber-300 text-amber-600",
+                    ].join(" ")}
+                  />
+                  <span className="text-sm font-medium text-muted-foreground">h</span>
+                  <span className="text-xs font-normal text-muted-foreground">
                     {otDecision === "approved" || shift?.overtimeApproved ? "(approved)" :
-                     otDecision === "rejected" ? "(rejected)" : "(pending)"}
+                     otDecision === "rejected" || shift?.overtimeRejected ? "(rejected)" : "(pending)"}
                   </span>
-                </span>
+                </div>
               ) : (
                 <span className="text-muted-foreground">—</span>
               )}
             </div>
-            {attendanceSummary.otMins > 0 && shift && (() => {
-              const hasDecided = shift.overtimeApproved || otDecision === "rejected";
+            {(attendanceSummary.otMins > 0 || overrideOtHours !== "") && shift && (() => {
+              const hasDecided = shift.overtimeApproved || shift.overtimeRejected || otDecision === "rejected" || otDecision === "approved";
               const isPending = otApprovalMutation.isPending;
               if (hasDecided) {
                 return (
@@ -348,9 +365,9 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
                     type="button"
                     onClick={() => {
                       if (shift.overtimeApproved) {
-                        otApprovalMutation.mutate(false);
+                        otApprovalMutation.mutate({ overtimeApproved: false });
                       } else {
-                        setOtDecision(null);
+                        otApprovalMutation.mutate({ overtimeRejected: false });
                       }
                     }}
                     disabled={isPending}
@@ -365,7 +382,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
                 <div className="mt-1 flex gap-2">
                   <button
                     type="button"
-                    onClick={() => otApprovalMutation.mutate(true)}
+                    onClick={() => otApprovalMutation.mutate({ overtimeApproved: true })}
                     disabled={isPending}
                     className="flex-1 flex items-center justify-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
                   >
@@ -374,7 +391,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOtDecision("rejected")}
+                    onClick={() => otApprovalMutation.mutate({ overtimeRejected: true })}
                     disabled={isPending}
                     className="flex-1 flex items-center justify-center gap-2 rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 transition-colors"
                   >

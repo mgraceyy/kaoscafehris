@@ -1,9 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -29,14 +29,19 @@ const schema = z.object({
   date: z.string().min(1, "Required"),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "HH:MM format required"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "HH:MM format required"),
-  otHours: z.preprocess(
-    (v) => (v === "" || v === undefined ? undefined : Number(v)),
-    z.number().positive("Must be > 0").max(24, "Max 24h").optional()
-  ),
+  otHours: z.number().positive("Must be > 0").max(24, "Max 24h").optional(),
   notes: z.string().trim().max(500).optional(),
 });
 
-type Values = z.infer<typeof schema>;
+interface FormValues {
+  branchId?: string;
+  employeeId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  otHours?: number;
+  notes?: string;
+}
 
 interface Props {
   open: boolean;
@@ -60,21 +65,23 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
     enabled: open,
   });
 
-  const { register, control, handleSubmit, reset, watch, formState: { errors } } = useForm<Values>({
+  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { branchId: "", employeeId: "", date: "", startTime: "18:00", endTime: "22:00", otHours: undefined, notes: "" },
   });
 
-  const selectedBranchId = watch("branchId");
+  const [empSearch, setEmpSearch] = useState("");
 
   const filteredEmployees = useMemo(() => {
     const all = employeesQuery.data ?? [];
-    if (!selectedBranchId) return all;
-    return all.filter((e) => e.branchId === selectedBranchId);
-  }, [employeesQuery.data, selectedBranchId]);
+    if (!empSearch.trim()) return all;
+    const q = empSearch.trim().toLowerCase();
+    return all.filter((e) => `${e.firstName} ${e.lastName} ${e.employeeId}`.toLowerCase().includes(q));
+  }, [employeesQuery.data, empSearch]);
 
   useEffect(() => {
     if (open) {
+      setEmpSearch("");
       if (editing) {
         reset({
           branchId: editing.employee.branch?.id ?? "",
@@ -92,7 +99,7 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
   }, [open, editing, reset]);
 
   const mutation = useMutation({
-    mutationFn: (v: Values) =>
+    mutationFn: (v: FormValues) =>
       editing
         ? updateOvertimeSchedule(editing.id, {
             date: v.date,
@@ -144,6 +151,16 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
 
             <div className="space-y-2">
               <Label htmlFor="ot-emp">Employee</Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
+                <input
+                  type="text"
+                  placeholder="Search employee…"
+                  value={empSearch}
+                  onChange={(e) => setEmpSearch(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
               <Select id="ot-emp" {...register("employeeId")}>
                 <option value="">Select employee…</option>
                 {filteredEmployees.map((e) => (
@@ -197,7 +214,7 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
             min="0.5"
             max="24"
             placeholder="e.g. 2"
-            {...register("otHours")}
+            {...register("otHours", { setValueAs: (v) => v === "" || v === undefined ? undefined : Number(v) })}
           />
           {errors.otHours && <p className="text-xs text-destructive">{errors.otHours.message}</p>}
         </div>
