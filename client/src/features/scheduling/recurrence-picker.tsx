@@ -13,10 +13,11 @@ export interface RecurrenceConfig {
 }
 
 export function defaultRecurrence(startDate: string): RecurrenceConfig {
+  const dow = startDate ? new Date(startDate + "T00:00:00").getDay() : 1;
   return {
     repeatEvery: 1,
     repeatUnit: "week",
-    daysOfWeek: [1, 2, 3, 4, 5], // Mon–Fri
+    daysOfWeek: [dow],
     endsMode: "on",
     endsOnDate: startDate,
     endsAfter: 13,
