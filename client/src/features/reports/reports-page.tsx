@@ -24,29 +24,33 @@ import {
   type ReportParams,
   type ReportType,
 } from "./report.api";
+import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 type Tab = "attendance" | "payroll" | "headcount";
 
-function firstOfMonth(d: Date): string {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
-    .toISOString()
-    .slice(0, 10);
+function firstOfMonth(tz: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const y = Number(parts.find((p) => p.type === "year")?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === "month")?.value ?? 0);
+  return `${y}-${String(m).padStart(2, "0")}-01`;
 }
-function lastOfMonth(d: Date): string {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))
-    .toISOString()
-    .slice(0, 10);
+function lastOfMonth(tz: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const y = Number(parts.find((p) => p.type === "year")?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === "month")?.value ?? 0);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
 export default function ReportsPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("attendance");
 
-  const today = useMemo(() => new Date(), []);
+  const tz = COMPANY_TZ;
   const [branchId, setBranchId] = useState<string>("");
-  const [periodStart, setPeriodStart] = useState<string>(firstOfMonth(today));
-  const [periodEnd, setPeriodEnd] = useState<string>(lastOfMonth(today));
+  const [periodStart, setPeriodStart] = useState<string>(firstOfMonth(tz));
+  const [periodEnd, setPeriodEnd] = useState<string>(lastOfMonth(tz));
 
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
@@ -98,7 +102,7 @@ export default function ReportsPage() {
 
   const exportMut = useMutation({
     mutationFn: ({ format }: { format: ReportFormat }) => {
-      const stamp = new Date().toISOString().slice(0, 10);
+      const stamp = todayIsoLocal(tz);
       const filenameBase =
         tab === "headcount"
           ? `headcount_report_${stamp}`

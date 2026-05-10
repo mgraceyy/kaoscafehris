@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { authenticate, authorize } from "../../middleware/auth.js";
+import { COMPANY_TZ } from "../../lib/timezone.js";
 
 const router = Router();
 router.use(authenticate);
@@ -17,12 +18,17 @@ const holidaySchema = z.object({
 
 router.get("/", async (req, res, next) => {
   try {
-    const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+    const tz = COMPANY_TZ;
+    const defaultYear = parseInt(
+      new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric" }).format(new Date()),
+      10,
+    );
+    const year = req.query.year ? Number(req.query.year) : defaultYear;
     const holidays = await prisma.publicHoliday.findMany({
       where: {
         date: {
-          gte: new Date(`${year}-01-01`),
-          lte: new Date(`${year}-12-31`),
+          gte: new Date(`${year}-01-01T00:00:00.000Z`),
+          lte: new Date(`${year}-12-31T00:00:00.000Z`),
         },
       },
       orderBy: { date: "asc" },

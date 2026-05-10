@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, AlertTriangle, Building2, CheckCircle2, Clock, LogOut, RefreshCw, User, XCircle } from "lucide-react";
+import { AlertCircle, AlertTriangle, Building2, Calendar, CheckCircle2, Clock, LogOut, RefreshCw, User, XCircle } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import {
   getKioskStatus, kioskClockIn, kioskClockOut, pingKiosk, uploadKioskSelfie, validateKioskPin,
   type KioskAttendance, type KioskEmployee, type KioskShift, type KioskStatusData,
 } from "./kiosk.api";
+import { COMPANY_TZ } from "@/lib/timezone";
 
 const PIN_KEY    = "kiosk_pin";
 const BRAND      = "#811c12";
@@ -23,11 +24,11 @@ function greeting() {
 }
 
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: COMPANY_TZ });
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return new Date(iso).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: COMPANY_TZ });
 }
 
 function useLiveClock() {
@@ -43,8 +44,8 @@ function useLiveClock() {
 
 function KioskHeader({ name }: { name: string }) {
   const now = useLiveClock();
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: COMPANY_TZ });
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: COMPANY_TZ });
 
   return (
     <div style={{ background: `linear-gradient(160deg, ${DARK} 0%, ${BRAND} 100%)`, padding: "22px 20px", flexShrink: 0 }}>
@@ -228,8 +229,8 @@ function StaleShiftCard({
 }) {
   const shiftLabel = shift ? `${shift.name} (${shift.startTime} – ${shift.endTime})` : "your previous shift";
   const shiftDate = shift
-    ? new Date(shift.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
-    : new Date(attendance.clockIn).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    ? new Date(shift.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: COMPANY_TZ })
+    : new Date(attendance.clockIn).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: COMPANY_TZ });
 
   return (
     <div style={{ background: "#fffbeb", border: "1.5px solid #f59e0b", borderRadius: 16, padding: "18px", boxShadow: "0 2px 10px rgba(245,158,11,0.12)" }}>
@@ -320,9 +321,15 @@ function MainScreen({
               error={staleError}
             />
           </div>
-        ) : !isDone ? (
+        ) : !isDone && shift ? (
           <div style={{ marginBottom: 14 }}>
             <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={isClockedIn} cameraReady={cameraReady} />
+          </div>
+        ) : !isDone && !shift ? (
+          <div style={{ background: "#fff", borderRadius: 16, padding: "24px 20px", textAlign: "center", marginBottom: 14, boxShadow: "0 2px 10px rgba(140,21,21,0.07)" }}>
+            <Calendar size={40} color="#999" style={{ margin: "0 auto 10px", display: "block" }} />
+            <p style={{ fontWeight: 600, color: NEAR_BLACK, fontSize: 15 }}>No shift scheduled</p>
+            <p style={{ fontSize: 12, color: "#aaa", marginTop: 4 }}>You are not assigned to a shift today.</p>
           </div>
         ) : (
           <div style={{ background: "#fff", borderRadius: 16, padding: "20px", textAlign: "center", marginBottom: 14, boxShadow: "0 2px 10px rgba(140,21,21,0.07)" }}>
@@ -351,7 +358,7 @@ function MainScreen({
 // ─── Screen 3: Photo Confirmation ────────────────────────────────────────────
 
 function ConfirmScreen({
-  employee, photoUrl, isClockedIn, onRetake, onConfirm, loading, clockOutNote, onClockOutNoteChange,
+  employee, photoUrl, isClockedIn, onRetake, onConfirm, loading, clockInNote, onClockInNoteChange, clockOutNote, onClockOutNoteChange,
 }: {
   employee: KioskEmployee;
   photoUrl: string;
@@ -359,12 +366,14 @@ function ConfirmScreen({
   onRetake: () => void;
   onConfirm: () => void;
   loading: boolean;
+  clockInNote: string;
+  onClockInNoteChange: (v: string) => void;
   clockOutNote: string;
   onClockOutNoteChange: (v: string) => void;
 }) {
   const now = new Date();
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-  const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: COMPANY_TZ });
+  const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: COMPANY_TZ });
 
   const actionBadge = isClockedIn
     ? { bg: "#fee2e2", color: "#991b1b", label: "Time Out" }
@@ -385,6 +394,28 @@ function ConfirmScreen({
           <div style={{ borderRadius: 14, overflow: "hidden", aspectRatio: "4/3", marginBottom: 16 }}>
             <img src={photoUrl} alt="Selfie" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
+
+          {!isClockedIn && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginBottom: 6 }}>
+                Note (optional)
+              </div>
+              <textarea
+                value={clockInNote}
+                onChange={(e) => onClockInNoteChange(e.target.value)}
+                placeholder="e.g. Starting late, overtime expected…"
+                maxLength={500}
+                rows={3}
+                disabled={loading}
+                style={{
+                  width: "100%", borderRadius: 10, border: "1.5px solid #e5e5e5",
+                  padding: "10px 12px", fontSize: 13, color: NEAR_BLACK, resize: "none",
+                  outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                  background: loading ? "#f9f9f9" : "#fff",
+                }}
+              />
+            </div>
+          )}
 
           {isClockedIn && (
             <div style={{ marginBottom: 16 }}>
@@ -493,8 +524,8 @@ function SuccessScreen({
 }) {
   const [seconds, setSeconds] = useState(5);
   const now = useLiveClock();
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: COMPANY_TZ });
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: COMPANY_TZ });
 
   useEffect(() => {
     const id = setInterval(() => setSeconds((s) => Math.max(0, s - 1)), 1000);
@@ -526,7 +557,7 @@ function SuccessScreen({
         <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 600 }}>Time Recorded</div>
         <div style={{ color: "#fff", fontSize: 44, fontWeight: 900, letterSpacing: -1, fontVariantNumeric: "tabular-nums" }}>{recordedTime}</div>
         <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13 }}>
-          {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+          {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: COMPANY_TZ })}
         </div>
 
         <div style={{ marginTop: 20, background: "rgba(255,255,255,0.1)", borderRadius: 16, padding: "16px 22px", width: "100%", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.15)" }}>
@@ -651,6 +682,7 @@ export default function KioskPage() {
   const [recordedTime, setRecordedTime] = useState("");
   const [closingStale, setClosingStale] = useState(false);
   const [staleError, setStaleError] = useState("");
+  const [clockInNote, setClockInNote] = useState("");
   const [clockOutNote, setClockOutNote] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -743,10 +775,10 @@ export default function KioskPage() {
       if (isClockedIn && statusData.attendance) {
         await kioskClockOut(statusData.attendance.id, selfieUrl, pin, undefined, clockOutNote.trim() || undefined);
       } else {
-        await kioskClockIn(statusData.employee.employeeId, selfieUrl, pin);
+        await kioskClockIn(statusData.employee.employeeId, selfieUrl, pin, clockInNote.trim() || undefined);
       }
       setRecordedTime(
-        new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
+        new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: COMPANY_TZ })
       );
       setScreen("success");
     } catch (err) {
@@ -784,6 +816,7 @@ export default function KioskPage() {
     setStatusData(null);
     setPhotoBlob(null);
     setPhotoUrl("");
+    setClockInNote("");
     setClockOutNote("");
     setScreen("id-entry");
   }
@@ -792,6 +825,7 @@ export default function KioskPage() {
     setStatusData(null);
     setPhotoBlob(null);
     setPhotoUrl("");
+    setClockInNote("");
     setClockOutNote("");
     setScreen("id-entry");
   }, []);
@@ -833,6 +867,8 @@ export default function KioskPage() {
         onRetake={() => setScreen("main")}
         onConfirm={handleConfirm}
         loading={confirmLoading}
+        clockInNote={clockInNote}
+        onClockInNoteChange={setClockInNote}
         clockOutNote={clockOutNote}
         onClockOutNoteChange={setClockOutNote}
       />

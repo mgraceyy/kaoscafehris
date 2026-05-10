@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Loader2, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
@@ -12,6 +12,7 @@ import {
   type LeaveType,
 } from "@/features/leave/leave.api";
 import { getMyLeaveBalances } from "./portal.api";
+import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 const ROSE = "#a28587";
@@ -100,10 +101,12 @@ function NewLeaveRequestForm({
   employeeId,
   allowedTypes,
   onClose,
+  tz,
 }: {
   employeeId: string;
   allowedTypes: LeaveType[];
   onClose: () => void;
+  tz: string;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -154,7 +157,7 @@ function NewLeaveRequestForm({
           <div className="relative">
             <input
               type="date"
-              value={new Date().toISOString().slice(0, 10)}
+              value={todayIsoLocal(tz)}
               readOnly
               className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 pr-10"
             />
@@ -256,7 +259,14 @@ function NewLeaveRequestForm({
 export default function PortalLeavePage() {
   const user = useAuthStore((s) => s.user);
   const [showForm, setShowForm] = useState(false);
-  const currentYear = new Date().getFullYear();
+
+  const tz = COMPANY_TZ;
+  const currentYear = useMemo(() => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz, year: "numeric",
+    }).formatToParts(new Date());
+    return parseInt(parts.find((p) => p.type === "year")?.value ?? String(new Date().getFullYear()), 10);
+  }, [tz]);
 
   const query = useQuery({
     queryKey: ["leave-requests", { employeeId: user?.employee?.id }],
@@ -348,6 +358,7 @@ export default function PortalLeavePage() {
             "UNPAID" as LeaveType,
           ].filter((v, i, arr) => arr.indexOf(v) === i)}
           onClose={() => setShowForm(false)}
+          tz={tz}
         />
       )}
     </div>

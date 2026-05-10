@@ -6,25 +6,27 @@ import { extractErrorMessage } from "@/lib/api";
 import { listBranches } from "@/features/branches/branches.api";
 import { listRuns, type PayrollRunSummary, type PayrollStatus } from "./payroll.api";
 import PayrollRunCreateDialog from "./payroll-run-create-dialog";
+import { COMPANY_TZ } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 
 function fmtPeriod(start: string, end: string): string {
   const s = new Date(start.slice(0, 10) + "T00:00:00");
   const e = new Date(end.slice(0, 10) + "T00:00:00");
+  const opts: Intl.DateTimeFormatOptions = { timeZone: COMPANY_TZ };
   if (
     s.getFullYear() === e.getFullYear() &&
     s.getMonth() === e.getMonth()
   ) {
-    return `${s.toLocaleDateString("en-US", { month: "short" })} ${s.getDate()}–${e.getDate()}, ${s.getFullYear()}`;
+    return `${s.toLocaleDateString("en-US", { ...opts, month: "short" })} ${s.getDate()}–${e.getDate()}, ${s.getFullYear()}`;
   }
-  const mo: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const mo: Intl.DateTimeFormatOptions = { ...opts, month: "short", day: "numeric" };
   return `${s.toLocaleDateString("en-US", mo)} – ${e.toLocaleDateString("en-US", { ...mo, year: "numeric" })}`;
 }
 
 function fmtDateFull(dateStr: string): string {
   const d = new Date(dateStr.slice(0, 10) + "T00:00:00");
-  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: COMPANY_TZ });
 }
 
 function StatusBadge({ status }: { status: PayrollStatus }) {

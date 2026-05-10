@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, ChevronLeft, ChevronRight, Clock, Loader2 } from "lucide-react";
 import { formatTime, getMySchedule, type PortalShift } from "./portal.api";
+import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 const DAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -64,11 +65,13 @@ function WeeklyView({
   onPrev,
   onNext,
   monthLabel,
+  todayKey,
 }: {
   anchor: Date;
   onPrev: () => void;
   onNext: () => void;
   monthLabel: string;
+  todayKey: string;
 }) {
   const days = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(anchor, i)),
@@ -92,8 +95,6 @@ function WeeklyView({
     }
     return map;
   }, [query.data]);
-
-  const todayKey = ymd(new Date());
 
   return (
     <>
@@ -194,11 +195,13 @@ function MonthlyView({
   month,
   onPrev,
   onNext,
+  todayKey,
 }: {
   year: number;
   month: number;
   onPrev: () => void;
   onNext: () => void;
+  todayKey: string;
 }) {
   const startDate = ymd(startOfMonth(year, month));
   const endDate = ymd(new Date(Date.UTC(year, month + 1, 0)));
@@ -223,7 +226,6 @@ function MonthlyView({
   const firstDay = startOfMonth(year, month);
   const startOffset = firstDay.getUTCDay();
   const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const todayKey = ymd(new Date());
 
   const cells: Array<number | null> = [
     ...Array(startOffset).fill(null),
@@ -328,6 +330,9 @@ export default function PortalSchedulePage() {
   const [calYear, setCalYear] = useState(now.getUTCFullYear());
   const [calMonth, setCalMonth] = useState(now.getUTCMonth());
 
+  const tz = COMPANY_TZ;
+  const todayKey = useMemo(() => todayIsoLocal(tz), [tz]);
+
   const weekMonthLabel = useMemo(() => {
     const mid = addDays(weekAnchor, 3);
     return `${MONTH_NAMES[mid.getUTCMonth()]} ${mid.getUTCFullYear()}`;
@@ -370,6 +375,7 @@ export default function PortalSchedulePage() {
           monthLabel={weekMonthLabel}
           onPrev={() => setWeekAnchor((a) => addDays(a, -7))}
           onNext={() => setWeekAnchor((a) => addDays(a, 7))}
+          todayKey={todayKey}
         />
       ) : (
         <MonthlyView
@@ -377,6 +383,7 @@ export default function PortalSchedulePage() {
           month={calMonth}
           onPrev={prevMonth}
           onNext={nextMonth}
+          todayKey={todayKey}
         />
       )}
     </div>

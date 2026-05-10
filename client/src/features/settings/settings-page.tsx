@@ -33,7 +33,6 @@ const FIELD_CONFIG: Record<string, FieldConfig> = {
     type: "select",
     options: ["PHP", "USD", "EUR", "GBP", "JPY"],
   },
-  "company.default_work_hours": { label: "Split Time (Day Boundary)", type: "timepicker" },
   "company.payroll_frequency": {
     label: "Payroll Frequency",
     type: "select",

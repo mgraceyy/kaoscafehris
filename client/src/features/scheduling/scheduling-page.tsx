@@ -49,6 +49,7 @@ export default function SchedulingPage() {
   const branchDropdownRef = useRef<HTMLDivElement>(null);
   const [employeeIds, setEmployeeIds] = useState<string[]>([]);
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState("");
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
   const [assignShiftDialogOpen, setAssignShiftDialogOpen] = useState(false);
   const [assignShiftInitialDate, setAssignShiftInitialDate] = useState<string | undefined>();
@@ -156,6 +157,14 @@ export default function SchedulingPage() {
     () => employeeIds.length > 0 ? employees.filter((e) => employeeIds.includes(e.id)) : employees,
     [employees, employeeIds]
   );
+
+  const searchedEmployees = useMemo(() => {
+    if (!employeeSearch.trim()) return employees;
+    const q = employeeSearch.trim().toLowerCase();
+    return employees.filter(
+      (e) => `${e.firstName} ${e.lastName}`.toLowerCase().includes(q)
+    );
+  }, [employees, employeeSearch]);
 
   // Build day columns
   const weekDays = DAYS.map((label, i) => {
@@ -275,7 +284,7 @@ export default function SchedulingPage() {
           )}
           <div className="relative z-50" ref={employeeDropdownRef}>
             <button
-              onClick={() => setEmployeeDropdownOpen((o) => !o)}
+              onClick={() => { setEmployeeDropdownOpen((o) => !o); setEmployeeSearch(""); }}
               className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
               {employeeIds.length === 0
@@ -287,7 +296,16 @@ export default function SchedulingPage() {
             </button>
             {employeeDropdownOpen && (
               <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
-                <div className="p-1 max-h-72 overflow-y-auto bg-white rounded-lg">
+                <div className="p-1 bg-white rounded-lg">
+                  <div className="px-2 py-2">
+                    <input
+                      type="text"
+                      placeholder="Search employees..."
+                      value={employeeSearch}
+                      onChange={(e) => setEmployeeSearch(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
+                    />
+                  </div>
                   <label className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50">
                     <input
                       type="checkbox"
@@ -298,10 +316,12 @@ export default function SchedulingPage() {
                     <span className="font-medium">All Employees</span>
                   </label>
                   <div className="my-1 border-t border-gray-100" />
-                  {employees.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-gray-400">No employees with shifts in this period.</p>
+                  {searchedEmployees.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-gray-400">
+                      {employeeSearch.trim() ? "No employees match your search." : "No employees with shifts in this period."}
+                    </p>
                   ) : (
-                    employees.map((emp) => (
+                    searchedEmployees.map((emp) => (
                       <label
                         key={emp.id}
                         className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50"

@@ -46,6 +46,7 @@ import {
 } from "./payroll.api";
 import PayslipEditDialog from "./payslip-edit-dialog";
 import PayslipViewDialog from "./payslip-view-dialog";
+import { COMPANY_TZ } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 
@@ -220,7 +221,7 @@ export default function PayrollRunDetailPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             {run.periodStart.slice(0, 10)} → {run.periodEnd.slice(0, 10)}
             {run.processedAt &&
-              ` · finalized ${new Date(run.processedAt).toLocaleDateString()}`}
+              ` · finalized ${new Date(run.processedAt).toLocaleDateString("en-US", { timeZone: COMPANY_TZ })}`}
           </p>
         </div>
 

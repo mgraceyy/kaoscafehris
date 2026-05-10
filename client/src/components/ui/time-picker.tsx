@@ -101,10 +101,7 @@ const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
     function selectPeriod(p: "AM" | "PM") { setPeriod(p); emit(hour, minute, p); setOpen(false); }
 
     function handleFocus() {
-      const display = value
-        ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`
-        : "";
-      setInputText(display);
+      setInputText(`${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`);
       setIsEditing(true);
     }
 
@@ -128,9 +125,7 @@ const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
       if (e.key === "Escape") { setIsEditing(false); inputRef.current?.blur(); }
     }
 
-    const displayValue = value
-      ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`
-      : "";
+    const displayValue = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
 
     const dropdown = open && pos
       ? ReactDOM.createPortal(

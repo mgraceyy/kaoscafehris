@@ -25,6 +25,7 @@ import {
   type AdjustAttendanceInput,
   type AttendanceRecord,
 } from "./attendance.api";
+import { COMPANY_TZ, isoToDateStr, isoToTimeStr, toIso, nextDayLocalIso } from "@/lib/timezone";
 
 const schema = z.object({
   date: z.string().min(1, "Required"),
@@ -36,46 +37,11 @@ const schema = z.object({
 
 type Values = z.infer<typeof schema>;
 
-function toIso(date: string, time: string): string {
-  return `${date}T${time}:00+08:00`;
-}
-
-function nextDayIso(date: string): string {
-  const d = new Date(date + "T12:00:00");
-  d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-const TZ = "Asia/Manila";
-
-/** Extract YYYY-MM-DD in the company timezone so the date field pre-fills correctly. */
-function isoToDateStr(iso: string | null): string {
-  if (!iso) return "";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(new Date(iso));
-  const y = parts.find((p) => p.type === "year")?.value ?? "2000";
-  const mo = parts.find((p) => p.type === "month")?.value ?? "01";
-  const d = parts.find((p) => p.type === "day")?.value ?? "01";
-  return `${y}-${mo}-${d}`;
-}
-
 function fmtShiftTime(iso: string): string {
   // Shift times come as UTC Date objects serialized to ISO — only the time portion matters.
   return new Date(iso).toLocaleTimeString("en-US", {
     hour: "numeric", minute: "2-digit", hour12: true, timeZone: "UTC",
   });
-}
-
-/** Extract HH:mm in the company timezone so it matches the +08:00 offset used by toIso(). */
-function isoToTimeStr(iso: string | null): string {
-  if (!iso) return "";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false,
-  }).formatToParts(new Date(iso));
-  const h = parts.find((p) => p.type === "hour")?.value ?? "00";
-  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
-  return `${h}:${m}`;
 }
 
 interface Props {
@@ -106,28 +72,30 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
     },
   });
 
+  const tz = COMPANY_TZ;
+
   useEffect(() => {
     if (!open) { setLightbox(null); return; }
     if (!record) return;
     reset({
-      date: isoToDateStr(record.clockIn),
-      clockInTime: isoToTimeStr(record.clockIn),
-      clockOutTime: isoToTimeStr(record.clockOut),
+      date: isoToDateStr(record.clockIn, tz),
+      clockInTime: isoToTimeStr(record.clockIn, tz),
+      clockOutTime: isoToTimeStr(record.clockOut, tz),
       status: (record.status === "ABSENT" || record.status === "HALF_DAY") ? record.status : "AUTO",
       remarks: record.remarks ?? "",
     });
-  }, [open, record, reset]);
+  }, [open, record, reset, tz]);
 
   const mutation = useMutation({
     mutationFn: async (values: Values) => {
       if (!record) throw new Error("Missing record");
       const clockOutDate =
         values.clockOutTime && values.clockOutTime < values.clockInTime
-          ? nextDayIso(values.date)
+          ? nextDayLocalIso(values.date, tz)
           : values.date;
       const payload: AdjustAttendanceInput = {
-        clockIn: toIso(values.date, values.clockInTime),
-        clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime) : null,
+        clockIn: toIso(values.date, values.clockInTime, tz),
+        clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime, tz) : null,
         status: values.status === "AUTO" ? undefined : values.status,
         remarks: values.remarks?.trim() ? values.remarks : null,
       };
@@ -266,6 +234,13 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
           <p className="text-xs text-muted-foreground">
             Auto computes Late or Present from clock-in vs shift start. Set manually only for Absent or Half-day.
           </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Employee Clock-in Note</Label>
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+            {record?.clockInNote || <span className="text-muted-foreground italic">No note provided</span>}
+          </div>
         </div>
 
         <div className="space-y-2">

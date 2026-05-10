@@ -7,20 +7,17 @@ import { listBranches } from "@/features/branches/branches.api";
 import { listEmployees } from "@/features/employees/employees.api";
 import { listAttendance } from "@/features/attendance/attendance.api";
 import { listRequests } from "@/features/leave/leave.api";
+import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 const ROSE = "#a28587";
 const AMBER = "#C17A2A";
 const GREEN = "#4e8a40";
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function daysAgoIso(days: number) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+function daysAgoIso(today: string, days: number): string {
+  const [y, m, d] = today.split("-").map(Number);
+  const d2 = new Date(Date.UTC(y, m - 1, d - days));
+  return `${d2.getUTCFullYear()}-${String(d2.getUTCMonth() + 1).padStart(2, "0")}-${String(d2.getUTCDate()).padStart(2, "0")}`;
 }
 
 function getGreeting() {
@@ -82,6 +79,9 @@ export default function DashboardPage() {
   const isAdminOrManager = isAdmin || user?.role === "MANAGER";
   const [branchFilter, setBranchFilter] = useState("");
 
+  const tz = COMPANY_TZ;
+  const today = useMemo(() => todayIsoLocal(tz), [tz]);
+
   const branchesQuery = useQuery({
     queryKey: ["branches", {}],
     queryFn: () => listBranches(),
@@ -95,15 +95,15 @@ export default function DashboardPage() {
   });
 
   const todayAttendanceQuery = useQuery({
-    queryKey: ["attendance", { date: todayIso() }],
-    queryFn: () => listAttendance({ date: todayIso() }),
-    enabled: isAdminOrManager,
+    queryKey: ["attendance", { date: today }],
+    queryFn: () => listAttendance({ date: today }),
+    enabled: isAdminOrManager && !!today,
   });
 
   const weekAttendanceQuery = useQuery({
-    queryKey: ["attendance", { startDate: daysAgoIso(7), endDate: todayIso() }],
-    queryFn: () => listAttendance({ startDate: daysAgoIso(7), endDate: todayIso() }),
-    enabled: isAdminOrManager,
+    queryKey: ["attendance", { startDate: daysAgoIso(today, 7), endDate: today }],
+    queryFn: () => listAttendance({ startDate: daysAgoIso(today, 7), endDate: today }),
+    enabled: isAdminOrManager && !!today,
   });
 
   const leaveRequestsQuery = useQuery({
@@ -126,11 +126,11 @@ export default function DashboardPage() {
     const records = weekAttendanceQuery.data ?? [];
     const dateMap = new Map<string, { present: number; late: number; absent: number }>();
     for (let i = 6; i >= 0; i--) {
-      const date = daysAgoIso(i);
+      const date = daysAgoIso(today, i);
       dateMap.set(date, { present: 0, late: 0, absent: 0 });
     }
     records.forEach(r => {
-      const date = r.date || todayIso();
+      const date = r.date || today;
       const entry = dateMap.get(date) || { present: 0, late: 0, absent: 0 };
       if (r.status === "PRESENT") entry.present++;
       else if (r.status === "LATE") entry.late++;
@@ -348,6 +348,7 @@ export default function DashboardPage() {
                             hour: "2-digit",
                             minute: "2-digit",
                             hour12: true,
+                            timeZone: tz,
                           })
                         : "—"}
                     </td>

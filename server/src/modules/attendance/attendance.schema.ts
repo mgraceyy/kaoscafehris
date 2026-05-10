@@ -10,6 +10,7 @@ export const clockInSchema = z.object({
   employeeId: z.string().uuid(),
   clockIn: isoDateTime.optional(), // defaults to now if omitted
   selfieIn: z.string().url().optional(),
+  clockInNote: z.string().max(500).optional(),
   deviceId: z.string().max(80).optional(),
   localRecordId: z.string().max(120).optional(),
 });

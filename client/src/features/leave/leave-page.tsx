@@ -6,6 +6,7 @@ import { extractErrorMessage } from "@/lib/api";
 import { exportToCsv } from "@/lib/export";
 import { useAuthStore } from "@/features/auth/auth.store";
 import { listBranches } from "@/features/branches/branches.api";
+import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 import {
   listBalances,
   listRequests,
@@ -114,8 +115,8 @@ function BalanceCards({ balances }: { balances: LeaveBalance[] }) {
   );
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+function formatDate(dateStr: string, tz: string) {
+  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: tz });
 }
 
 export default function LeavePage() {
@@ -136,8 +137,16 @@ export default function LeavePage() {
   const [reviewInitialStatus, setReviewInitialStatus] = useState<"APPROVED" | "REJECTED">("APPROVED");
   const [revertTarget, setRevertTarget] = useState<LeaveRequest | null>(null);
 
-  const currentYear = new Date().getFullYear();
-  const monthLabel = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const tz = COMPANY_TZ;
+  const currentYear = useMemo(() => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz, year: "numeric",
+    }).formatToParts(new Date());
+    return parseInt(parts.find((p) => p.type === "year")?.value ?? String(new Date().getFullYear()), 10);
+  }, [tz]);
+  const monthLabel = useMemo(() => {
+    return new Date().toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: tz });
+  }, [tz]);
 
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
@@ -208,7 +217,7 @@ export default function LeavePage() {
       r.reason ?? "",
       r.status,
     ]);
-    const stamp = new Date().toISOString().slice(0, 10);
+    const stamp = todayIsoLocal(tz);
     exportToCsv(`leave_requests_${stamp}.csv`, headers, rows);
   }
 
@@ -369,10 +378,10 @@ export default function LeavePage() {
                       {TYPE_LABEL[r.leaveType]}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-gray-600 tabular-nums">{formatDate(r.startDate)}</td>
-                  <td className="px-5 py-4 text-gray-600 tabular-nums">{formatDate(r.endDate)}</td>
+                  <td className="px-5 py-4 text-gray-600 tabular-nums">{formatDate(r.startDate, tz)}</td>
+                  <td className="px-5 py-4 text-gray-600 tabular-nums">{formatDate(r.endDate, tz)}</td>
                   <td className="px-5 py-4 text-gray-600 tabular-nums">{Number(r.totalDays)}d</td>
-                  <td className="px-5 py-4 text-gray-500 tabular-nums">{formatDate(r.createdAt)}</td>
+                  <td className="px-5 py-4 text-gray-500 tabular-nums">{formatDate(r.createdAt, tz)}</td>
                   <td className="px-5 py-4 text-gray-600 max-w-[160px] truncate">{r.reason || "—"}</td>
                   <td className="px-5 py-4">
                     <StatusBadge status={r.status} />

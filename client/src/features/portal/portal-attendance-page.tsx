@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, CalendarDays, Clock, Loader2 } from "lucide-react";
 import { formatLocalTime, getMyAttendance, type PortalAttendance } from "./portal.api";
+import { COMPANY_TZ } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 
@@ -10,16 +11,6 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function localIso(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function firstOfMonth(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
-function lastOfMonth(d: Date) {
-  return localIso(new Date(d.getFullYear(), d.getMonth() + 1, 0));
-}
 
 function StatusBadge({ record }: { record: PortalAttendance }) {
   const hasClockOut = !!record.clockOut;
@@ -61,7 +52,7 @@ function dayOf(dateIso: string) {
   return DAY_SHORT[new Date(dateIso + "T00:00:00").getDay()];
 }
 
-function AttendanceCard({ record }: { record: PortalAttendance }) {
+function AttendanceCard({ record, tz }: { record: PortalAttendance; tz: string }) {
   const dateStr = record.date.slice(0, 10);
   return (
     <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
@@ -79,8 +70,8 @@ function AttendanceCard({ record }: { record: PortalAttendance }) {
         <Clock className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
         <div>
           <p className="text-sm text-gray-700">
-            {formatLocalTime(record.clockIn)}
-            {record.clockOut ? ` – ${formatLocalTime(record.clockOut)}` : ""}
+            {formatLocalTime(record.clockIn, tz)}
+            {record.clockOut ? ` – ${formatLocalTime(record.clockOut, tz)}` : ""}
           </p>
           <div className="flex gap-3 mt-0.5">
             <span className="text-xs text-gray-400">{dayOf(dateStr)}</span>
@@ -110,13 +101,21 @@ function AttendanceCard({ record }: { record: PortalAttendance }) {
 
 export default function PortalAttendancePage() {
   const now = new Date();
-  const [start, setStart] = useState(firstOfMonth(now));
-  const [end, setEnd] = useState(lastOfMonth(now));
+  const [start, setStart] = useState(() => {
+    const d = now;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+  const [end, setEnd] = useState(() => {
+    const d = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
 
   const query = useQuery({
     queryKey: ["portal-attendance", start, end],
     queryFn: () => getMyAttendance({ startDate: start, endDate: end }),
   });
+
+  const tz = COMPANY_TZ;
 
   return (
     <div>
@@ -160,7 +159,7 @@ export default function PortalAttendancePage() {
         ) : (
           <div className="space-y-3">
             {(query.data ?? []).map((r) => (
-              <AttendanceCard key={r.id} record={r} />
+              <AttendanceCard key={r.id} record={r} tz={tz} />
             ))}
           </div>
         )}

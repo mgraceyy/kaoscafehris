@@ -8,8 +8,9 @@ import { z } from "zod";
 import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { getSetting } from "../../lib/settings-cache.js";
+import { COMPANY_TZ } from "../../lib/timezone.js";
 import * as attendanceService from "../attendance/attendance.service.js";
-import { localCalendarDateOf, getScheduledTimes, getUtcOffsetMinutes } from "../attendance/attendance.service.js";
+import { localCalendarDateOf, getScheduledTimes } from "../attendance/attendance.service.js";
 
 const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "uploads");
 const selfieDir = path.join(uploadsBase, "selfies");
@@ -150,10 +151,8 @@ router.get("/status/:employeeId", async (req, res, next) => {
     // overtime so inflated hours are not paid regardless of when they close.
     let staleShiftEnd: string | null = null;
     if (isFromPrevDay && attendance && assignment?.shift) {
-      const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
-      const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
-      const tzOffset = getUtcOffsetMinutes(tz, now);
-      const { scheduledEnd } = getScheduledTimes(attendance.date, assignment.shift, tzOffset);
+      const tz = COMPANY_TZ;
+      const { scheduledEnd } = getScheduledTimes(attendance.date, assignment.shift, tz);
       if (now > scheduledEnd) {
         staleShiftEnd = scheduledEnd.toISOString();
       }
@@ -166,7 +165,7 @@ router.get("/status/:employeeId", async (req, res, next) => {
     });
 
     const formatTime = (d: Date) =>
-      d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+      d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "UTC" });
 
     res.json({
       data: {
@@ -203,6 +202,7 @@ router.get("/status/:employeeId", async (req, res, next) => {
 const kioskClockInSchema = z.object({
   employeeId: z.string().trim().min(1),
   selfieIn: z.string().optional(),
+  clockInNote: z.string().max(500).optional(),
   kioskPin: z.string().optional(),
 });
 
@@ -223,7 +223,7 @@ router.post("/clock-in", async (req, res, next) => {
       select: { id: true },
     });
     if (!emp) throw new AppError(404, "Employee not found");
-    const record = await attendanceService.clockIn({ employeeId: emp.id, selfieIn: body.selfieIn });
+    const record = await attendanceService.clockIn({ employeeId: emp.id, selfieIn: body.selfieIn, clockInNote: body.clockInNote });
     res.status(201).json({ data: record });
   } catch (err) { next(err); }
 });

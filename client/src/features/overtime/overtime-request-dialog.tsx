@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { createOvertimeRequest } from "./overtime.api";
+import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const schema = z.object({
   date: z.string().min(1, "Required"),
@@ -37,7 +38,7 @@ export default function OvertimeRequestDialog({ open, onOpenChange }: Props) {
   });
 
   useEffect(() => {
-    if (open) reset({ date: new Date().toISOString().slice(0, 10), reason: "" });
+    if (open) reset({ date: todayIsoLocal(COMPANY_TZ), reason: "" });
   }, [open, reset]);
 
   const mutation = useMutation({

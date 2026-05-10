@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { extractErrorMessage } from "@/lib/api";
+import { COMPANY_TZ } from "@/lib/timezone";
 import {
   formatLocalTime,
   getMyAttendance,
@@ -51,6 +52,8 @@ export default function MyAttendancePage() {
     queryKey: ["portal-attendance", startDate, endDate],
     queryFn: () => getMyAttendance({ startDate, endDate }),
   });
+
+  const tz = COMPANY_TZ;
 
   const totals = useMemo(() => {
     const list = query.data ?? [];
@@ -180,10 +183,10 @@ export default function MyAttendancePage() {
                 <TableCell>{r.branch.name}</TableCell>
                 <TableCell>{statusBadge(r.status)}</TableCell>
                 <TableCell className="tabular-nums">
-                  {formatLocalTime(r.clockIn)}
+                  {formatLocalTime(r.clockIn, tz)}
                 </TableCell>
                 <TableCell className="tabular-nums">
-                  {r.clockOut ? formatLocalTime(r.clockOut) : "—"}
+                  {r.clockOut ? formatLocalTime(r.clockOut, tz) : "—"}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {r.hoursWorked ? Number(r.hoursWorked).toFixed(2) : "—"}

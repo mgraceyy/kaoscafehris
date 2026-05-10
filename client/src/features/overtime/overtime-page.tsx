@@ -18,6 +18,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import OvertimeRequestDialog from "./overtime-request-dialog";
 import OvertimeAssignDialog from "./overtime-assign-dialog";
 import OvertimeReviewDialog from "./overtime-review-dialog";
+import { COMPANY_TZ } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 
@@ -74,7 +75,7 @@ function fmt12(hhmm: string) {
 
 function todayLabel() {
   return new Date().toLocaleDateString("en-US", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
+    weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: COMPANY_TZ,
   });
 }
 

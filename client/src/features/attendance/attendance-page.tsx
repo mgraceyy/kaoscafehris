@@ -4,7 +4,6 @@ import { Download, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
 import { exportToCsv } from "@/lib/export";
 import { listBranches } from "@/features/branches/branches.api";
-import { listSettings } from "@/features/settings/settings.api";
 import { useToast } from "@/components/ui/toast";
 import {
   formatClockTime,
@@ -15,6 +14,7 @@ import {
 } from "./attendance.api";
 import AttendanceAdjustDialog from "./attendance-adjust-dialog";
 import AttendanceAddDialog from "./attendance-add-dialog";
+import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 const AMBER = "#C4843A";
@@ -22,41 +22,8 @@ const PURPLE = "#7a3db0";
 const GREEN = "#4e8a40";
 
 
-function localDateIso(d: Date = new Date()): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-function parseSplitTime(raw: string): { hour: number; minute: number } {
-  const hhmm = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (hhmm) return { hour: parseInt(hhmm[1], 10), minute: parseInt(hhmm[2], 10) };
-  const ampm = raw.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (!ampm) return { hour: 8, minute: 0 };
-  let hour = parseInt(ampm[1], 10);
-  const minute = parseInt(ampm[2], 10);
-  if (ampm[3].toUpperCase() === "AM" && hour === 12) hour = 0;
-  if (ampm[3].toUpperCase() === "PM" && hour !== 12) hour += 12;
-  return { hour, minute };
-}
-
-function workDayIso(splitHour: number, splitMinute: number, offsetDays = 0): string {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  }).formatToParts(now);
-  const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
-  const localHour = get("hour");
-  const localMinute = get("minute");
-  const beforeSplit = localHour < splitHour || (localHour === splitHour && localMinute < splitMinute);
-  const base = new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
-  if (beforeSplit) base.setUTCDate(base.getUTCDate() - 1);
-  if (offsetDays) base.setUTCDate(base.getUTCDate() - offsetDays);
-  return localDateIso(base);
-}
-
-function formatDate(iso: string, timeZone = "Asia/Manila") {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone });
+function formatDate(iso: string, tz: string) {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: tz });
 }
 
 
@@ -82,8 +49,8 @@ function StatusBadge({ status, hasClockOut }: { status: AttendanceStatus; hasClo
   }
 }
 
-function dateLabel(iso: string) {
-  return new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+function dateLabel(iso: string, tz: string) {
+  return new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: tz });
 }
 
 export default function AttendancePage() {
@@ -115,23 +82,9 @@ export default function AttendancePage() {
     queryFn: () => listBranches({ isActive: true }),
   });
 
-  const settingsQuery = useQuery({
-    queryKey: ["settings", "company"],
-    queryFn: () => listSettings("company"),
-    staleTime: 5 * 60_000,
-  });
+  const tz = COMPANY_TZ;
 
-  const companyTimezone = useMemo(() => {
-    const raw = settingsQuery.data?.find((s) => s.key === "company.timezone")?.value as string | undefined;
-    return raw?.split(" ")[0] ?? "Asia/Manila";
-  }, [settingsQuery.data]);
-
-  const { hour: splitHour, minute: splitMinute } = useMemo(() => {
-    const raw = settingsQuery.data?.find((s) => s.key === "company.default_work_hours")?.value as string | undefined;
-    return parseSplitTime(raw ?? "08:00");
-  }, [settingsQuery.data]);
-
-  const todayWorkDay = workDayIso(splitHour, splitMinute);
+  const todayWorkDay = todayIsoLocal(tz);
 
 const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" ? "ABSENT" : "") as AttendanceStatus | "";
 
@@ -173,8 +126,8 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
       `${r.employee.firstName} ${r.employee.lastName}`,
       r.employee.position ?? "",
       r.date.slice(0, 10),
-      formatClockTime(r.clockIn, companyTimezone),
-      r.clockOut ? formatClockTime(r.clockOut, companyTimezone) : "",
+      formatClockTime(r.clockIn, tz),
+      r.clockOut ? formatClockTime(r.clockOut, tz) : "",
       r.status,
     ]);
     const branch = selectedBranch ? `_${selectedBranch.name.replace(/\s+/g, "_")}` : "";
@@ -195,7 +148,7 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
       <div className="mb-8 flex items-start justify-between animate-fade-up">
         <div>
           <h1 className="font-heading text-3xl font-bold text-gray-900">Attendance</h1>
-          <p className="text-sm text-gray-400 mt-1">{dateLabel(todayWorkDay)}</p>
+          <p className="text-sm text-gray-400 mt-1">{dateLabel(todayWorkDay, tz)}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -338,12 +291,18 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
                   <td className="px-5 py-4 text-gray-600">{r.employee.position ?? "—"}</td>
                   <td className="px-5 py-4 text-gray-600">{r.branch?.name ?? "—"}</td>
                   <td className="px-5 py-4 text-gray-600">{r.shiftName ?? "—"}</td>
-                  <td className="px-5 py-4 text-gray-600">{formatDate(r.date.slice(0, 10) + "T12:00:00Z")}</td>
+                  <td className="px-5 py-4 text-gray-600">{formatDate(r.date.slice(0, 10) + "T12:00:00Z", tz)}</td>
                   <td className="px-5 py-4 tabular-nums font-medium text-gray-800">
-                    {formatClockTime(r.clockIn, companyTimezone)}
+                    <span>{formatClockTime(r.clockIn, tz)}</span>
+                    {r.clockInNote && (
+                      <span className="ml-1.5 text-[10px] text-amber-600 cursor-help" title={r.clockInNote}>📝</span>
+                    )}
                   </td>
                   <td className="px-5 py-4 tabular-nums text-gray-600">
-                    {r.clockOut ? formatClockTime(r.clockOut, companyTimezone) : <span className="text-gray-300">—</span>}
+                    {r.clockOut ? formatClockTime(r.clockOut, tz) : <span className="text-gray-300">—</span>}
+                    {r.clockOutNote && (
+                      <span className="ml-1.5 text-[10px] text-amber-600 cursor-help" title={r.clockOutNote}>📝</span>
+                    )}
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -428,7 +387,7 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
               </span>{" "}
               on{" "}
               <span className="font-medium text-gray-800">
-                {new Date(deleteTarget.clockIn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                {new Date(deleteTarget.clockIn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: tz })}
               </span>
               . This cannot be undone.
             </p>

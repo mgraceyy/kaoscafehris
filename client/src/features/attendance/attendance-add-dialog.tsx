@@ -21,30 +21,7 @@ import { extractErrorMessage } from "@/lib/api";
 import { listEmployees } from "@/features/employees/employees.api";
 import { listShiftTypes } from "@/features/scheduling/shift-types.api";
 import { createAttendance } from "./attendance.api";
-
-function todayIso() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(new Date());
-  const y = parts.find((p) => p.type === "year")?.value ?? "";
-  const mo = parts.find((p) => p.type === "month")?.value ?? "";
-  const d = parts.find((p) => p.type === "day")?.value ?? "";
-  return `${y}-${mo}-${d}`;
-}
-
-/** Combine a date string (YYYY-MM-DD) and time string (HH:mm) into an ISO datetime.
- *  Treat the admin-entered date+time as local wall-clock time (Asia/Manila = UTC+8).
- *  If clockOutTime < clockInTime, the clock-out is on the next calendar day.
- */
-function toIso(date: string, time: string): string {
-  return `${date}T${time}:00+08:00`;
-}
-
-function nextDayIso(date: string): string {
-  const d = new Date(date + "T12:00:00");
-  d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+import { COMPANY_TZ, todayIsoLocal, toIso, nextDayLocalIso } from "@/lib/timezone";
 
 function formatShiftTime(isoTime: string): string {
   const d = new Date(isoTime);
@@ -91,6 +68,8 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
     enabled: open,
   });
 
+  const tz = COMPANY_TZ;
+
   const {
     control,
     register,
@@ -103,7 +82,7 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
     defaultValues: {
       employeeId: "",
       shiftTypeId: "",
-      date: todayIso(),
+      date: todayIsoLocal(tz),
       clockInTime: "08:00",
       clockOutTime: "",
       remarks: "",
@@ -118,7 +97,7 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
       reset({
         employeeId: "",
         shiftTypeId: "",
-        date: todayIso(),
+        date: todayIsoLocal(tz),
         clockInTime: "08:00",
         clockOutTime: "",
         remarks: "",
@@ -126,7 +105,7 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
       setEmpSearch("");
       setDropdownOpen(false);
     }
-  }, [open, reset]);
+  }, [open, reset, tz]);
 
   // Close dropdown on outside click.
   useEffect(() => {
@@ -152,13 +131,13 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
     mutationFn: (values: Values) => {
       const clockOutDate =
         values.clockOutTime && values.clockOutTime < values.clockInTime
-          ? nextDayIso(values.date)
+          ? nextDayLocalIso(values.date, tz)
           : values.date;
       return createAttendance({
         employeeId: values.employeeId,
         shiftTypeId: values.shiftTypeId,
-        clockIn: toIso(values.date, values.clockInTime),
-        clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime) : null,
+        clockIn: toIso(values.date, values.clockInTime, tz),
+        clockOut: values.clockOutTime ? toIso(clockOutDate, values.clockOutTime, tz) : null,
         remarks: values.remarks?.trim() || null,
       });
     },
@@ -287,7 +266,7 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
 
         <div className="space-y-2">
           <Label htmlFor="date">Date</Label>
-          <Input id="date" type="date" max={todayIso()} {...register("date")} />
+          <Input id="date" type="date" max={todayIsoLocal(tz)} {...register("date")} />
           {errors.date && (
             <p className="text-xs text-destructive">{errors.date.message}</p>
           )}

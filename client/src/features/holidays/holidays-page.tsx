@@ -21,6 +21,7 @@ import {
   type HolidayType,
   type PublicHoliday,
 } from "./holidays.api";
+import { COMPANY_TZ } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
 
@@ -43,7 +44,7 @@ const DEFAULT_FORM: FormState = {
 export default function HolidaysPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const currentYear = new Date().getFullYear();
+  const currentYear = Number(new Intl.DateTimeFormat("en-CA", { timeZone: COMPANY_TZ, year: "numeric" }).format(new Date()));
   const [year, setYear] = useState(currentYear);
   const [searchTitle, setSearchTitle] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -304,6 +305,7 @@ export default function HolidaysPage() {
                       month: "long",
                       day: "numeric",
                       year: "numeric",
+                      timeZone: COMPANY_TZ,
                     })}
                   </span>
                 </td>

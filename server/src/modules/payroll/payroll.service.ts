@@ -3,6 +3,7 @@ import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { logAudit } from "../../lib/audit.js";
 import { getScheduledTimes } from "../attendance/attendance.service.js";
+import { COMPANY_TZ, localDateKey, localCalendarDate, isCrossingLocal, localHoursSinceMidnight, localTimeInMinutes, localMidnightUtc } from "../../lib/timezone.js";
 import type {
   AdjustPayslipInput,
   CreatePayrollRunInput,
@@ -280,7 +281,6 @@ export async function processRun(id: string) {
           "payroll.late_deduction_per_minute",
           "payroll.night_diff_rate",
           "attendance.late_threshold",
-          "company.timezone",
         ],
       },
     },
@@ -294,24 +294,12 @@ export async function processRun(id: string) {
     return typeof v === "number" && Number.isFinite(v) ? v : fallback;
   }
 
-  function getStringSetting(key: string, fallback: string): string {
-    const row = settingRows.find((r) => r.key === key);
-    if (!row) return fallback;
-    try { const v = JSON.parse(row.value); return typeof v === "string" ? v : fallback; } catch { return fallback; }
-  }
-
   const otRatePerHour          = getSetting("payroll.regular_ot_rate", 0);
   const lateDeductionPerMinute = getSetting("payroll.late_deduction_per_minute", 0);
   const nightDiffPct           = getSetting("payroll.night_diff_rate", 0); // percentage, e.g. 10 = 10%
   const lateThresholdMinutes = getSetting("attendance.late_threshold", 0); // 0 = no grace period if not configured
 
-  // Parse UTC offset from the company timezone setting (e.g., "Asia/Manila (UTC+8)" → 480).
-  const tzRaw = getStringSetting("company.timezone", "Asia/Manila (UTC+8)");
-  const tzOffsetMinutes = (() => {
-    const m = tzRaw.match(/UTC([+-])(\d+)/);
-    if (!m) return 480; // default Asia/Manila
-    return (m[1] === "+" ? 1 : -1) * parseInt(m[2], 10) * 60;
-  })();
+  const tz = COMPANY_TZ;
 
   // Shift assignments for the period — determines which days are paid.
   const shiftAssignments = await prisma.shiftAssignment.findMany({
@@ -366,7 +354,7 @@ export async function processRun(id: string) {
 
     if (!scheduledShiftEndMap.has(sa.employeeId)) scheduledShiftEndMap.set(sa.employeeId, new Map());
     if (!scheduledShiftStartMap.has(sa.employeeId)) scheduledShiftStartMap.set(sa.employeeId, new Map());
-    const { scheduledStart: shiftStart, scheduledEnd } = getScheduledTimes(sa.shift.date, sa.shift, tzOffsetMinutes);
+    const { scheduledStart: shiftStart, scheduledEnd } = getScheduledTimes(sa.shift.date, sa.shift, tz);
     scheduledShiftStartMap.get(sa.employeeId)!.set(dateKey, shiftStart);
     scheduledShiftEndMap.get(sa.employeeId)!.set(dateKey, scheduledEnd);
 
@@ -443,23 +431,25 @@ export async function processRun(id: string) {
   // Returns how many hours of [clockIn, clockOut] fall in the 22:00–06:00 local window.
   function computeNightDiffHours(clockIn: Date, clockOut: Date | null): number {
     if (!clockOut || clockOut <= clockIn) return 0;
-    const NIGHT_START_MS = 22 * 3_600_000;       // 22:00 in ms from local midnight
-    const NIGHT_END_MS   = 30 * 3_600_000;       // 06:00 next day (30h)
-    const DAY_MS         = 24 * 3_600_000;
-    const offsetMs       = tzOffsetMinutes * 60_000;
-    const localIn        = clockIn.getTime()  + offsetMs;
-    const localOut       = clockOut.getTime() + offsetMs;
-    const dayStart       = localIn - (localIn % DAY_MS);
-    let totalMs = 0;
-    const days = Math.ceil((localOut - localIn) / DAY_MS) + 2;
-    for (let i = -1; i < days; i++) {
-      const pStart = dayStart + i * DAY_MS + NIGHT_START_MS;
-      const pEnd   = dayStart + i * DAY_MS + NIGHT_END_MS;
-      const oStart = Math.max(localIn,  pStart);
-      const oEnd   = Math.min(localOut, pEnd);
-      if (oEnd > oStart) totalMs += oEnd - oStart;
+    let totalHours = 0;
+    const inDate = new Date(localCalendarDate(clockIn, tz));
+    const outDate = localCalendarDate(clockOut, tz);
+    const cursor = new Date(inDate);
+    while (cursor <= outDate) {
+      const cursorKey = localDateKey(cursor, tz);
+      const nextKey = (() => {
+        const d = new Date(cursor);
+        d.setUTCDate(d.getUTCDate() + 1);
+        return localDateKey(d, tz);
+      })();
+      const nightStart = localMidnightUtc(cursorKey, tz).getTime() + 22 * 3_600_000;
+      const nightEnd   = localMidnightUtc(nextKey, tz).getTime() + 6 * 3_600_000;
+      const oStart = Math.max(clockIn.getTime(),  nightStart);
+      const oEnd   = Math.min(clockOut.getTime(), nightEnd);
+      if (oEnd > oStart) totalHours += (oEnd - oStart) / 3_600_000;
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
-    return round2(totalMs / 3_600_000);
+    return round2(totalHours);
   }
 
   const otHoursMap = new Map<string, number>();
@@ -534,9 +524,8 @@ export async function processRun(id: string) {
       nightDiffHoursMap.set(rec.employeeId, (nightDiffHoursMap.get(rec.employeeId) ?? 0) + ndHrs);
     }
 
-    // Detect overnight: clockOut is on a different calendar date than clockIn.
-    const isOvernight = !!(rec.clockOut &&
-      rec.clockOut.toISOString().slice(0, 10) !== rec.clockIn.toISOString().slice(0, 10));
+    // Detect overnight: clockOut falls on a different local calendar date than clockIn.
+    const isOvernight = !!(rec.clockOut && isCrossingLocal(rec.clockIn, rec.clockOut, tz));
 
     if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
     const existingAtt = attendanceDateMap.get(rec.employeeId)!.get(dateKey);
@@ -552,17 +541,12 @@ export async function processRun(id: string) {
     // Build holidayAttMap using local clock-out date so crossing shifts are credited to the
     // correct holiday (e.g. Apr 30 3rd shift clock-out on May 1 local → May 1 holiday entry).
     if (rec.clockOut) {
-      const tzOffMs = tzOffsetMinutes * 60_000;
-      const dayMs   = 24 * 3_600_000;
-      const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
-      const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
-      const localOutDateKey = new Date(localOutDay * dayMs).toISOString().slice(0, 10);
-      const isCrossing = localInDay !== localOutDay;
+      const localOutDateKey = localDateKey(rec.clockOut, tz);
+      const isCrossing = isCrossingLocal(rec.clockIn, rec.clockOut, tz);
       // Crossing: hours from local midnight of clock-out date to actual clock-out (e.g. 7hr for
       //   a 3rd shift ending 7AM). Same-day: countedHrs (break-adjusted, consistent with pay calc).
-      const midnightOfOutDay = localOutDay * dayMs - tzOffMs;
       const hoursOnDate = isCrossing
-        ? Math.max(0, round2((rec.clockOut.getTime() - midnightOfOutDay) / 3_600_000))
+        ? Math.max(0, round2(localHoursSinceMidnight(rec.clockOut, tz)))
         : countedHrs;
 
       if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
@@ -580,15 +564,15 @@ export async function processRun(id: string) {
       // Night shifts starting at or after 22:00 local (e.g. 3rd shift 11PM) are excluded —
       // their holiday coverage comes from the prior day's crossing shift instead.
       if (isCrossing) {
-        const hoursOnInDate = Math.max(0, round2((midnightOfOutDay - rec.clockIn.getTime()) / 3_600_000));
+        // hours from clockIn to next local midnight = 24 - hoursSinceMidnight(clockIn)
+        const hoursOnInDate = Math.max(0, round2(24 - localHoursSinceMidnight(rec.clockIn, tz)));
         if (hoursOnInDate > 0) {
           // Use the scheduled shift start to determine if this is a late-night shift.
           // Fall back to the actual clock-in time when no shift assignment exists.
           const shiftStart = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey) ?? rec.clockIn;
-          const localShiftStartMinutes = (shiftStart.getUTCHours() * 60 + shiftStart.getUTCMinutes() + tzOffsetMinutes) % (24 * 60);
-          const isNightShift = localShiftStartMinutes >= 22 * 60; // starts at or after 22:00 local
+          const isNightShift = localTimeInMinutes(shiftStart, tz) >= 22 * 60; // starts at or after 22:00 local
           if (!isNightShift) {
-            const localInDateKey = new Date(localInDay * dayMs).toISOString().slice(0, 10);
+            const localInDateKey = localDateKey(rec.clockIn, tz);
             const existingIn = empHMap.get(localInDateKey);
             if (!existingIn) {
               empHMap.set(localInDateKey, { hoursOnDate: hoursOnInDate, lateMinutes: computedLateMinutes, isCrossing: true });
@@ -621,7 +605,7 @@ export async function processRun(id: string) {
       if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
       if (!attendanceDateMap.get(rec.employeeId)!.has(dayBeforePeriodKey)) {
         const isOvernight = !!(rec.clockOut &&
-          rec.clockOut.toISOString().slice(0, 10) !== rec.clockIn.toISOString().slice(0, 10));
+          isCrossingLocal(rec.clockIn, rec.clockOut, tz));
         const hoursWorked = toNum(rec.hoursWorked);
         // Stored lateMinutes may be 0 due to overnight date-mismatch in the late
         // calculation (clock-in at 2AM on date D looks early when scheduledStart is
@@ -639,18 +623,17 @@ export async function processRun(id: string) {
         // May 1) and rollback-artifact records where the date field was pushed back one
         // day by the old split-time logic but both timestamps are on May 1 local time.
         if (rec.clockOut) {
-          const tzOffMs = tzOffsetMinutes * 60_000;
-          const dayMs   = 24 * 3_600_000;
-          const localOutDay = Math.floor((rec.clockOut.getTime() + tzOffMs) / dayMs);
-          const localInDay  = Math.floor((rec.clockIn.getTime()  + tzOffMs) / dayMs);
-          const periodStartLocalDay = Math.floor((run.periodStart.getTime() + tzOffMs) / dayMs);
-          if (localOutDay === periodStartLocalDay) {
-            const localOutDateKey = new Date(localOutDay * dayMs).toISOString().slice(0, 10);
-            const midnightUTC = localOutDay * dayMs - tzOffMs;
+          if (localDateKey(rec.clockOut, tz) === localDateKey(run.periodStart, tz)) {
+            const localOutDateKey = localDateKey(rec.clockOut, tz);
+            const crossing = isCrossingLocal(rec.clockIn, rec.clockOut, tz);
             // Crossing shift: credit from midnight to clockOut.
-            // Same-day shift on the holiday (date field rolled back): credit full worked hours.
-            const creditFromMs = localInDay === localOutDay ? rec.clockIn.getTime() : midnightUTC;
-            const hoursOnDate = Math.max(0, round2((rec.clockOut.getTime() - creditFromMs) / 3_600_000));
+            // Same-day shift on the holiday (date field rolled back): credit full worked hours,
+            // capped at 8 (standard daily rate basis) from midnight on the holiday.
+            const midnightUtc = localMidnightUtc(localOutDateKey, tz);
+            const creditFromMs = crossing ? midnightUtc.getTime() : rec.clockIn.getTime();
+            const capMs = midnightUtc.getTime() + 8 * 3_600_000;
+            const outMs = Math.min(rec.clockOut.getTime(), capMs);
+            const hoursOnDate = Math.max(0, round2((outMs - creditFromMs) / 3_600_000));
             if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
             const empHMap = holidayAttMap.get(rec.employeeId)!;
             if (!empHMap.has(localOutDateKey)) {

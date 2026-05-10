@@ -1,28 +1,18 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Building2, CalendarDays, Clock, FileText, User } from "lucide-react";
 import { useAuthStore } from "@/features/auth/auth.store";
-import { formatTime, getMyAttendance, getMySchedule, getProfile } from "./portal.api";
+import { formatTime, formatLocalTime, getMyAttendance, getMySchedule, getProfile } from "./portal.api";
+import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return "morning";
   if (h < 18) return "afternoon";
   return "evening";
-}
-
-function fmtLocalTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
 }
 
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -41,16 +31,21 @@ const TILES = [
 export default function PortalHomePage() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
-  const today = todayIso();
+
+  const tz = COMPANY_TZ;
+
+  const today = useMemo(() => todayIsoLocal(tz), [tz]);
 
   const profileQuery = useQuery({ queryKey: ["portal-profile"], queryFn: getProfile });
   const scheduleQuery = useQuery({
     queryKey: ["portal-schedule", today, today],
     queryFn: () => getMySchedule({ startDate: today, endDate: today }),
+    enabled: !!today,
   });
   const attendanceQuery = useQuery({
     queryKey: ["portal-attendance-today", today],
     queryFn: () => getMyAttendance({ startDate: today, endDate: today }),
+    enabled: !!today,
   });
 
   const emp = profileQuery.data?.employee;
@@ -118,7 +113,7 @@ export default function PortalHomePage() {
           <div className="mt-4 pt-3 border-t border-gray-100">
             <p className="text-xs text-gray-400">
               {todayAtt?.clockIn
-                ? `Last clock-in: Today at ${fmtLocalTime(todayAtt.clockIn)}`
+                ? `Last clock-in: Today at ${formatLocalTime(todayAtt.clockIn, tz)}`
                 : "No clock-in recorded today"}
             </p>
           </div>

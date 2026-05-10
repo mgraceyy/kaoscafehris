@@ -59,10 +59,10 @@ export async function uploadKioskSelfie(blob: Blob, pin: string): Promise<string
   return data.url;
 }
 
-export async function kioskClockIn(employeeId: string, selfieIn: string | undefined, pin: string): Promise<KioskAttendance> {
+export async function kioskClockIn(employeeId: string, selfieIn: string | undefined, pin: string, clockInNote?: string): Promise<KioskAttendance> {
   const { data } = await api.post<{ data: KioskAttendance }>(
     "/kiosk/clock-in",
-    { employeeId, selfieIn, kioskPin: pin },
+    { employeeId, selfieIn, clockInNote, kioskPin: pin },
     { headers: h(pin) }
   );
   return data.data;

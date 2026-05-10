@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import prisma from "../config/db.js";
 import { sendMail } from "./email.js";
-import { getSetting } from "./settings-cache.js";
+import { COMPANY_TZ } from "./timezone.js";
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -28,30 +28,31 @@ function isMilestoneDay(
   return today.day === Math.min(hired.day, daysInMonth);
 }
 
-function fmtDate(date: Date) {
-  return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+function fmtDate(date: Date, tz: string) {
+  return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: tz });
 }
 
-function fmtBirthday(date: Date) {
-  return date.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+function fmtBirthday(date: Date, tz: string) {
+  return date.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: tz });
 }
 
 function getTomorrow(tz: string) {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return getDateParts(tomorrow, tz);
+  // Use Intl to get today in company TZ, then add 1 day in UTC to avoid DST issues
+  const todayParts = getDateParts(new Date(), tz);
+  const tomorrowUtc = new Date(Date.UTC(todayParts.year, todayParts.month - 1, todayParts.day + 1));
+  return getDateParts(tomorrowUtc, tz);
 }
 
 // ─── Email templates ──────────────────────────────────────────────────────────
 
-function milestone3MonthHtml(employees: { name: string; employeeId: string; position: string; branch: string; dateHired: Date }[]) {
+function milestone3MonthHtml(employees: { name: string; employeeId: string; position: string; branch: string; dateHired: Date }[], tz: string) {
   const rows = employees.map((e) => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6"><strong>${e.name}</strong></td>
       <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${e.employeeId}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${e.position}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${e.branch}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${fmtDate(e.dateHired)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${fmtDate(e.dateHired, tz)}</td>
     </tr>`).join("");
 
   return `
@@ -85,14 +86,14 @@ function milestone3MonthHtml(employees: { name: string; employeeId: string; posi
     </div>`;
 }
 
-function milestone6MonthHtml(employees: { name: string; employeeId: string; position: string; branch: string; dateHired: Date }[]) {
+function milestone6MonthHtml(employees: { name: string; employeeId: string; position: string; branch: string; dateHired: Date }[], tz: string) {
   const rows = employees.map((e) => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6"><strong>${e.name}</strong></td>
       <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${e.employeeId}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${e.position}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${e.branch}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${fmtDate(e.dateHired)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e6e6;color:#666">${fmtDate(e.dateHired, tz)}</td>
     </tr>`).join("");
 
   return `
@@ -126,14 +127,14 @@ function milestone6MonthHtml(employees: { name: string; employeeId: string; posi
     </div>`;
 }
 
-function birthdayHtml(employees: { name: string; employeeId: string; position: string; branch: string; dateOfBirth: Date }[]) {
+function birthdayHtml(employees: { name: string; employeeId: string; position: string; branch: string; dateOfBirth: Date }[], tz: string) {
   const rows = employees.map((e) => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #fde8d0"><strong>${e.name}</strong></td>
       <td style="padding:8px 12px;border-bottom:1px solid #fde8d0;color:#666">${e.employeeId}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #fde8d0;color:#666">${e.position}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #fde8d0;color:#666">${e.branch}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #fde8d0;color:#666">${fmtBirthday(e.dateOfBirth)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #fde8d0;color:#666">${fmtBirthday(e.dateOfBirth, tz)}</td>
     </tr>`).join("");
 
   return `
@@ -171,8 +172,7 @@ function birthdayHtml(employees: { name: string; employeeId: string; position: s
 
 export async function checkUpcomingBirthdays() {
   try {
-    const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
-    const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+    const tz = COMPANY_TZ;
     const tomorrow = getTomorrow(tz);
 
     const employees = await prisma.employee.findMany({
@@ -213,7 +213,7 @@ export async function checkUpcomingBirthdays() {
         position: e.position,
         branch: e.branch.name,
         dateOfBirth: e.dateOfBirth!,
-      }))),
+      })), tz),
     });
     console.log(`[scheduler] Birthday reminder sent for: ${names}`);
   } catch (err) {
@@ -225,8 +225,7 @@ export async function checkUpcomingBirthdays() {
 
 export async function checkEmployeeMilestones() {
   try {
-    const tzSetting = await getSetting<string>("company.timezone", "Asia/Manila (UTC+8)");
-    const tz = tzSetting.split(" ")[0] ?? "Asia/Manila";
+    const tz = COMPANY_TZ;
     const today = getDateParts(new Date(), tz);
 
     const employees = await prisma.employee.findMany({
@@ -271,7 +270,7 @@ export async function checkEmployeeMilestones() {
         subject: threeMonth.length === 1
           ? `3-Month Review Due: ${names}`
           : `3-Month Review Due: ${threeMonth.length} employees`,
-        html: milestone3MonthHtml(threeMonth.map(toRow)),
+        html: milestone3MonthHtml(threeMonth.map(toRow), tz),
       });
       console.log(`[scheduler] 3-month milestone email sent for: ${names}`);
     }
@@ -283,7 +282,7 @@ export async function checkEmployeeMilestones() {
         subject: sixMonth.length === 1
           ? `6-Month Benefits Eligibility: ${names}`
           : `6-Month Benefits Eligibility: ${sixMonth.length} employees`,
-        html: milestone6MonthHtml(sixMonth.map(toRow)),
+        html: milestone6MonthHtml(sixMonth.map(toRow), tz),
       });
       console.log(`[scheduler] 6-month milestone email sent for: ${names}`);
     }
@@ -294,10 +293,11 @@ export async function checkEmployeeMilestones() {
 
 // ─── Start scheduler ──────────────────────────────────────────────────────────
 
-export function startScheduler() {
+export async function startScheduler() {
+  const tz = COMPANY_TZ;
   cron.schedule("0 8 * * *", async () => {
     await checkEmployeeMilestones();
     await checkUpcomingBirthdays();
-  }, { timezone: "Asia/Manila" });
-  console.log("[scheduler] Daily checks scheduled — 08:00 Asia/Manila (milestones + birthdays)");
+  }, { timezone: tz });
+  console.log(`[scheduler] Daily checks scheduled — 08:00 ${tz} (milestones + birthdays)`);
 }
