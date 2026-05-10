@@ -108,6 +108,29 @@ export async function deleteSchedule(req: Request<{ id: string }>, res: Response
   } catch (err) { next(err); }
 }
 
+export async function attendanceOt(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { startDate, endDate, employeeId } = req.query as Record<string, string | undefined>;
+    let scopedEmployeeId = employeeId;
+    let scopedBranchId: string | undefined;
+
+    if (req.user?.role === "MANAGER") {
+      const emp = await prisma.employee.findUnique({
+        where: { userId: req.user.userId },
+        select: { branchId: true },
+      });
+      if (emp) scopedBranchId = emp.branchId;
+    }
+
+    const data = await overtimeService.getAttendanceOvertime({
+      startDate, endDate,
+      employeeId: scopedEmployeeId,
+      branchId: scopedBranchId,
+    });
+    res.json({ data });
+  } catch (err) { next(err); }
+}
+
 export async function setShiftOvertime(
   req: Request<{ shiftId: string; employeeId: string }>,
   res: Response,

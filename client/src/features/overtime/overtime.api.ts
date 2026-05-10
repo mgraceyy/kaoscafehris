@@ -9,6 +9,7 @@ export interface OvertimeRequest {
   date: string;
   reason: string;
   status: OvertimeStatus;
+  otHours: string | null;
   reviewedBy: string | null;
   reviewedAt: string | null;
   reviewNotes: string | null;
@@ -19,6 +20,7 @@ export interface OvertimeRequest {
     firstName: string;
     lastName: string;
     position: string;
+    branch: { id: string; name: string } | null;
   };
 }
 
@@ -41,6 +43,7 @@ export async function createOvertimeRequest(body: {
   date: string;
   reason: string;
   shiftId?: string;
+  otHours?: number;
 }): Promise<OvertimeRequest> {
   const { data } = await api.post<{ data: OvertimeRequest }>("/overtime", body);
   return data.data;
@@ -68,6 +71,7 @@ export interface OvertimeSchedule {
   startTime: string;
   endTime: string;
   notes: string | null;
+  otHours: string | null;
   createdById: string;
   createdAt: string;
   employee: {
@@ -100,6 +104,7 @@ export async function createOvertimeSchedule(body: {
   startTime: string;
   endTime: string;
   notes?: string;
+  otHours?: number;
 }): Promise<OvertimeSchedule> {
   const { data } = await api.post<{ data: OvertimeSchedule }>("/overtime/schedules", body);
   return data.data;
@@ -107,7 +112,7 @@ export async function createOvertimeSchedule(body: {
 
 export async function updateOvertimeSchedule(
   id: string,
-  body: { date?: string; startTime?: string; endTime?: string; notes?: string }
+  body: { date?: string; startTime?: string; endTime?: string; notes?: string; otHours?: number }
 ): Promise<OvertimeSchedule> {
   const { data } = await api.patch<{ data: OvertimeSchedule }>(`/overtime/schedules/${id}`, body);
   return data.data;
@@ -123,4 +128,32 @@ export async function setShiftOvertimeApproval(
   overtimeApproved: boolean
 ): Promise<void> {
   await api.patch(`/overtime/shift/${shiftId}/employee/${employeeId}`, { overtimeApproved });
+}
+
+export interface AttendanceOvertimeRecord {
+  id: string;
+  date: string;
+  overtimeHours: string;
+  overtimeApproved: boolean;
+  shiftId: string | null;
+  employee: {
+    id: string;
+    employeeId: string;
+    firstName: string;
+    lastName: string;
+    position: string;
+    branch: { id: string; name: string };
+  };
+}
+
+export async function getAttendanceOvertimeRecords(params?: {
+  startDate?: string;
+  endDate?: string;
+  employeeId?: string;
+}): Promise<AttendanceOvertimeRecord[]> {
+  const query = Object.fromEntries(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined && v !== "")
+  );
+  const { data } = await api.get<{ data: AttendanceOvertimeRecord[] }>("/overtime/attendance-ot", { params: query });
+  return data.data;
 }

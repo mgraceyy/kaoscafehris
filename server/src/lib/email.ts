@@ -1,7 +1,5 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export async function sendMail(opts: {
   to: string | string[];
   subject: string;
@@ -12,6 +10,7 @@ export async function sendMail(opts: {
     console.error("[email] RESEND_API_KEY is not set — skipping email send");
     return;
   }
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
   const { error } = await resend.emails.send({
     from: "KAOS HRIS <kaoshris@xn--kaoscaf-hya.com>",

@@ -18,6 +18,10 @@ import { COMPANY_TZ, todayIsoLocal } from "@/lib/timezone";
 
 const schema = z.object({
   date: z.string().min(1, "Required"),
+  otHours: z.preprocess(
+    (v) => (v === "" || v === undefined ? undefined : Number(v)),
+    z.number().positive("Must be > 0").max(24, "Max 24h").optional()
+  ),
   reason: z.string().trim().min(1, "Required").max(500),
 });
 
@@ -34,15 +38,15 @@ export default function OvertimeRequestDialog({ open, onOpenChange }: Props) {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { date: "", reason: "" },
+    defaultValues: { date: "", otHours: undefined, reason: "" },
   });
 
   useEffect(() => {
-    if (open) reset({ date: todayIsoLocal(COMPANY_TZ), reason: "" });
+    if (open) reset({ date: todayIsoLocal(COMPANY_TZ), otHours: undefined, reason: "" });
   }, [open, reset]);
 
   const mutation = useMutation({
-    mutationFn: (v: Values) => createOvertimeRequest({ date: v.date, reason: v.reason }),
+    mutationFn: (v: Values) => createOvertimeRequest({ date: v.date, reason: v.reason, otHours: v.otHours }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["overtime"] });
       toast("Overtime request submitted", "success");
@@ -69,6 +73,21 @@ export default function OvertimeRequestDialog({ open, onOpenChange }: Props) {
           <Input id="ot-date" type="date" {...register("date")} />
           {errors.date && <p className="text-xs text-destructive">{errors.date.message}</p>}
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="ot-hours">OT Hours</Label>
+          <Input
+            id="ot-hours"
+            type="number"
+            step="0.5"
+            min="0.5"
+            max="24"
+            placeholder="e.g. 2"
+            {...register("otHours")}
+          />
+          {errors.otHours && <p className="text-xs text-destructive">{errors.otHours.message}</p>}
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor="ot-reason">Reason</Label>
           <Textarea id="ot-reason" rows={3} placeholder="Describe why overtime is needed…" {...register("reason")} />

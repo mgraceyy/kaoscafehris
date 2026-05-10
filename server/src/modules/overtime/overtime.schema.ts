@@ -6,6 +6,7 @@ export const createOvertimeSchema = z.object({
   shiftId: z.string().uuid().optional(),
   date: isoDate,
   reason: z.string().trim().min(1).max(500),
+  otHours: z.number().positive().max(24).optional(),
 });
 
 export const reviewOvertimeSchema = z.object({
@@ -30,6 +31,7 @@ export const createScheduleSchema = z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM"),
   notes: z.string().trim().max(500).optional(),
+  otHours: z.number().positive().max(24).optional(),
 });
 
 export const updateScheduleSchema = createScheduleSchema.partial().omit({ employeeId: true });

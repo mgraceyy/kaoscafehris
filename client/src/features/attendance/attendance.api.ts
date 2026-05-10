@@ -104,9 +104,11 @@ export async function deleteAttendance(id: string): Promise<void> {
 }
 
 export interface AssignedShift {
+  id: string;
   name: string;
   startTime: string;
   endTime: string;
+  overtimeApproved: boolean;
 }
 
 export async function getAssignedShift(

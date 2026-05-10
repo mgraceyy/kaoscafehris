@@ -16,6 +16,9 @@ router.use(authenticate);
 // Any authenticated user can list (scoped server-side for EMPLOYEE)
 router.get("/", overtimeController.list);
 
+// Admin/Manager: attendance records that have overtime hours with approval status
+router.get("/attendance-ot", authorize("ADMIN", "MANAGER"), overtimeController.attendanceOt);
+
 // Employee submits a request
 router.post("/", validate(createOvertimeSchema), overtimeController.create);
 

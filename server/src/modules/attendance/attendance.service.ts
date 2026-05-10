@@ -279,10 +279,17 @@ export async function getAttendance(id: string) {
 export async function getAssignedShift(employeeId: string, date: string) {
   const assignment = await prisma.shiftAssignment.findFirst({
     where: { employeeId, shift: { date: dateOnly(date) } },
-    include: { shift: { select: { name: true, startTime: true, endTime: true } } },
+    include: { shift: { select: { id: true, name: true, startTime: true, endTime: true } } },
     orderBy: { shift: { startTime: "asc" } },
   });
-  return assignment?.shift ?? null;
+  if (!assignment) return null;
+  return {
+    id: assignment.shift.id,
+    name: assignment.shift.name,
+    startTime: assignment.shift.startTime,
+    endTime: assignment.shift.endTime,
+    overtimeApproved: assignment.overtimeApproved,
+  };
 }
 
 /**

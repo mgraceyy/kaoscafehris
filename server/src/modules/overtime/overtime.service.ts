@@ -68,6 +68,7 @@ export async function createRequest(employeeId: string, input: CreateOvertimeInp
       shiftId: input.shiftId,
       date: dateOnly(input.date),
       reason: input.reason,
+      otHours: input.otHours,
     },
     include: overtimeInclude,
   });
@@ -171,6 +172,7 @@ export async function createSchedule(createdById: string, input: CreateScheduleI
       startTime: input.startTime,
       endTime: input.endTime,
       notes: input.notes,
+      otHours: input.otHours,
       createdById,
     },
     include: scheduleInclude,
@@ -188,6 +190,7 @@ export async function updateSchedule(id: string, input: UpdateScheduleInput) {
       ...(input.startTime !== undefined ? { startTime: input.startTime } : {}),
       ...(input.endTime !== undefined ? { endTime: input.endTime } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(input.otHours !== undefined ? { otHours: input.otHours } : {}),
     },
     include: scheduleInclude,
   });
@@ -197,6 +200,78 @@ export async function deleteSchedule(id: string) {
   const existing = await prisma.overtimeSchedule.findUnique({ where: { id } });
   if (!existing) throw new AppError(404, "Overtime schedule not found");
   await prisma.overtimeSchedule.delete({ where: { id } });
+}
+
+/** Returns attendance records with overtime hours, enriched with ShiftAssignment approval status. */
+export async function getAttendanceOvertime(params: {
+  startDate?: string;
+  endDate?: string;
+  employeeId?: string;
+  branchId?: string;
+}) {
+  const dateFilter: Prisma.DateTimeFilter = {};
+  if (params.startDate) dateFilter.gte = dateOnly(params.startDate);
+  if (params.endDate)   dateFilter.lte = dateOnly(params.endDate);
+
+  const records = await prisma.attendance.findMany({
+    where: {
+      overtimeHours: { gt: 0 },
+      ...(Object.keys(dateFilter).length > 0 && { date: dateFilter }),
+      ...(params.employeeId && { employeeId: params.employeeId }),
+      ...(params.branchId && { employee: { branchId: params.branchId } }),
+    },
+    select: {
+      id: true,
+      date: true,
+      overtimeHours: true,
+      employeeId: true,
+      employee: {
+        select: {
+          id: true, employeeId: true, firstName: true, lastName: true, position: true,
+          branch: { select: { id: true, name: true } },
+        },
+      },
+    },
+    orderBy: { date: "desc" },
+    take: 300,
+  });
+
+  if (records.length === 0) return [];
+
+  const employeeIds = [...new Set(records.map((r) => r.employeeId))];
+  const dates       = [...new Set(records.map((r) => r.date))];
+
+  const [assignments, approvedRequests] = await Promise.all([
+    prisma.shiftAssignment.findMany({
+      where: { employeeId: { in: employeeIds }, shift: { date: { in: dates } } },
+      select: { employeeId: true, shiftId: true, overtimeApproved: true, shift: { select: { date: true } } },
+    }),
+    prisma.overtimeRequest.findMany({
+      where: { employeeId: { in: employeeIds }, date: { in: dates }, status: "APPROVED" },
+      select: { employeeId: true, date: true },
+    }),
+  ]);
+
+  const approvalMap = new Map<string, { overtimeApproved: boolean; shiftId: string }>();
+  for (const a of assignments) {
+    const key = `${a.employeeId}:${a.shift.date.toISOString().slice(0, 10)}`;
+    approvalMap.set(key, { overtimeApproved: a.overtimeApproved, shiftId: a.shiftId });
+  }
+  const requestApproved = new Set(approvedRequests.map((r) => `${r.employeeId}:${r.date.toISOString().slice(0, 10)}`));
+
+  return records.map((rec) => {
+    const dateKey  = rec.date.toISOString().slice(0, 10);
+    const key      = `${rec.employeeId}:${dateKey}`;
+    const entry    = approvalMap.get(key);
+    return {
+      id:              rec.id,
+      date:            rec.date,
+      overtimeHours:   rec.overtimeHours,
+      overtimeApproved: (entry?.overtimeApproved ?? false) || requestApproved.has(key),
+      shiftId:         entry?.shiftId ?? null,
+      employee:        rec.employee,
+    };
+  });
 }
 
 /** Manager/admin toggles overtime pre-approval directly on a ShiftAssignment. */

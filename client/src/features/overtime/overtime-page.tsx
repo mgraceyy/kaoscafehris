@@ -10,9 +10,12 @@ import {
   listOvertimeSchedules,
   revertOvertimeRequest,
   deleteOvertimeSchedule,
+  getAttendanceOvertimeRecords,
+  setShiftOvertimeApproval,
   type OvertimeRequest,
   type OvertimeSchedule,
   type OvertimeStatus,
+  type AttendanceOvertimeRecord,
 } from "./overtime.api";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import OvertimeRequestDialog from "./overtime-request-dialog";
@@ -24,7 +27,8 @@ const BRAND = "#8C1515";
 
 type Row =
   | { kind: "request"; data: OvertimeRequest }
-  | { kind: "schedule"; data: OvertimeSchedule };
+  | { kind: "schedule"; data: OvertimeSchedule }
+  | { kind: "attendance-ot"; data: AttendanceOvertimeRecord };
 
 function StatCard({ label, value, color, stagger }: { label: string; value: number; color: string; stagger: number }) {
   return (
@@ -106,12 +110,28 @@ export default function OvertimePage() {
     enabled: canReview,
   });
 
-  const rows = useMemo<Row[]>(() => {
-    const requests: Row[] = (requestsQuery.data ?? []).map((d) => ({ kind: "request", data: d }));
-    const schedules: Row[] = (schedulesQuery.data ?? []).map((d) => ({ kind: "schedule", data: d }));
-    let combined = [...requests, ...schedules];
+  const attendanceOtQuery = useQuery({
+    queryKey: ["overtime-attendance-ot"],
+    queryFn: () => getAttendanceOvertimeRecords(),
+    enabled: canReview,
+  });
 
-    // filter by search
+  const attendanceOtApprove = useMutation({
+    mutationFn: ({ shiftId, employeeId, approved }: { shiftId: string; employeeId: string; approved: boolean }) =>
+      setShiftOvertimeApproval(shiftId, employeeId, approved),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] });
+      toast("Overtime approval updated", "success");
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const rows = useMemo<Row[]>(() => {
+    const requests: Row[]     = (requestsQuery.data ?? []).map((d) => ({ kind: "request", data: d }));
+    const schedules: Row[]    = (schedulesQuery.data ?? []).map((d) => ({ kind: "schedule", data: d }));
+    const attOt: Row[]        = canReview ? (attendanceOtQuery.data ?? []).map((d) => ({ kind: "attendance-ot" as const, data: d })) : [];
+    let combined = [...requests, ...schedules, ...attOt];
+
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       combined = combined.filter((r) => {
@@ -120,24 +140,27 @@ export default function OvertimePage() {
       });
     }
 
-    // filter by type/status
     if (statusFilter === "ASSIGNED") {
       combined = combined.filter((r) => r.kind === "schedule");
-    } else if (statusFilter !== "") {
+    } else if (statusFilter === "PENDING") {
       combined = combined.filter(
-        (r) => r.kind === "request" && (r.data as OvertimeRequest).status === statusFilter
+        (r) => (r.kind === "request" && r.data.status === "PENDING") ||
+               (r.kind === "attendance-ot" && !r.data.overtimeApproved)
+      );
+    } else if (statusFilter === "APPROVED") {
+      combined = combined.filter(
+        (r) => (r.kind === "request" && r.data.status === "APPROVED") ||
+               (r.kind === "attendance-ot" && r.data.overtimeApproved)
+      );
+    } else if (statusFilter === "REJECTED") {
+      combined = combined.filter(
+        (r) => r.kind === "request" && r.data.status === "REJECTED"
       );
     }
 
-    // sort by date desc
-    combined.sort((a, b) => {
-      const da = a.data.date.slice(0, 10);
-      const db = b.data.date.slice(0, 10);
-      return db.localeCompare(da);
-    });
-
+    combined.sort((a, b) => b.data.date.slice(0, 10).localeCompare(a.data.date.slice(0, 10)));
     return combined;
-  }, [requestsQuery.data, schedulesQuery.data, search, statusFilter]);
+  }, [requestsQuery.data, schedulesQuery.data, attendanceOtQuery.data, search, statusFilter, canReview]);
 
 
   const revert = useMutation({
@@ -160,7 +183,7 @@ export default function OvertimePage() {
     total:    allRequests.length,
   }), [allRequests]);
 
-  const isLoading = requestsQuery.isLoading || (canReview && schedulesQuery.isLoading);
+  const isLoading = requestsQuery.isLoading || (canReview && schedulesQuery.isLoading) || (canReview && attendanceOtQuery.isLoading);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
@@ -236,8 +259,10 @@ export default function OvertimePage() {
             <tr style={{ borderBottom: "1px solid #F5EDED" }}>
               {!isEmployee && <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Employee</th>}
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Date</th>
+              {!isEmployee && <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Branch</th>}
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Type</th>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Details</th>
+              <th className="px-5 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-gray-300">OT Hours</th>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Status</th>
               {canReview && <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Action</th>}
             </tr>
@@ -245,14 +270,14 @@ export default function OvertimePage() {
           <tbody className="divide-y" style={{ borderColor: "#F5EDED" }}>
             {isLoading && (
               <tr>
-                <td colSpan={canReview ? 6 : 5} className="py-12 text-center">
+                <td colSpan={(!isEmployee ? 2 : 0) + 5 + (canReview ? 1 : 0)} className="py-12 text-center">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" />
                 </td>
               </tr>
             )}
             {!isLoading && rows.length === 0 && (
               <tr>
-                <td colSpan={canReview ? 6 : 5} className="py-12 text-center text-sm text-gray-400">
+                <td colSpan={(!isEmployee ? 2 : 0) + 5 + (canReview ? 1 : 0)} className="py-12 text-center text-sm text-gray-400">
                   No overtime records found.
                 </td>
               </tr>
@@ -274,6 +299,7 @@ export default function OvertimePage() {
                       </td>
                     )}
                     <td className="px-5 py-4 text-gray-600 tabular-nums">{r.date.slice(0, 10)}</td>
+                    {!isEmployee && <td className="px-5 py-4 text-gray-600">{r.employee.branch?.name ?? "—"}</td>}
                     <td className="px-5 py-4">
                       <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                         Request
@@ -284,6 +310,9 @@ export default function OvertimePage() {
                       {r.reviewNotes && (
                         <p className="text-xs text-gray-400 italic mt-0.5">Note: {r.reviewNotes}</p>
                       )}
+                    </td>
+                    <td className="px-5 py-4 text-right font-semibold tabular-nums text-gray-800">
+                      {r.otHours ? `${Number(r.otHours).toFixed(2)}h` : <span className="text-gray-300 font-normal">—</span>}
                     </td>
                     <td className="px-5 py-4"><StatusBadge status={r.status} /></td>
                     {canReview && (
@@ -320,6 +349,63 @@ export default function OvertimePage() {
                 );
               }
 
+              if (row.kind === "attendance-ot") {
+                const r = row.data;
+                return (
+                  <tr key={`att-ot-${r.id}`} className="hover:bg-gray-50/60">
+                    {!isEmployee && (
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar first={r.employee.firstName} last={r.employee.lastName} />
+                          <div>
+                            <p className="font-semibold text-gray-800 leading-tight">{r.employee.firstName} {r.employee.lastName}</p>
+                            <p className="text-xs text-gray-400">{r.employee.position}</p>
+                          </div>
+                        </div>
+                      </td>
+                    )}
+                    <td className="px-5 py-4 text-gray-600 tabular-nums">{r.date.slice(0, 10)}</td>
+                    {!isEmployee && <td className="px-5 py-4 text-gray-600">{r.employee.branch.name}</td>}
+                    <td className="px-5 py-4">
+                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                        Request
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <p className="text-xs font-medium text-gray-500 italic">Attendance Overtime</p>
+                    </td>
+                    <td className="px-5 py-4 text-right font-semibold tabular-nums text-gray-800">
+                      {Number(r.overtimeHours).toFixed(2)}h
+                    </td>
+                    <td className="px-5 py-4">
+                      {r.overtimeApproved
+                        ? <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#DCFCE7", color: "#16A34A" }}>Approved</span>
+                        : <StatusBadge status="PENDING" />}
+                    </td>
+                    {canReview && (
+                      <td className="px-5 py-4">
+                        {r.shiftId ? (
+                          <button
+                            onClick={() => attendanceOtApprove.mutate({ shiftId: r.shiftId!, employeeId: r.employee.id, approved: !r.overtimeApproved })}
+                            disabled={attendanceOtApprove.isPending}
+                            className={[
+                              "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
+                              r.overtimeApproved
+                                ? "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                                : "bg-green-500 text-white hover:bg-green-600",
+                            ].join(" ")}
+                          >
+                            {r.overtimeApproved ? "Revoke" : "Approve"}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-300">No shift</span>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              }
+
               const s = row.data;
               return (
                 <tr key={`sched-${s.id}`} className="hover:bg-gray-50/60">
@@ -335,6 +421,7 @@ export default function OvertimePage() {
                     </td>
                   )}
                   <td className="px-5 py-4 text-gray-600 tabular-nums">{s.date.slice(0, 10)}</td>
+                  {!isEmployee && <td className="px-5 py-4 text-gray-600">{s.employee.branch?.name ?? "—"}</td>}
                   <td className="px-5 py-4">
                     <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
                       Assigned
@@ -343,6 +430,9 @@ export default function OvertimePage() {
                   <td className="px-5 py-4">
                     <p className="tabular-nums text-gray-600">{fmt12(s.startTime)} – {fmt12(s.endTime)}</p>
                     {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
+                  </td>
+                  <td className="px-5 py-4 text-right font-semibold tabular-nums text-gray-800">
+                    {s.otHours ? `${Number(s.otHours).toFixed(2)}h` : <span className="text-gray-300 font-normal">—</span>}
                   </td>
                   <td className="px-5 py-4">
                     <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#DCFCE7", color: "#16A34A" }}>

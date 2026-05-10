@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listEmployees } from "@/features/employees/employees.api";
+import { listBranches } from "@/features/branches/branches.api";
 import {
   createOvertimeSchedule,
   updateOvertimeSchedule,
@@ -23,10 +24,15 @@ import {
 } from "./overtime.api";
 
 const schema = z.object({
+  branchId: z.string().optional(),
   employeeId: z.string().min(1, "Required"),
   date: z.string().min(1, "Required"),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "HH:MM format required"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "HH:MM format required"),
+  otHours: z.preprocess(
+    (v) => (v === "" || v === undefined ? undefined : Number(v)),
+    z.number().positive("Must be > 0").max(24, "Max 24h").optional()
+  ),
   notes: z.string().trim().max(500).optional(),
 });
 
@@ -42,29 +48,45 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
   const qc = useQueryClient();
   const { toast } = useToast();
 
+  const branchesQuery = useQuery({
+    queryKey: ["branches", { isActive: true }],
+    queryFn: () => listBranches({ isActive: true }),
+    enabled: open,
+  });
+
   const employeesQuery = useQuery({
     queryKey: ["employees", { status: "ACTIVE" }],
     queryFn: () => listEmployees({ status: "ACTIVE" }),
     enabled: open,
   });
 
-  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<Values>({
+  const { register, control, handleSubmit, reset, watch, formState: { errors } } = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { employeeId: "", date: "", startTime: "18:00", endTime: "22:00", notes: "" },
+    defaultValues: { branchId: "", employeeId: "", date: "", startTime: "18:00", endTime: "22:00", otHours: undefined, notes: "" },
   });
+
+  const selectedBranchId = watch("branchId");
+
+  const filteredEmployees = useMemo(() => {
+    const all = employeesQuery.data ?? [];
+    if (!selectedBranchId) return all;
+    return all.filter((e) => e.branchId === selectedBranchId);
+  }, [employeesQuery.data, selectedBranchId]);
 
   useEffect(() => {
     if (open) {
       if (editing) {
         reset({
+          branchId: editing.employee.branch?.id ?? "",
           employeeId: editing.employeeId,
           date: editing.date.slice(0, 10),
           startTime: editing.startTime,
           endTime: editing.endTime,
+          otHours: editing.otHours ? Number(editing.otHours) : undefined,
           notes: editing.notes ?? "",
         });
       } else {
-        reset({ employeeId: "", date: "", startTime: "18:00", endTime: "22:00", notes: "" });
+        reset({ branchId: "", employeeId: "", date: "", startTime: "18:00", endTime: "22:00", otHours: undefined, notes: "" });
       }
     }
   }, [open, editing, reset]);
@@ -76,6 +98,7 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
             date: v.date,
             startTime: v.startTime,
             endTime: v.endTime,
+            otHours: v.otHours,
             notes: v.notes?.trim() || undefined,
           })
         : createOvertimeSchedule({
@@ -83,6 +106,7 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
             date: v.date,
             startTime: v.startTime,
             endTime: v.endTime,
+            otHours: v.otHours,
             notes: v.notes?.trim() || undefined,
           }),
     onSuccess: () => {
@@ -107,18 +131,30 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
         noValidate
       >
         {!editing && (
-          <div className="space-y-2">
-            <Label htmlFor="ot-emp">Employee</Label>
-            <Select id="ot-emp" {...register("employeeId")}>
-              <option value="">Select employee…</option>
-              {(employeesQuery.data ?? []).map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.firstName} {e.lastName} ({e.employeeId})
-                </option>
-              ))}
-            </Select>
-            {errors.employeeId && <p className="text-xs text-destructive">{errors.employeeId.message}</p>}
-          </div>
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="ot-branch">Branch</Label>
+              <Select id="ot-branch" {...register("branchId")}>
+                <option value="">All branches</option>
+                {(branchesQuery.data ?? []).map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ot-emp">Employee</Label>
+              <Select id="ot-emp" {...register("employeeId")}>
+                <option value="">Select employee…</option>
+                {filteredEmployees.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.firstName} {e.lastName} ({e.employeeId})
+                  </option>
+                ))}
+              </Select>
+              {errors.employeeId && <p className="text-xs text-destructive">{errors.employeeId.message}</p>}
+            </div>
+          </>
         )}
 
         <div className="space-y-2">
@@ -150,6 +186,20 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
             />
             {errors.endTime && <p className="text-xs text-destructive">{errors.endTime.message}</p>}
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="ot-hours">OT Hours</Label>
+          <Input
+            id="ot-hours"
+            type="number"
+            step="0.5"
+            min="0.5"
+            max="24"
+            placeholder="e.g. 2"
+            {...register("otHours")}
+          />
+          {errors.otHours && <p className="text-xs text-destructive">{errors.otHours.message}</p>}
         </div>
 
         <div className="space-y-2">

@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useEffect, useMemo, useState } from "react";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, Loader2, X } from "lucide-react";
+import { Camera, Check, Loader2, RotateCcw, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,6 +25,7 @@ import {
   type AdjustAttendanceInput,
   type AttendanceRecord,
 } from "./attendance.api";
+import { setShiftOvertimeApproval } from "@/features/overtime/overtime.api";
 import { COMPANY_TZ, isoToDateStr, isoToTimeStr, toIso, nextDayLocalIso } from "@/lib/timezone";
 
 const schema = z.object({
@@ -44,6 +45,20 @@ function fmtShiftTime(iso: string): string {
   });
 }
 
+function parseHHMM(s: string): number {
+  if (!s) return -1;
+  const [h, m] = s.split(":").map(Number);
+  return h * 60 + (m ?? 0);
+}
+
+function fmtMinutes(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -54,6 +69,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
   const qc = useQueryClient();
   const { toast } = useToast();
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [otDecision, setOtDecision] = useState<"approved" | "rejected" | null>(null);
 
   const {
     register,
@@ -75,8 +91,9 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
   const tz = COMPANY_TZ;
 
   useEffect(() => {
-    if (!open) { setLightbox(null); return; }
+    if (!open) { setLightbox(null); setOtDecision(null); return; }
     if (!record) return;
+    setOtDecision(null);
     reset({
       date: isoToDateStr(record.clockIn, tz),
       clockInTime: isoToTimeStr(record.clockIn, tz),
@@ -113,6 +130,49 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
     queryKey: ["assigned-shift", record?.employeeId, record?.date.slice(0, 10)],
     queryFn: () => getAssignedShift(record!.employeeId, record!.date.slice(0, 10)),
     enabled: open && !!record,
+  });
+
+  const clockInTime = useWatch({ control, name: "clockInTime" });
+  const clockOutTime = useWatch({ control, name: "clockOutTime" });
+
+  const attendanceSummary = useMemo(() => {
+    const shift = shiftQuery.data;
+    if (!shift || !clockInTime || !clockOutTime) return null;
+    const startMins = new Date(shift.startTime).getUTCHours() * 60 + new Date(shift.startTime).getUTCMinutes();
+    const endMins   = new Date(shift.endTime).getUTCHours()   * 60 + new Date(shift.endTime).getUTCMinutes();
+    const isOvernight = endMins < startMins;
+    const ciMins = parseHHMM(clockInTime);
+    const coMins = parseHHMM(clockOutTime);
+    if (ciMins < 0 || coMins < 0) return null;
+    const lateMins = Math.max(0, ciMins - startMins);
+    let effectiveCo  = coMins;
+    let effectiveEnd = endMins;
+    if (isOvernight) {
+      effectiveEnd = endMins + 24 * 60;
+      if (coMins < startMins) effectiveCo = coMins + 24 * 60;
+    }
+    const otMins = Math.max(0, effectiveCo - effectiveEnd);
+    return { lateMins, otMins };
+  }, [shiftQuery.data, clockInTime, clockOutTime]);
+
+  const shift = shiftQuery.data;
+
+  const otApprovalMutation = useMutation({
+    mutationFn: (approved: boolean) => {
+      if (!shift?.id || !record) throw new Error("Missing shift or record");
+      return setShiftOvertimeApproval(shift.id, record.employeeId, approved);
+    },
+    onSuccess: (_, approved) => {
+      qc.invalidateQueries({ queryKey: ["assigned-shift", record?.employeeId, record?.date.slice(0, 10)] });
+      if (approved) {
+        setOtDecision("approved");
+        toast("Overtime approved", "success");
+      } else {
+        setOtDecision(null);
+        toast("Overtime approval revoked", "success");
+      }
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
   return (
@@ -249,6 +309,83 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
             {record?.clockOutNote || <span className="text-muted-foreground italic">No note provided</span>}
           </div>
         </div>
+
+        {attendanceSummary && (
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Attendance Summary
+            </p>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-foreground">Late</span>
+              <span className={attendanceSummary.lateMins > 0 ? "font-semibold text-amber-600" : "text-muted-foreground"}>
+                {attendanceSummary.lateMins > 0 ? fmtMinutes(attendanceSummary.lateMins) : "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-foreground">Overtime</span>
+              {attendanceSummary.otMins > 0 ? (
+                <span className={[
+                  "font-semibold",
+                  otDecision === "approved" || shift?.overtimeApproved ? "text-green-600" :
+                  otDecision === "rejected" ? "text-destructive" : "text-amber-600",
+                ].join(" ")}>
+                  {fmtMinutes(attendanceSummary.otMins)}
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    {otDecision === "approved" || shift?.overtimeApproved ? "(approved)" :
+                     otDecision === "rejected" ? "(rejected)" : "(pending)"}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </div>
+            {attendanceSummary.otMins > 0 && shift && (() => {
+              const hasDecided = shift.overtimeApproved || otDecision === "rejected";
+              const isPending = otApprovalMutation.isPending;
+              if (hasDecided) {
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (shift.overtimeApproved) {
+                        otApprovalMutation.mutate(false);
+                      } else {
+                        setOtDecision(null);
+                      }
+                    }}
+                    disabled={isPending}
+                    className="mt-1 w-full flex items-center justify-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted/70 transition-colors"
+                  >
+                    {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                    Undo
+                  </button>
+                );
+              }
+              return (
+                <div className="mt-1 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => otApprovalMutation.mutate(true)}
+                    disabled={isPending}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
+                  >
+                    {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOtDecision("rejected")}
+                    disabled={isPending}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Reject
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="remarks">Remarks</Label>
