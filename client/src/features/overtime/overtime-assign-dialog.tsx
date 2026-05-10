@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -65,12 +65,32 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
     enabled: open,
   });
 
-  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  const { register, control, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { branchId: "", employeeId: "", date: "", startTime: "18:00", endTime: "22:00", otHours: undefined, notes: "" },
   });
 
   const [empSearch, setEmpSearch] = useState("");
+  const [empDropdownOpen, setEmpDropdownOpen] = useState(false);
+  const empDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (empDropdownRef.current && !empDropdownRef.current.contains(e.target as Node)) {
+        setEmpDropdownOpen(false);
+      }
+    }
+    if (empDropdownOpen) {
+      document.addEventListener("mousedown", handleClick);
+      return () => document.removeEventListener("mousedown", handleClick);
+    }
+  }, [empDropdownOpen]);
+
+  const selectedEmployeeId = watch("employeeId");
+  const selectedEmployee = useMemo(() => {
+    if (!selectedEmployeeId) return null;
+    return (employeesQuery.data ?? []).find((e) => e.id === selectedEmployeeId) ?? null;
+  }, [employeesQuery.data, selectedEmployeeId]);
 
   const filteredEmployees = useMemo(() => {
     const all = employeesQuery.data ?? [];
@@ -82,6 +102,7 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
   useEffect(() => {
     if (open) {
       setEmpSearch("");
+      setEmpDropdownOpen(false);
       if (editing) {
         reset({
           branchId: editing.employee.branch?.id ?? "",
@@ -150,23 +171,56 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ot-emp">Employee</Label>
-              <input
-                type="text"
-                placeholder="Search employees..."
-                value={empSearch}
-                onChange={(e) => setEmpSearch(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
-              />
-              <Select id="ot-emp" {...register("employeeId")}>
-                <option value="">Select employee…</option>
-                {filteredEmployees.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.firstName} {e.lastName} ({e.employeeId})
-                  </option>
-                ))}
-              </Select>
-              {errors.employeeId && <p className="text-xs text-destructive">{errors.employeeId.message}</p>}
+              <Label>Employee</Label>
+              <div className="relative" ref={empDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => { setEmpDropdownOpen((o) => !o); setEmpSearch(""); }}
+                  className="flex w-full items-center justify-between gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <span className={selectedEmployee ? "text-gray-900" : "text-gray-400"}>
+                    {selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName} (${selectedEmployee.employeeId})` : "Select employee…"}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-gray-400" />
+                </button>
+                {errors.employeeId && <p className="text-xs text-destructive">{errors.employeeId.message}</p>}
+                {empDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-gray-200 bg-white shadow-lg">
+                    <div className="p-1 bg-white rounded-lg">
+                      <div className="px-2 py-2">
+                        <input
+                          type="text"
+                          placeholder="Search employees..."
+                          value={empSearch}
+                          onChange={(e) => setEmpSearch(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
+                          autoFocus
+                        />
+                      </div>
+                      {filteredEmployees.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-gray-400">
+                          {empSearch.trim() ? "No employees match your search." : "No active employees found."}
+                        </p>
+                      ) : (
+                        filteredEmployees.slice(0, 100).map((emp) => (
+                          <button
+                            key={emp.id}
+                            type="button"
+                            onClick={() => {
+                              setValue("employeeId", emp.id, { shouldValidate: true });
+                              setEmpDropdownOpen(false);
+                              setEmpSearch("");
+                            }}
+                            className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50 text-left"
+                          >
+                            {emp.firstName} {emp.lastName} <span className="text-xs text-gray-400">({emp.employeeId})</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}
