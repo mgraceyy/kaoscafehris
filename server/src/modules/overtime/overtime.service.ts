@@ -244,7 +244,7 @@ export async function getAttendanceOvertime(params: {
   const [assignments, approvedRequests] = await Promise.all([
     prisma.shiftAssignment.findMany({
       where: { employeeId: { in: employeeIds }, shift: { date: { in: dates } } },
-      select: { employeeId: true, shiftId: true, overtimeApproved: true, shift: { select: { date: true } } },
+      select: { employeeId: true, shiftId: true, overtimeApproved: true, overtimeRejected: true, shift: { select: { date: true } } },
     }),
     prisma.overtimeRequest.findMany({
       where: { employeeId: { in: employeeIds }, date: { in: dates }, status: "APPROVED" },
@@ -252,10 +252,10 @@ export async function getAttendanceOvertime(params: {
     }),
   ]);
 
-  const approvalMap = new Map<string, { overtimeApproved: boolean; shiftId: string }>();
+  const approvalMap = new Map<string, { overtimeApproved: boolean; overtimeRejected: boolean; shiftId: string }>();
   for (const a of assignments) {
     const key = `${a.employeeId}:${a.shift.date.toISOString().slice(0, 10)}`;
-    approvalMap.set(key, { overtimeApproved: a.overtimeApproved, shiftId: a.shiftId });
+    approvalMap.set(key, { overtimeApproved: a.overtimeApproved, overtimeRejected: a.overtimeRejected, shiftId: a.shiftId });
   }
   const requestApproved = new Set(approvedRequests.map((r) => `${r.employeeId}:${r.date.toISOString().slice(0, 10)}`));
 
@@ -268,13 +268,14 @@ export async function getAttendanceOvertime(params: {
       date:            rec.date,
       overtimeHours:   rec.overtimeHours,
       overtimeApproved: (entry?.overtimeApproved ?? false) || requestApproved.has(key),
+      overtimeRejected: entry?.overtimeRejected ?? false,
       shiftId:         entry?.shiftId ?? null,
       employee:        rec.employee,
     };
   });
 }
 
-/** Manager/admin toggles overtime pre-approval directly on a ShiftAssignment. */
+/** Manager/admin toggles overtime approval/rejection directly on a ShiftAssignment. */
 export async function setShiftOvertimeApproval(
   shiftId: string,
   employeeId: string,
@@ -286,11 +287,20 @@ export async function setShiftOvertimeApproval(
   });
   if (!assignment) throw new AppError(404, "Shift assignment not found");
 
+  const data: Prisma.ShiftAssignmentUpdateInput = {};
+  if (input.overtimeApproved !== undefined) {
+    data.overtimeApproved = input.overtimeApproved;
+    data.overtimeRejected = false;
+    data.overtimeApprovedBy = input.overtimeApproved ? approverId : null;
+  }
+  if (input.overtimeRejected !== undefined) {
+    data.overtimeRejected = input.overtimeRejected;
+    data.overtimeApproved = false;
+    data.overtimeApprovedBy = input.overtimeRejected ? approverId : null;
+  }
+
   return prisma.shiftAssignment.update({
     where: { shiftId_employeeId: { shiftId, employeeId } },
-    data: {
-      overtimeApproved: input.overtimeApproved,
-      overtimeApprovedBy: input.overtimeApproved ? approverId : null,
-    },
+    data,
   });
 }

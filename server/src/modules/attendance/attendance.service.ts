@@ -289,6 +289,7 @@ export async function getAssignedShift(employeeId: string, date: string) {
     startTime: assignment.shift.startTime,
     endTime: assignment.shift.endTime,
     overtimeApproved: assignment.overtimeApproved,
+    overtimeRejected: assignment.overtimeRejected,
   };
 }
 
@@ -492,17 +493,26 @@ export async function manualAdjust(id: string, input: ManualAdjustInput) {
 
   const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
 
-  // Always recompute derived fields from the resolved clockIn/clockOut.
+  // Recompute derived fields from the resolved clockIn/clockOut,
+  // unless the caller provides an explicit override for a field.
   if (nextClockOut) {
     data.hoursWorked = hoursBetween(nextClockIn, nextClockOut);
 
     if (shift) {
       const { scheduledEnd } = getScheduledTimes(nextDate, shift, tz);
-      data.undertimeMinutes = nextClockOut < scheduledEnd ? diffMinutes(nextClockOut, scheduledEnd) : null;
-      data.overtimeHours = nextClockOut > scheduledEnd ? hoursBetween(scheduledEnd, nextClockOut) : 0;
+      if (input.undertimeMinutes !== undefined) {
+        data.undertimeMinutes = input.undertimeMinutes;
+      } else {
+        data.undertimeMinutes = nextClockOut < scheduledEnd ? diffMinutes(nextClockOut, scheduledEnd) : null;
+      }
+      if (input.overtimeHours !== undefined) {
+        data.overtimeHours = input.overtimeHours;
+      } else {
+        data.overtimeHours = nextClockOut > scheduledEnd ? hoursBetween(scheduledEnd, nextClockOut) : 0;
+      }
     } else {
-      data.overtimeHours = 0;
-      data.undertimeMinutes = null;
+      data.overtimeHours = input.overtimeHours ?? 0;
+      data.undertimeMinutes = input.undertimeMinutes ?? null;
     }
   } else {
     // No clock-out yet — clear computed fields.

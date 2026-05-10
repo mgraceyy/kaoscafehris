@@ -22,7 +22,8 @@ export const listOvertimeQuerySchema = z.object({
 });
 
 export const approveShiftOvertimeSchema = z.object({
-  overtimeApproved: z.boolean(),
+  overtimeApproved: z.boolean().optional(),
+  overtimeRejected: z.boolean().optional(),
 });
 
 export const createScheduleSchema = z.object({

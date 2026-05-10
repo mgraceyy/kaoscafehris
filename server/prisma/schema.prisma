@@ -290,9 +290,10 @@ model ShiftAssignment {
   // Override branch for this specific assignment (null = use shift.branchId)
   assignedBranchId String?
 
-  // Pre-approved overtime (set by manager/admin before the shift)
-  overtimeApproved   Boolean @default(false)
-  overtimeApprovedBy String? // userId of the approver
+  // Overtime decision (set by manager/admin from adjust-attendance dialog)
+  overtimeApproved   Boolean  @default(false)
+  overtimeRejected   Boolean  @default(false)
+  overtimeApprovedBy String?  // userId of the approver/rejecter
 
   shift          Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
   employee       Employee @relation(fields: [employeeId], references: [id])
