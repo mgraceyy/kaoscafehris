@@ -287,7 +287,7 @@ export default function OvertimePage() {
                 </td>
               </tr>
             )}
-            {rows.map((row) => {
+            {!isLoading && rows.map((row) => {
               if (row.kind === "request") {
                 const r = row.data;
                 return (

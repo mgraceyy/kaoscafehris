@@ -3,7 +3,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Search } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -151,16 +151,13 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
 
             <div className="space-y-2">
               <Label htmlFor="ot-emp">Employee</Label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
-                <input
-                  type="text"
-                  placeholder="Search employee…"
-                  value={empSearch}
-                  onChange={(e) => setEmpSearch(e.target.value)}
-                  className="w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
+              <input
+                type="text"
+                placeholder="Search employees..."
+                value={empSearch}
+                onChange={(e) => setEmpSearch(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
+              />
               <Select id="ot-emp" {...register("employeeId")}>
                 <option value="">Select employee…</option>
                 {filteredEmployees.map((e) => (
