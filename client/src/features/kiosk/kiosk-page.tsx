@@ -278,16 +278,15 @@ function StaleShiftCard({
 }
 
 function MainScreen({
-  statusData, videoRef, onCapture, onLogout, cameraReady, onCloseStale, closingStale, staleError, actionError,
+  statusData, videoRef, onCapture, onLogout, cameraReady, onStartStaleCapture, staleCapturing, actionError,
 }: {
   statusData: KioskStatusData;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   onCapture: () => void;
   onLogout: () => void;
   cameraReady: boolean;
-  onCloseStale: () => void;
-  closingStale: boolean;
-  staleError: string;
+  onStartStaleCapture: () => void;
+  staleCapturing: boolean;
   actionError: string;
 }) {
   const { employee, shift, attendance, lastClockIn, staleShiftEnd } = statusData;
@@ -311,15 +310,19 @@ function MainScreen({
           <ShiftCard shift={shift} attendance={attendance} lastClockIn={lastClockIn} />
         </div>
 
-        {isStale ? (
+        {isStale && !staleCapturing ? (
           <div style={{ marginBottom: 14 }}>
             <StaleShiftCard
               shift={shift}
               attendance={attendance!}
-              onClose={onCloseStale}
-              loading={closingStale}
-              error={staleError}
+              onClose={onStartStaleCapture}
+              loading={false}
+              error=""
             />
+          </div>
+        ) : isStale && staleCapturing ? (
+          <div style={{ marginBottom: 14 }}>
+            <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={true} cameraReady={cameraReady} />
           </div>
         ) : !isDone && shift ? (
           <div style={{ marginBottom: 14 }}>
@@ -680,8 +683,7 @@ export default function KioskPage() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [actionWasClockIn, setActionWasClockIn] = useState(false);
   const [recordedTime, setRecordedTime] = useState("");
-  const [closingStale, setClosingStale] = useState(false);
-  const [staleError, setStaleError] = useState("");
+  const [staleCapturing, setStaleCapturing] = useState(false);
   const [clockInNote, setClockInNote] = useState("");
   const [clockOutNote, setClockOutNote] = useState("");
 
@@ -797,19 +799,8 @@ export default function KioskPage() {
     }
   }
 
-  async function handleCloseStale() {
-    if (!statusData?.attendance || !statusData.staleShiftEnd) return;
-    setClosingStale(true);
-    setStaleError("");
-    try {
-      await kioskClockOut(statusData.attendance.id, undefined, pin, undefined);
-      const fresh = await getKioskStatus(statusData.employee.employeeId, pin);
-      setStatusData(fresh);
-    } catch (err) {
-      setStaleError(extractErrorMessage(err, "Failed to close shift. Please try again."));
-    } finally {
-      setClosingStale(false);
-    }
+  function handleStartStaleCapture() {
+    setStaleCapturing(true);
   }
 
   function handleLogout() {
@@ -818,6 +809,7 @@ export default function KioskPage() {
     setPhotoUrl("");
     setClockInNote("");
     setClockOutNote("");
+    setStaleCapturing(false);
     setScreen("id-entry");
   }
 
@@ -827,6 +819,7 @@ export default function KioskPage() {
     setPhotoUrl("");
     setClockInNote("");
     setClockOutNote("");
+    setStaleCapturing(false);
     setScreen("id-entry");
   }, []);
 
@@ -850,9 +843,8 @@ export default function KioskPage() {
         onCapture={handleCapture}
         onLogout={handleLogout}
         cameraReady={cameraReady}
-        onCloseStale={handleCloseStale}
-        closingStale={closingStale}
-        staleError={staleError}
+        onStartStaleCapture={handleStartStaleCapture}
+        staleCapturing={staleCapturing}
         actionError={confirmError}
       />
     );
