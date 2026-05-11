@@ -147,10 +147,10 @@ async function resolveAttendanceDateAndShift(
   // shifts on the previous date, don't resolve to it — their graveyard shift
   // is done, and this clock-in belongs to the naive date (or a new shift).
   if (bestPrevShift && prevAssignments.length > 0) {
-    const prevAttendanceCount = await prisma.attendance.count({
-      where: { employeeId, date: prevDate },
+    const prevCompletedCount = await prisma.attendance.count({
+      where: { employeeId, date: prevDate, clockOut: { not: null } },
     });
-    if (prevAttendanceCount >= prevAssignments.length) {
+    if (prevCompletedCount >= prevAssignments.length) {
       bestPrevShift = null;
       bestPrevDiff = Infinity;
     }
@@ -330,7 +330,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
     throw new AppError(400, "Terminated employees cannot clock in");
   }
 
-  const clockInAt = input.clockIn ? new Date(input.clockIn) : new Date();
+  let clockInAt = input.clockIn ? new Date(input.clockIn) : new Date();
   // Resolve the correct attendance date and matching shift. For graveyard shifts
   // (e.g. 11 PM → 7 AM), a clock-in after midnight will be attributed to the
   // previous date where the shift is actually scheduled.
@@ -407,10 +407,28 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
 
   if (shift) {
     const { scheduledStart } = getScheduledTimes(effectiveDateKey, shift, tz);
-    const delta = computeLateMinutes(scheduledStart, clockInAt);
+
+    // Auto-correct: when clockIn is before the shift start and the shift is
+    // overnight, the clockIn is really the next morning.
+    let correctedClockIn = clockInAt;
+    if (clockInAt < scheduledStart) {
+      const startUtc = shift.startTime.getUTCHours() * 60 + shift.startTime.getUTCMinutes();
+      const endUtc = shift.endTime.getUTCHours() * 60 + shift.endTime.getUTCMinutes();
+      if (endUtc < startUtc) {
+        correctedClockIn = new Date(clockInAt.getTime() + 24 * 60 * 60 * 1000);
+      }
+    }
+
+    const delta = computeLateMinutes(scheduledStart, correctedClockIn);
     if (delta > graceMinutes) {
       status = "LATE";
       lateMinutes = delta;
+    }
+
+    // If corrected, use the corrected time for storage so payroll/holiday
+    // attribution uses the right calendar date.
+    if (correctedClockIn.getTime() !== clockInAt.getTime()) {
+      clockInAt = correctedClockIn;
     }
   }
 
@@ -629,10 +647,23 @@ export async function manualCreate(input: ManualCreateInput) {
 
   const { scheduledStart, scheduledEnd } = getScheduledTimes(dateKey, shiftType, tz);
 
+  // Auto-correct: when clockIn is before the shift start and the shift is
+  // overnight (e.g. 3rd shift 11pm-8am), a clockIn at 2am on the resolved
+  // date is really the next morning. Without this, 2am Apr 30 looks "on time"
+  // for an 11pm Apr 30 start instead of 3 hours late on May 1.
+  let correctedClockIn = clockInAt;
+  if (clockInAt < scheduledStart) {
+    const startUtc = shiftType.startTime.getUTCHours() * 60 + shiftType.startTime.getUTCMinutes();
+    const endUtc = shiftType.endTime.getUTCHours() * 60 + shiftType.endTime.getUTCMinutes();
+    if (endUtc < startUtc) {
+      correctedClockIn = new Date(clockInAt.getTime() + 24 * 60 * 60 * 1000);
+    }
+  }
+
   let status: "PRESENT" | "LATE" = "PRESENT";
   let lateMinutes: number | null = null;
 
-  const delta = computeLateMinutes(scheduledStart, clockInAt);
+  const delta = computeLateMinutes(scheduledStart, correctedClockIn);
   if (delta > graceMinutes) {
     status = "LATE";
     lateMinutes = delta;
@@ -645,10 +676,15 @@ export async function manualCreate(input: ManualCreateInput) {
 
   if (input.clockOut) {
     clockOutAt = new Date(input.clockOut);
-    if (clockOutAt <= clockInAt) {
+    // If clockIn was auto-corrected for an overnight shift, shift clockOut
+    // forward as well — the admin likely entered both on the same (wrong) day.
+    if (correctedClockIn.getTime() !== clockInAt.getTime()) {
+      clockOutAt = new Date(clockOutAt.getTime() + 24 * 60 * 60 * 1000);
+    }
+    if (clockOutAt <= correctedClockIn) {
       throw new AppError(400, "Clock-out time must be after clock-in");
     }
-    hoursWorked = hoursBetween(clockInAt, clockOutAt);
+    hoursWorked = hoursBetween(correctedClockIn, clockOutAt);
     if (clockOutAt < scheduledEnd) undertimeMinutes = diffMinutes(clockOutAt, scheduledEnd);
     if (clockOutAt > scheduledEnd) overtimeHours = hoursBetween(scheduledEnd, clockOutAt);
   }
@@ -686,7 +722,7 @@ export async function manualCreate(input: ManualCreateInput) {
         employeeId: input.employeeId,
         branchId: employee.branchId,
         date: dateKey,
-        clockIn: clockInAt,
+        clockIn: correctedClockIn,
         clockOut: clockOutAt ?? undefined,
         status,
         lateMinutes: lateMinutes ?? undefined,
