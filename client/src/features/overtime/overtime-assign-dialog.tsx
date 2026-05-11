@@ -23,6 +23,14 @@ import {
   type OvertimeSchedule,
 } from "./overtime.api";
 
+function computeOtHours(start: string, end: string): number {
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins <= 0) mins += 24 * 60; // overnight
+  return Math.round((mins / 60) * 100) / 100;
+}
+
 const schema = z.object({
   branchId: z.string().optional(),
   employeeId: z.string().min(1, "Required"),
@@ -72,7 +80,18 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
 
   const [empSearch, setEmpSearch] = useState("");
   const [empDropdownOpen, setEmpDropdownOpen] = useState(false);
+  const [userEditedOtHours, setUserEditedOtHours] = useState(false);
   const empDropdownRef = useRef<HTMLDivElement>(null);
+
+  const watchedStart = watch("startTime");
+  const watchedEnd = watch("endTime");
+
+  useEffect(() => {
+    if (!watchedStart || !watchedEnd) return;
+    if (userEditedOtHours) return;
+    const hours = computeOtHours(watchedStart, watchedEnd);
+    setValue("otHours", hours, { shouldValidate: true });
+  }, [watchedStart, watchedEnd, userEditedOtHours, setValue]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -103,6 +122,7 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
     if (open) {
       setEmpSearch("");
       setEmpDropdownOpen(false);
+      setUserEditedOtHours(false);
       if (editing) {
         reset({
           branchId: editing.employee.branch?.id ?? "",
@@ -257,7 +277,7 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="ot-hours">OT Hours</Label>
+          <Label htmlFor="ot-hours">OT Hours (auto-computed)</Label>
           <Input
             id="ot-hours"
             type="number"
@@ -265,7 +285,10 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
             min="0.5"
             max="24"
             placeholder="e.g. 2"
-            {...register("otHours", { setValueAs: (v) => v === "" || v === undefined ? undefined : Number(v) })}
+            {...register("otHours", {
+              setValueAs: (v) => v === "" || v === undefined ? undefined : Number(v),
+              onChange: () => setUserEditedOtHours(true),
+            })}
           />
           {errors.otHours && <p className="text-xs text-destructive">{errors.otHours.message}</p>}
         </div>

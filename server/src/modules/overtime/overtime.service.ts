@@ -15,6 +15,14 @@ function dateOnly(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
 }
 
+function computeOtHours(start: string, end: string): number {
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  let mins = eh * 60 + em - (sh * 60 + sm);
+  if (mins <= 0) mins += 24 * 60;
+  return Math.round((mins / 60) * 100) / 100;
+}
+
 const overtimeInclude = {
   employee: {
     select: {
@@ -165,6 +173,8 @@ export async function createSchedule(createdById: string, input: CreateScheduleI
   const employee = await prisma.employee.findUnique({ where: { id: input.employeeId } });
   if (!employee) throw new AppError(404, "Employee not found");
 
+  const otHours = input.otHours ?? computeOtHours(input.startTime, input.endTime);
+
   return prisma.overtimeSchedule.create({
     data: {
       employeeId: input.employeeId,
@@ -172,7 +182,7 @@ export async function createSchedule(createdById: string, input: CreateScheduleI
       startTime: input.startTime,
       endTime: input.endTime,
       notes: input.notes,
-      otHours: input.otHours,
+      otHours,
       createdById,
     },
     include: scheduleInclude,
@@ -183,14 +193,18 @@ export async function updateSchedule(id: string, input: UpdateScheduleInput) {
   const existing = await prisma.overtimeSchedule.findUnique({ where: { id } });
   if (!existing) throw new AppError(404, "Overtime schedule not found");
 
+  const startTime = input.startTime ?? existing.startTime;
+  const endTime = input.endTime ?? existing.endTime;
+  const otHours = input.otHours !== undefined ? input.otHours : computeOtHours(startTime, endTime);
+
   return prisma.overtimeSchedule.update({
     where: { id },
     data: {
       ...(input.date ? { date: dateOnly(input.date) } : {}),
-      ...(input.startTime !== undefined ? { startTime: input.startTime } : {}),
-      ...(input.endTime !== undefined ? { endTime: input.endTime } : {}),
+      startTime,
+      endTime,
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
-      ...(input.otHours !== undefined ? { otHours: input.otHours } : {}),
+      otHours,
     },
     include: scheduleInclude,
   });

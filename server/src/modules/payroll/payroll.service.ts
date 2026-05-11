@@ -324,6 +324,15 @@ export async function processRun(id: string) {
     select: { employeeId: true, date: true },
   });
 
+  // Admin-assigned overtime schedules for the period (auto-approved).
+  const otSchedules = await prisma.overtimeSchedule.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      date: { gte: run.periodStart, lte: run.periodEnd },
+    },
+    select: { employeeId: true, date: true },
+  });
+
   // scheduledDatesMap:    empId → Set of dateKeys with a shift assignment.
   // scheduledHoursMap:    empId → dateKey → scheduled shift duration (hours).
   // scheduledShiftEndMap: empId → dateKey → scheduled shift end (UTC Date).
@@ -370,6 +379,13 @@ export async function processRun(id: string) {
     const dateKey = ot.date.toISOString().slice(0, 10);
     if (!overtimeApprovedDatesMap.has(ot.employeeId)) overtimeApprovedDatesMap.set(ot.employeeId, new Set());
     overtimeApprovedDatesMap.get(ot.employeeId)!.add(dateKey);
+  }
+
+  // Also mark dates covered by an admin-assigned OvertimeSchedule (auto-approved).
+  for (const sched of otSchedules) {
+    const dateKey = sched.date.toISOString().slice(0, 10);
+    if (!overtimeApprovedDatesMap.has(sched.employeeId)) overtimeApprovedDatesMap.set(sched.employeeId, new Set());
+    overtimeApprovedDatesMap.get(sched.employeeId)!.add(dateKey);
   }
 
   // Attendance for the period.

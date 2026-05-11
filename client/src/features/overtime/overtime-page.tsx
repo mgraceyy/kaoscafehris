@@ -436,11 +436,7 @@ export default function OvertimePage() {
                   <td className="px-5 py-4 text-right font-semibold tabular-nums text-gray-800">
                     {s.otHours ? `${Number(s.otHours).toFixed(2)}h` : <span className="text-gray-300 font-normal">—</span>}
                   </td>
-                  <td className="px-5 py-4">
-                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#DCFCE7", color: "#16A34A" }}>
-                      Scheduled
-                    </span>
-                  </td>
+                  <td className="px-5 py-4"><StatusBadge status="APPROVED" /></td>
                   {canReview && (
                     <td className="px-5 py-4">
                       <div className="flex gap-2">
