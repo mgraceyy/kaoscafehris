@@ -33,7 +33,6 @@ export const DEFAULT_SETTINGS: ReadonlyArray<{
   { key: "attendance.absent_if_no_clockin", value: 4, group: "attendance" },
   { key: "attendance.half_day_threshold_hours", value: 4, group: "attendance" },
   // Payroll
-  { key: "payroll.regular_ot_rate", value: 0, group: "payroll" },
   { key: "payroll.rest_day_ot_rate", value: 0, group: "payroll" },
   { key: "payroll.night_diff_rate", value: 0, group: "payroll" },
   { key: "payroll.holiday_pay_rate", value: 0, group: "payroll" },

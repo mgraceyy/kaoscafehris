@@ -277,7 +277,6 @@ export async function processRun(id: string) {
     where: {
       key: {
         in: [
-          "payroll.regular_ot_rate",
           "payroll.late_deduction_per_minute",
           "payroll.night_diff_rate",
           "attendance.late_threshold",
@@ -294,7 +293,6 @@ export async function processRun(id: string) {
     return typeof v === "number" && Number.isFinite(v) ? v : fallback;
   }
 
-  const otRatePerHour          = getSetting("payroll.regular_ot_rate", 0);
   const lateDeductionPerMinute = getSetting("payroll.late_deduction_per_minute", 0);
   const nightDiffPct           = getSetting("payroll.night_diff_rate", 0); // percentage, e.g. 10 = 10%
   const lateThresholdMinutes = getSetting("attendance.late_threshold", 0); // 0 = no grace period if not configured
@@ -779,31 +777,28 @@ export async function processRun(id: string) {
       let basicPay: number;
       let overtimePay: number;
 
+      // Employee's effective hourly rate, used for OT pay and as base for night diff.
+      // OT is paid at the employee's regular hourly rate.
+      const baseHourlyRate = emp.payType === "HOURLY"
+        ? toNum(emp.hourlyRate)
+        : toNum(emp.basicSalary) / 26 / 8;
+
       if (emp.payType === "HOURLY") {
         const rate = toNum(emp.hourlyRate);
         const regularHours = round2(Math.max(0, totalHoursWorked - totalOtHours));
         basicPay = round2(rate * regularHours);
-        overtimePay = totalOtHours > 0 && otRatePerHour > 0
-          ? round2(totalOtHours * otRatePerHour)
-          : 0;
+        overtimePay = totalOtHours > 0 ? round2(totalOtHours * baseHourlyRate) : 0;
       } else {
         basicPay = round2(toNum(emp.basicSalary) / 2);
-        overtimePay = totalOtHours > 0 && otRatePerHour > 0
-          ? round2(totalOtHours * otRatePerHour)
-          : 0;
+        overtimePay = totalOtHours > 0 ? round2(totalOtHours * baseHourlyRate) : 0;
       }
 
       const overtimeEarnings: Array<{ type: "OVERTIME"; label: string; amount: number }> =
-        overtimePay > 0
-          ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs × ₱${otRatePerHour}/hr)`, amount: overtimePay }]
+        totalOtHours > 0
+          ? [{ type: "OVERTIME" as const, label: `Overtime (${totalOtHours} hrs × ₱${baseHourlyRate}/hr)`, amount: overtimePay }]
           : [];
 
       const totalNightDiffHours = round2(nightDiffHoursMap.get(emp.id) ?? 0);
-      // Night diff base = employee's effective hourly rate (hourly employees use their rate;
-      // monthly employees use basicSalary ÷ 26 days ÷ 8 hrs).
-      const baseHourlyRate = emp.payType === "HOURLY"
-        ? toNum(emp.hourlyRate)
-        : toNum(emp.basicSalary) / 26 / 8;
       const nightDiffPay = totalNightDiffHours > 0 && nightDiffPct > 0 && baseHourlyRate > 0
         ? round2(totalNightDiffHours * baseHourlyRate * (nightDiffPct / 100))
         : 0;
