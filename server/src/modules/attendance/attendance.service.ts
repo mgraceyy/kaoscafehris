@@ -794,3 +794,64 @@ export async function syncBatch(input: SyncBatchInput) {
 
   return { created, skipped, failed };
 }
+
+/**
+ * One-time fix for existing MANUAL attendance records on overnight shifts
+ * where clockIn/clockOut were entered on the wrong calendar day (the
+ * attendance date instead of the next morning). Adding 1 day to both
+ * timestamps fixes late detection and holiday pay crediting.
+ */
+export async function fixOvernightClocks() {
+  const tz = COMPANY_TZ;
+  const records = await prisma.attendance.findMany({
+    where: { source: "MANUAL", clockOut: { not: null } },
+    select: { id: true, employeeId: true, date: true, clockIn: true, clockOut: true },
+  });
+
+  // Batch-load shift assignments for all (employeeId, date) pairs.
+  const dateKeys = [...new Set(records.map((r) => r.date.toISOString().slice(0, 10)))];
+  const assignments = await prisma.shiftAssignment.findMany({
+    where: {
+      employeeId: { in: [...new Set(records.map((r) => r.employeeId))] },
+      shift: { date: { in: dateKeys.map((d) => new Date(d + "T00:00:00.000Z")) } },
+    },
+    include: { shift: { include: { shiftType: true } } },
+  });
+
+  const shiftMap = new Map<string, typeof assignments[number]>();
+  for (const a of assignments) {
+    shiftMap.set(`${a.employeeId}:${a.shift.date.toISOString().slice(0, 10)}`, a);
+  }
+
+  let updated = 0;
+
+  for (const rec of records) {
+    const dateKey = rec.date.toISOString().slice(0, 10);
+    const sa = shiftMap.get(`${rec.employeeId}:${dateKey}`);
+    const st = sa?.shift?.shiftType;
+    if (!st) continue;
+
+    const startUtc = st.startTime.getUTCHours() * 60 + st.startTime.getUTCMinutes();
+    const endUtc = st.endTime.getUTCHours() * 60 + st.endTime.getUTCMinutes();
+    if (endUtc >= startUtc) continue; // not overnight
+
+    const localHour = new Date(rec.clockIn.toLocaleString("en-US", { timeZone: tz })).getHours();
+    if (localHour >= 12) continue; // not a morning clock-in
+
+    // If clockIn local date equals the attendance date, the timestamps were
+    // entered on the wrong day (should be the next morning).
+    const clockInLocalDate = rec.clockIn.toLocaleString("en-US", { timeZone: tz }).slice(0, 10);
+    if (clockInLocalDate !== dateKey) continue; // already correct
+
+    const newClockIn = new Date(rec.clockIn.getTime() + 24 * 60 * 60 * 1000);
+    const newClockOut = new Date(rec.clockOut!.getTime() + 24 * 60 * 60 * 1000);
+
+    await prisma.attendance.update({
+      where: { id: rec.id },
+      data: { clockIn: newClockIn, clockOut: newClockOut },
+    });
+    updated++;
+  }
+
+  return { updated };
+}

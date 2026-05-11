@@ -105,6 +105,15 @@ export async function deleteRecord(
   }
 }
 
+export async function fixOvernightClocks(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await attendanceService.fixOvernightClocks();
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function uploadSelfie(req: Request, res: Response, next: NextFunction) {
   try {
     if (!req.file) throw new AppError(400, "No image file uploaded");

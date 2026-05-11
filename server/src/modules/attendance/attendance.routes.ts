@@ -53,6 +53,7 @@ router.post("/sync", validate(syncBatchSchema), attendanceController.sync);
 
 router.get("/", authorize("ADMIN", "MANAGER"), attendanceController.list);
 router.get("/assigned-shift", authorize("ADMIN", "MANAGER"), attendanceController.assignedShift);
+router.post("/fix-overnight-clocks", authorize("ADMIN"), attendanceController.fixOvernightClocks);
 router.get("/:id", authorize("ADMIN", "MANAGER"), attendanceController.getById);
 router.put(
   "/:id",
