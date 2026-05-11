@@ -637,16 +637,12 @@ export async function manualCreate(input: ManualCreateInput) {
     );
   }
 
-  // Use the employee's assigned shift if found, otherwise fall back to the
-  // admin-selected shift type for late/overtime computation.
-  let shiftType: { id: string; startTime: Date; endTime: Date; name: string };
-  if (assignedShift) {
-    shiftType = assignedShift;
-  } else {
-    const st = await prisma.shiftType.findUnique({ where: { id: input.shiftTypeId } });
-    if (!st) throw new AppError(404, "Shift type not found");
-    shiftType = st;
-  }
+  // Always use the shift type selected by the admin — even when the employee
+  // already has a different shift assigned on the Schedule tab.  The admin's
+  // manual override takes priority for late/overtime computation.
+  const st = await prisma.shiftType.findUnique({ where: { id: input.shiftTypeId } });
+  if (!st) throw new AppError(404, "Shift type not found");
+  const shiftType = st;
 
   const { scheduledStart, scheduledEnd } = getScheduledTimes(dateKey, shiftType, tz);
 
@@ -694,32 +690,39 @@ export async function manualCreate(input: ManualCreateInput) {
   }
 
   return prisma.$transaction(async (tx) => {
-    // If the employee already has a shift assignment we reuse it; otherwise
-    // ensure a Shift + ShiftAssignment exist so the record shows on the Schedule.
-    if (!assignedShift) {
-      const existingShift = await tx.shift.findFirst({
-        where: { date: dateKey, shiftTypeId: shiftType.id, branchId: employee.branchId },
-        select: { id: true },
-      });
-      const shift = existingShift ?? await tx.shift.create({
-        data: {
-          branchId: employee.branchId,
-          shiftTypeId: shiftType.id,
-          name: shiftType.name,
-          date: dateKey,
-          startTime: shiftType.startTime,
-          endTime: shiftType.endTime,
-          status: "PUBLISHED",
-        },
-        select: { id: true },
-      });
+    // Ensure a Shift + ShiftAssignment exist for the admin-selected shift type
+    // so the record shows on the Schedule tab.  When the employee already has a
+    // different shift assigned, this reassigns them to the admin's choice.
+    const existingShift = await tx.shift.findFirst({
+      where: { date: dateKey, shiftTypeId: shiftType.id, branchId: employee.branchId },
+      select: { id: true },
+    });
+    const shift = existingShift ?? await tx.shift.create({
+      data: {
+        branchId: employee.branchId,
+        shiftTypeId: shiftType.id,
+        name: shiftType.name,
+        date: dateKey,
+        startTime: shiftType.startTime,
+        endTime: shiftType.endTime,
+        status: "PUBLISHED",
+      },
+      select: { id: true },
+    });
 
-      await tx.shiftAssignment.upsert({
-        where: { shiftId_employeeId: { shiftId: shift.id, employeeId: input.employeeId } },
-        create: { shiftId: shift.id, employeeId: input.employeeId },
-        update: {},
+    // Remove the employee's old shift assignment when the admin overrides it
+    // with a different shift type, so the employee is only assigned once.
+    if (assignedShift && assignedShift.shiftTypeId !== shiftType.id) {
+      await tx.shiftAssignment.deleteMany({
+        where: { employeeId: input.employeeId, shift: { date: dateKey } },
       });
     }
+
+    await tx.shiftAssignment.upsert({
+      where: { shiftId_employeeId: { shiftId: shift.id, employeeId: input.employeeId } },
+      create: { shiftId: shift.id, employeeId: input.employeeId },
+      update: {},
+    });
 
     return tx.attendance.create({
       data: {

@@ -565,14 +565,17 @@ export async function processRun(id: string) {
       // Night shifts starting at or after 22:00 local (e.g. 3rd shift 11PM) are excluded —
       // their holiday coverage comes from the prior day's crossing shift instead.
       if (isCrossing) {
-        // hours from clockIn to next local midnight = 24 - hoursSinceMidnight(clockIn)
-        const hoursOnInDate = Math.max(0, round2(24 - localHoursSinceMidnight(rec.clockIn, tz)));
-        if (hoursOnInDate > 0) {
-          // Use the scheduled shift start to determine if this is a late-night shift.
-          // Fall back to the actual clock-in time when no shift assignment exists.
-          const shiftStart = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey) ?? rec.clockIn;
-          const isNightShift = localTimeInMinutes(shiftStart, tz) >= 22 * 60; // starts at or after 22:00 local
-          if (!isNightShift) {
+        // Use the scheduled shift start to determine if this is a late-night shift.
+        // Fall back to the actual clock-in time when no shift assignment exists.
+        const shiftStart = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey) ?? rec.clockIn;
+        const isNightShift = localTimeInMinutes(shiftStart, tz) >= 22 * 60; // starts at or after 22:00 local
+        if (!isNightShift) {
+          // Cap early clock-in at the scheduled shift start so early login
+          // does not inflate holiday pay credit (e.g. 6:41pm login for a 7pm
+          // shift should credit 5 hrs, not 5.32 hrs).
+          const effectiveClockIn = rec.clockIn > shiftStart ? rec.clockIn : shiftStart;
+          const hoursOnInDate = Math.max(0, round2(24 - localHoursSinceMidnight(effectiveClockIn, tz)));
+          if (hoursOnInDate > 0) {
             const localInDateKey = localDateKey(rec.clockIn, tz);
             const existingIn = empHMap.get(localInDateKey);
             if (!existingIn) {

@@ -79,7 +79,7 @@ function LeaveCard({ request }: { request: LeaveRequest }) {
 
       {request.status !== "PENDING" && (
         <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
-          <div className="text-xs text-blue-500 font-semibold mb-1">Admin note</div>
+          <div className="text-xs text-blue-500 font-semibold mb-1">Remarks</div>
           <p className="text-sm text-blue-800">{request.reviewNotes || "—"}</p>
         </div>
       )}

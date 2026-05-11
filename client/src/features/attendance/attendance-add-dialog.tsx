@@ -20,7 +20,7 @@ import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listEmployees } from "@/features/employees/employees.api";
 import { listShiftTypes } from "@/features/scheduling/shift-types.api";
-import { createAttendance } from "./attendance.api";
+import { createAttendance, getAssignedShift } from "./attendance.api";
 import { COMPANY_TZ, todayIsoLocal, toIso, nextDayLocalIso } from "@/lib/timezone";
 
 function formatShiftTime(isoTime: string): string {
@@ -91,6 +91,14 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
 
   const selectedShiftTypeId = watch("shiftTypeId");
   const selectedShiftType = shiftTypesQuery.data?.find((s) => s.id === selectedShiftTypeId);
+  const watchedEmployeeId = watch("employeeId");
+  const watchedDate = watch("date");
+
+  const assignedShiftQuery = useQuery({
+    queryKey: ["assigned-shift", watchedEmployeeId, watchedDate],
+    queryFn: () => getAssignedShift(watchedEmployeeId, watchedDate),
+    enabled: !!watchedEmployeeId && !!watchedDate,
+  });
 
   useEffect(() => {
     if (open) {
@@ -260,6 +268,11 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
           {selectedShiftType && (
             <p className="text-xs text-muted-foreground">
               Scheduled: {formatShiftTime(selectedShiftType.startTime)} – {formatShiftTime(selectedShiftType.endTime)}. Late/overtime will be calculated against these times.
+            </p>
+          )}
+          {assignedShiftQuery.data && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2 border border-amber-200">
+              Currently assigned: <strong>{assignedShiftQuery.data.name}</strong> ({formatShiftTime(assignedShiftQuery.data.startTime)} – {formatShiftTime(assignedShiftQuery.data.endTime)}). Your selection above will override this.
             </p>
           )}
         </div>
