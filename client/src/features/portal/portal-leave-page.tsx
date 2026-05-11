@@ -74,7 +74,14 @@ function LeaveCard({ request }: { request: LeaveRequest }) {
       </div>
 
       {request.reason && (
-        <p className="text-sm text-gray-600 mb-3">{request.reason}</p>
+        <p className="text-sm text-gray-600 mb-2">{request.reason}</p>
+      )}
+
+      {request.reviewNotes && request.status !== "PENDING" && (
+        <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+          <div className="text-xs text-blue-500 font-semibold mb-1">Admin note</div>
+          <p className="text-sm text-blue-800">{request.reviewNotes}</p>
+        </div>
       )}
 
       <div className="flex gap-4 mb-3">

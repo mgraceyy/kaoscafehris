@@ -638,10 +638,14 @@ export async function processRun(id: string) {
             if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
             const empHMap = holidayAttMap.get(rec.employeeId)!;
             // Boundary attendance (e.g. Apr 30 graveyard ending on May 1 holiday)
-            // always takes priority over any crossing split from a shift that starts
-            // on the holiday but ends the next day (e.g. May 1 12hr → May 2).  The
-            // rule is: a shift qualifies for holiday pay on its clock-OUT date.
-            empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: true });
+            // takes priority over a crossing split from a shift that starts on the
+            // holiday (e.g. May 1 12hr → May 2, 5.32 hrs), but must NOT overwrite a
+            // same-day shift on the holiday (e.g. May 1 12hr 7am→8pm, 12 hrs) when
+            // the boundary record is just an overtime tail past midnight (0.22 hrs).
+            const existingBoundary = empHMap.get(localOutDateKey);
+            if (!existingBoundary || hoursOnDate > existingBoundary.hoursOnDate) {
+              empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: true });
+            }
             // Do NOT update hoursWorkedMap here: the April payroll already paid basic pay
             // for the full crossing shift. Only the holiday premium belongs in May.
           }
