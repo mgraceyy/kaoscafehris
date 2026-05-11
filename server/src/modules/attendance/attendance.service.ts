@@ -143,6 +143,19 @@ async function resolveAttendanceDateAndShift(
     }
   }
 
+  // If the employee already completed attendance for all of their scheduled
+  // shifts on the previous date, don't resolve to it — their graveyard shift
+  // is done, and this clock-in belongs to the naive date (or a new shift).
+  if (bestPrevShift && prevAssignments.length > 0) {
+    const prevAttendanceCount = await prisma.attendance.count({
+      where: { employeeId, date: prevDate },
+    });
+    if (prevAttendanceCount >= prevAssignments.length) {
+      bestPrevShift = null;
+      bestPrevDiff = Infinity;
+    }
+  }
+
   // Prefer the previous date's overnight shift when it is a better match
   // (closer to clockInAt) than anything on the naive date. This handles the
   // case where an employee clocks in late for a graveyard shift (e.g. 2 AM
