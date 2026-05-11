@@ -408,13 +408,16 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
   if (shift) {
     const { scheduledStart } = getScheduledTimes(effectiveDateKey, shift, tz);
 
-    // Auto-correct: when clockIn is before the shift start and the shift is
-    // overnight, the clockIn is really the next morning.
+    // Auto-correct: when clockIn is before the shift start, the shift is
+    // overnight, and clockIn is in the morning (before noon), the clockIn is
+    // really the next morning. Skip evening hours to avoid penalizing early
+    // clock-ins (e.g. 10pm for an 11pm shift).
     let correctedClockIn = clockInAt;
     if (clockInAt < scheduledStart) {
       const startUtc = shift.startTime.getUTCHours() * 60 + shift.startTime.getUTCMinutes();
       const endUtc = shift.endTime.getUTCHours() * 60 + shift.endTime.getUTCMinutes();
-      if (endUtc < startUtc) {
+      const localHour = new Date(clockInAt.toLocaleString("en-US", { timeZone: tz })).getHours();
+      if (endUtc < startUtc && localHour < 12) {
         correctedClockIn = new Date(clockInAt.getTime() + 24 * 60 * 60 * 1000);
       }
     }
@@ -647,15 +650,16 @@ export async function manualCreate(input: ManualCreateInput) {
 
   const { scheduledStart, scheduledEnd } = getScheduledTimes(dateKey, shiftType, tz);
 
-  // Auto-correct: when clockIn is before the shift start and the shift is
-  // overnight (e.g. 3rd shift 11pm-8am), a clockIn at 2am on the resolved
-  // date is really the next morning. Without this, 2am Apr 30 looks "on time"
-  // for an 11pm Apr 30 start instead of 3 hours late on May 1.
+  // Auto-correct: when clockIn is before the shift start, the shift is
+  // overnight, and clockIn is in the morning (before noon), the clockIn is
+  // really the next morning. Skip evening hours to avoid penalizing early
+  // clock-ins (e.g. 10pm for an 11pm shift).
   let correctedClockIn = clockInAt;
   if (clockInAt < scheduledStart) {
     const startUtc = shiftType.startTime.getUTCHours() * 60 + shiftType.startTime.getUTCMinutes();
     const endUtc = shiftType.endTime.getUTCHours() * 60 + shiftType.endTime.getUTCMinutes();
-    if (endUtc < startUtc) {
+    const localHour = new Date(clockInAt.toLocaleString("en-US", { timeZone: tz })).getHours();
+    if (endUtc < startUtc && localHour < 12) {
       correctedClockIn = new Date(clockInAt.getTime() + 24 * 60 * 60 * 1000);
     }
   }
