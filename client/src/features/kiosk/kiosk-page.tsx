@@ -169,33 +169,44 @@ function ShiftCard({
 }
 
 function CameraView({
-  videoRef, onCapture, isClockedIn, cameraReady,
-}: { videoRef: React.RefObject<HTMLVideoElement | null>; onCapture: () => void; isClockedIn: boolean; cameraReady: boolean }) {
+  videoRef, onCapture, isClockedIn, cameraReady, cameraError,
+}: { videoRef: React.RefObject<HTMLVideoElement | null>; onCapture: () => void; isClockedIn: boolean; cameraReady: boolean; cameraError: boolean }) {
   return (
     <div>
       <div style={{ fontSize: 13, fontWeight: 700, color: NEAR_BLACK, marginBottom: 10 }}>Photo Attendance</div>
 
       <div style={{ borderRadius: 18, overflow: "hidden", position: "relative", background: NEAR_BLACK, aspectRatio: "3/4" }}>
         <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        {!cameraReady && (
+        {!cameraReady && !cameraError && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)" }}>
             <span style={{ color: "#fff", fontSize: 13 }}>Starting camera…</span>
           </div>
         )}
+        {cameraError && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.6)", gap: 8 }}>
+            <AlertCircle size={28} color="rgba(255,255,255,0.6)" />
+            <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: 600 }}>Camera unavailable</span>
+            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>Check camera permissions and try again</span>
+          </div>
+        )}
         {/* Face guide oval */}
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-          <div style={{
-            width: 160, height: 200,
-            border: "2px solid rgba(255,255,255,0.35)",
-            borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
-            boxShadow: "0 0 0 9999px rgba(0,0,0,0.25)",
-          }} />
-        </div>
-        <div style={{ position: "absolute", bottom: 12, left: 0, right: 0, textAlign: "center" }}>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", background: "rgba(0,0,0,0.35)", borderRadius: 20, padding: "4px 14px" }}>
-            Center your face in the frame
-          </span>
-        </div>
+        {!cameraError && (
+          <>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+              <div style={{
+                width: 160, height: 200,
+                border: "2px solid rgba(255,255,255,0.35)",
+                borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
+                boxShadow: "0 0 0 9999px rgba(0,0,0,0.25)",
+              }} />
+            </div>
+            <div style={{ position: "absolute", bottom: 12, left: 0, right: 0, textAlign: "center" }}>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", background: "rgba(0,0,0,0.35)", borderRadius: 20, padding: "4px 14px" }}>
+                Center your face in the frame
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       <button
@@ -212,20 +223,21 @@ function CameraView({
         }}
       >
         <Clock size={18} color="#fff" />
-        {cameraReady ? (isClockedIn ? "Time Out" : "Time In") : "Camera loading…"}
+        {cameraError ? "Camera unavailable" : cameraReady ? (isClockedIn ? "Time Out" : "Time In") : "Camera loading…"}
       </button>
     </div>
   );
 }
 
 function MainScreen({
-  statusData, videoRef, onCapture, onLogout, cameraReady, actionError,
+  statusData, videoRef, onCapture, onLogout, cameraReady, cameraError, actionError,
 }: {
   statusData: KioskStatusData;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   onCapture: () => void;
   onLogout: () => void;
   cameraReady: boolean;
+  cameraError: boolean;
   actionError: string;
 }) {
   const { employee, shift, attendance, lastClockIn, staleShiftEnd } = statusData;
@@ -251,11 +263,11 @@ function MainScreen({
 
         {isStale ? (
           <div style={{ marginBottom: 14 }}>
-            <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={true} cameraReady={cameraReady} />
+            <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={true} cameraReady={cameraReady} cameraError={cameraError} />
           </div>
         ) : !isDone && shift ? (
           <div style={{ marginBottom: 14 }}>
-            <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={isClockedIn} cameraReady={cameraReady} />
+            <CameraView videoRef={videoRef} onCapture={onCapture} isClockedIn={isClockedIn} cameraReady={cameraReady} cameraError={cameraError} />
           </div>
         ) : !isDone && !shift ? (
           <div style={{ background: "#fff", borderRadius: 16, padding: "24px 20px", textAlign: "center", marginBottom: 14, boxShadow: "0 2px 10px rgba(140,21,21,0.07)" }}>
@@ -619,25 +631,54 @@ export default function KioskPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
 
+  const cameraTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [cameraError, setCameraError] = useState(false);
+
   const startCamera = useCallback(async () => {
     setCameraReady(false);
+    setCameraError(false);
+    cameraTimeoutRef.current = setTimeout(() => {
+      // If canplay never fired but the video is actually playing with frames,
+      // mark ready anyway (recovers from a dropped/missed event).
+      const v = videoRef.current;
+      if (v && v.readyState >= 2 && v.videoWidth > 0) {
+        setCameraReady(true);
+      } else {
+        setCameraError(true);
+      }
+    }, 10_000);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.oncanplay = () => setCameraReady(true);
-        videoRef.current.play().catch(() => {});
+        if (videoRef.current.readyState >= 2) {
+          // canplay already fired before we set the handler.
+          clearTimeout(cameraTimeoutRef.current!);
+          setCameraReady(true);
+        } else {
+          videoRef.current.oncanplay = () => {
+            clearTimeout(cameraTimeoutRef.current!);
+            setCameraReady(true);
+          };
+          videoRef.current.play().catch(() => {});
+          // Note: if play() is blocked by autoplay policy, canplay can still
+          // fire once the user interacts with the page. The timeout above
+          // handles the case where it never fires even with frames available.
+        }
       }
     } catch {
-      // Camera unavailable — proceed without selfie
+      clearTimeout(cameraTimeoutRef.current!);
+      setCameraError(true);
     }
   }, []);
 
   const stopCamera = useCallback(() => {
+    if (cameraTimeoutRef.current) { clearTimeout(cameraTimeoutRef.current); cameraTimeoutRef.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setCameraReady(false);
+    setCameraError(false);
   }, []);
 
   useEffect(() => {
@@ -765,6 +806,7 @@ export default function KioskPage() {
         onCapture={handleCapture}
         onLogout={handleLogout}
         cameraReady={cameraReady}
+        cameraError={cameraError}
         actionError={confirmError}
       />
     );

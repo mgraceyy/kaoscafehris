@@ -379,6 +379,7 @@ export async function processRun(id: string) {
       date: { gte: run.periodStart, lte: run.periodEnd },
     },
     select: { employeeId: true, date: true, clockIn: true, clockOut: true, hoursWorked: true, overtimeHours: true, lateMinutes: true, source: true },
+    orderBy: [{ clockIn: "asc" }],
   });
 
   // For MANUAL attendance records that have no matching ShiftAssignment (e.g., created before
@@ -636,9 +637,11 @@ export async function processRun(id: string) {
             const hoursOnDate = Math.max(0, round2((outMs - creditFromMs) / 3_600_000));
             if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
             const empHMap = holidayAttMap.get(rec.employeeId)!;
-            if (!empHMap.has(localOutDateKey)) {
-              empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: true });
-            }
+            // Boundary attendance (e.g. Apr 30 graveyard ending on May 1 holiday)
+            // always takes priority over any crossing split from a shift that starts
+            // on the holiday but ends the next day (e.g. May 1 12hr → May 2).  The
+            // rule is: a shift qualifies for holiday pay on its clock-OUT date.
+            empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: true });
             // Do NOT update hoursWorkedMap here: the April payroll already paid basic pay
             // for the full crossing shift. Only the holiday premium belongs in May.
           }
