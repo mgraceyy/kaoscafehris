@@ -321,7 +321,7 @@ export async function processRun(id: string) {
       status: "APPROVED",
       date: { gte: run.periodStart, lte: run.periodEnd },
     },
-    select: { employeeId: true, date: true },
+    select: { employeeId: true, date: true, otHours: true },
   });
 
   // Admin-assigned overtime schedules for the period (auto-approved).
@@ -330,7 +330,7 @@ export async function processRun(id: string) {
       employeeId: { in: employeeIds },
       date: { gte: run.periodStart, lte: run.periodEnd },
     },
-    select: { employeeId: true, date: true },
+    select: { employeeId: true, date: true, otHours: true },
   });
 
   // scheduledDatesMap:    empId → Set of dateKeys with a shift assignment.
@@ -343,6 +343,7 @@ export async function processRun(id: string) {
   const scheduledShiftEndMap = new Map<string, Map<string, Date>>();
   const scheduledShiftStartMap = new Map<string, Map<string, Date>>();
   const overtimeApprovedDatesMap = new Map<string, Set<string>>();
+  const assignedOtHoursMap = new Map<string, Map<string, number>>();
 
   for (const sa of shiftAssignments) {
     const dateKey = sa.shift.date.toISOString().slice(0, 10);
@@ -379,6 +380,8 @@ export async function processRun(id: string) {
     const dateKey = ot.date.toISOString().slice(0, 10);
     if (!overtimeApprovedDatesMap.has(ot.employeeId)) overtimeApprovedDatesMap.set(ot.employeeId, new Set());
     overtimeApprovedDatesMap.get(ot.employeeId)!.add(dateKey);
+    if (!assignedOtHoursMap.has(ot.employeeId)) assignedOtHoursMap.set(ot.employeeId, new Map());
+    assignedOtHoursMap.get(ot.employeeId)!.set(dateKey, toNum(ot.otHours));
   }
 
   // Also mark dates covered by an admin-assigned OvertimeSchedule (auto-approved).
@@ -386,6 +389,9 @@ export async function processRun(id: string) {
     const dateKey = sched.date.toISOString().slice(0, 10);
     if (!overtimeApprovedDatesMap.has(sched.employeeId)) overtimeApprovedDatesMap.set(sched.employeeId, new Set());
     overtimeApprovedDatesMap.get(sched.employeeId)!.add(dateKey);
+    if (!assignedOtHoursMap.has(sched.employeeId)) assignedOtHoursMap.set(sched.employeeId, new Map());
+    // Schedule-assigned hours take priority over request hours if both exist for the same date.
+    assignedOtHoursMap.get(sched.employeeId)!.set(dateKey, toNum(sched.otHours));
   }
 
   // Attendance for the period.
@@ -500,9 +506,10 @@ export async function processRun(id: string) {
     const actualHrs = rec.hoursWorked !== null
       ? toNum(rec.hoursWorked)
       : scheduledHrs; // 0 when no shift — can't estimate without a clock-out
-    // Only count overtime hours if explicitly approved (shift-level or OvertimeRequest).
+    // Only count overtime hours if explicitly approved (shift-level, OvertimeRequest, or OvertimeSchedule).
     const isOtApproved = overtimeApprovedDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
-    const otHrs = isOtApproved ? toNum(rec.overtimeHours) : 0;
+    const assignedOtHrs = assignedOtHoursMap.get(rec.employeeId)?.get(dateKey);
+    const otHrs = isOtApproved ? (assignedOtHrs ?? toNum(rec.overtimeHours)) : 0;
     // Regular hours = actual minus approved OT, capped at scheduled shift duration.
     // For manually-added attendance with no shift assignment, use actual hours directly (no cap).
     const regularHrs = scheduledHrs > 0
@@ -600,6 +607,20 @@ export async function processRun(id: string) {
           }
         }
       }
+    }
+  }
+
+  // Credit approved overtime hours from schedules and requests even when no attendance
+  // record exists for the date (e.g. employee forgot to clock, or schedule is future-dated).
+  for (const [empId, dateMap] of assignedOtHoursMap) {
+    for (const [dateKey, otHrs] of dateMap) {
+      // Skip dates already covered by an attendance record.
+      if (attendanceDateMap.get(empId)?.has(dateKey)) continue;
+      if (otHrs <= 0) continue;
+      otHoursMap.set(empId, (otHoursMap.get(empId) ?? 0) + otHrs);
+      hoursWorkedMap.set(empId, (hoursWorkedMap.get(empId) ?? 0) + otHrs);
+      if (!attendanceDateMap.has(empId)) attendanceDateMap.set(empId, new Map());
+      attendanceDateMap.get(empId)!.set(dateKey, { hoursWorked: otHrs, lateMinutes: 0, isOvernight: false });
     }
   }
 
