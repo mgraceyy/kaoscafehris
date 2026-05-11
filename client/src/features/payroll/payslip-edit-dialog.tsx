@@ -262,6 +262,12 @@ export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Pro
                       <span>Semi-monthly (÷ 2)</span>
                       <span className="tabular-nums">{formatCurrency(basicSalary / 2)}</span>
                     </div>
+                    {otHrs > 0 && (
+                      <div className="flex justify-between pl-3 text-muted-foreground">
+                        <span>Approved OT ({otHrs.toFixed(2)} hrs)</span>
+                        <span className="tabular-nums">{formatCurrency(Number(d.overtimePay))}</span>
+                      </div>
+                    )}
                     {lateMin > 0 && (
                       <div className="flex justify-between pl-3 text-muted-foreground">
                         <span>Late ({lateMin} min)</span>

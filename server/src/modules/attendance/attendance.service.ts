@@ -143,10 +143,19 @@ async function resolveAttendanceDateAndShift(
     }
   }
 
-  // Only override to the previous date when the naive date has NO shift.
-  // If the employee has a shift today (e.g. a 7 AM day shift), that's the
-  // shift they're clocking in for — not yesterday's graveyard.
-  if (!naiveShift && bestPrevShift) {
+  // Prefer the previous date's overnight shift when it is a better match
+  // (closer to clockInAt) than anything on the naive date. This handles the
+  // case where an employee clocks in late for a graveyard shift (e.g. 2 AM
+  // on May 1 for an Apr 30 3rd shift) but also has a shift on May 1 — the
+  // Apr 30 shift is only 4 hours away while the May 1 3rd shift (starting
+  // at 10 PM) is 20 hours away.
+  let naiveDiff = Infinity;
+  if (naiveShift) {
+    const { scheduledStart } = getScheduledTimes(naiveDate, naiveShift, tz);
+    naiveDiff = Math.abs(clockInAt.getTime() - scheduledStart.getTime());
+  }
+
+  if (bestPrevShift && bestPrevDiff < naiveDiff) {
     return { date: prevDate, shift: bestPrevShift };
   }
   return { date: naiveDate, shift: naiveShift };
