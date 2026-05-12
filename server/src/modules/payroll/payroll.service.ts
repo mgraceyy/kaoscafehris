@@ -583,14 +583,12 @@ export async function processRun(id: string) {
     if (rec.clockOut) {
       const localOutDateKey = localDateKey(rec.clockOut, tz);
       const isCrossing = isCrossingLocal(rec.clockIn, rec.clockOut, tz);
-      // Crossing: hours from local midnight of clock-out date to actual clock-out (e.g. 7hr for
-      //   a 3rd shift ending 7AM). When the clock-out date is itself a holiday, use the full
-      //   shift hours (capped at 8) so shifts that end exactly at midnight don't get zeroed out.
+      // Crossing: hours from local midnight of clock-out date to actual clock-out (e.g. 8hr for
+      //   a 3rd shift ending 8AM, ~0hr for a 2nd shift ending at midnight). The majority-hours
+      //   rule credits holiday pay to whichever date holds more working hours.
       // Same-day: countedHrs (break-adjusted, consistent with pay calc).
       const hoursOnDate = isCrossing
-        ? (periodHolidayDateKeys.has(localOutDateKey)
-            ? Math.min(countedHrs, 8)
-            : Math.max(0, round2(localHoursSinceMidnight(rec.clockOut, tz))))
+        ? Math.max(0, round2(localHoursSinceMidnight(rec.clockOut, tz)))
         : countedHrs;
 
       if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
@@ -625,9 +623,9 @@ export async function processRun(id: string) {
             const localInDateKey = localDateKey(rec.clockIn, tz);
             const existingIn = empHMap.get(localInDateKey);
             console.log(`[payroll:att] IN-DATE emp=${rec.employeeId} localInDate=${localInDateKey} hoursOnInDate=${hoursOnInDate} existingIn=${!!existingIn} existingHours=${existingIn?.hoursOnDate}`);
-            if (!existingIn) {
+            if (!existingIn || hoursOnInDate > existingIn.hoursOnDate) {
               empHMap.set(localInDateKey, { hoursOnDate: hoursOnInDate, lateMinutes: computedLateMinutes, isCrossing: true });
-              console.log(`[payroll:att] IN-DATE SET emp=${rec.employeeId} ${localInDateKey} = ${hoursOnInDate}`);
+              console.log(`[payroll:att] IN-DATE SET emp=${rec.employeeId} ${localInDateKey} = ${hoursOnInDate} (prev=${existingIn?.hoursOnDate})`);
             }
           }
         }
