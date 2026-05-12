@@ -635,6 +635,9 @@ export async function processRun(id: string) {
       boundaryDates.add(prev.toISOString().slice(0, 10));
     }
 
+    console.log("[payroll:boundary] periodHolidays:", periodHolidays.map(h => h.date.toISOString().slice(0, 10)));
+    console.log("[payroll:boundary] boundaryDates:", [...boundaryDates]);
+
     if (boundaryDates.size > 0) {
       const boundaryAttendance = await prisma.attendance.findMany({
         where: {
@@ -644,6 +647,11 @@ export async function processRun(id: string) {
         select: { employeeId: true, date: true, clockIn: true, clockOut: true, hoursWorked: true, lateMinutes: true },
       });
 
+      console.log("[payroll:boundary] boundaryAttendance count:", boundaryAttendance.length);
+      for (const r of boundaryAttendance) {
+        console.log(`[payroll:boundary]   emp=${r.employeeId} date=${r.date.toISOString().slice(0,10)} clockIn=${r.clockIn.toISOString()} clockOut=${r.clockOut?.toISOString()} late=${r.lateMinutes}`);
+      }
+
       // Build a lookup: holiday date key → previous date key
       const holidayToPrevDate = new Map<string, string>();
       for (const h of periodHolidays) {
@@ -652,14 +660,23 @@ export async function processRun(id: string) {
         prev.setUTCDate(prev.getUTCDate() - 1);
         holidayToPrevDate.set(holidayKey, prev.toISOString().slice(0, 10));
       }
+      console.log("[payroll:boundary] holidayToPrevDate:", [...holidayToPrevDate.entries()]);
 
       for (const rec of boundaryAttendance) {
-        if (!rec.clockOut) continue;
+        if (!rec.clockOut) {
+          console.log(`[payroll:boundary] SKIP emp=${rec.employeeId}: no clockOut`);
+          continue;
+        }
         const recDateKey = rec.date.toISOString().slice(0, 10);
         const localOutKey = localDateKey(rec.clockOut, tz);
+        const matchPrev = holidayToPrevDate.get(localOutKey);
+        console.log(`[payroll:boundary] CHECK emp=${rec.employeeId} recDate=${recDateKey} localOut=${localOutKey} matchPrev=${matchPrev} match=${matchPrev === recDateKey}`);
         // Only process if this record's clock-out falls on a holiday and the record's
         // date is the day before that holiday.
-        if (holidayToPrevDate.get(localOutKey) !== recDateKey) continue;
+        if (matchPrev !== recDateKey) {
+          console.log(`[payroll:boundary] SKIP emp=${rec.employeeId}: not holiday-adjacent`);
+          continue;
+        }
 
         // Only credit holiday pay when the attendance is from a 3rd / overnight
         // shift: either the clock genuinely crosses midnight, or the employee
@@ -667,13 +684,18 @@ export async function processRun(id: string) {
         // started the previous calendar day). A day-shift overtime tail past
         // midnight is not a 3rd shift and does not earn next-day holiday pay.
         const crossing = isCrossingLocal(rec.clockIn, rec.clockOut, tz);
+        console.log(`[payroll:boundary]   crossing=${crossing}`);
         if (!crossing) {
           // Non-crossing: clock-in and clock-out on the same local date. This is
           // a 3rd shift only if that date differs from the attendance date (e.g.
           // attendance date Apr 30 but clock-in/out both on May 1 = late for an
           // overnight shift).
           const clockInLocal = localDateKey(rec.clockIn, tz);
-          if (clockInLocal === recDateKey) continue;
+          console.log(`[payroll:boundary]   non-crossing: clockInLocal=${clockInLocal} recDate=${recDateKey} same=${clockInLocal === recDateKey}`);
+          if (clockInLocal === recDateKey) {
+            console.log(`[payroll:boundary] SKIP emp=${rec.employeeId}: non-crossing same-date (not 3rd shift)`);
+            continue;
+          }
         }
         // For crossing shifts, also verify the shift assignment is overnight
         // (endTime < startTime) when available. If no assignment found, allow
@@ -684,8 +706,12 @@ export async function processRun(id: string) {
           if (shiftStart && shiftEnd) {
             const startMs = shiftStart.getUTCHours() * 60 + shiftStart.getUTCMinutes();
             const endMs = shiftEnd.getUTCHours() * 60 + shiftEnd.getUTCMinutes();
+            console.log(`[payroll:boundary]   crossing shift check: startMs=${startMs} endMs=${endMs} overnight=${endMs < startMs}`);
             // endMs < startMs means the stored @db.Time wraps (e.g. 06:00 < 22:00 = overnight)
-            if (endMs >= startMs) continue;
+            if (endMs >= startMs) {
+              console.log(`[payroll:boundary] SKIP emp=${rec.employeeId}: crossing not overnight shift`);
+              continue;
+            }
           }
         }
 
@@ -711,6 +737,7 @@ export async function processRun(id: string) {
           const capMs = midnightUtc.getTime() + 8 * 3_600_000;
           const outMs = Math.min(rec.clockOut.getTime(), capMs);
           const hoursOnDate = Math.max(0, round2((outMs - creditFromMs) / 3_600_000));
+          console.log(`[payroll:boundary] CREDIT emp=${rec.employeeId} holidayDate=${localOutDateKey} hoursOnDate=${hoursOnDate} lateMinutes=${effectiveLate} isCrossing=${crossing}`);
           if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
           const empHMap = holidayAttMap.get(rec.employeeId)!;
           const existingBoundary = empHMap.get(localOutDateKey);
@@ -719,6 +746,15 @@ export async function processRun(id: string) {
           }
         }
       }
+    } else {
+      console.log("[payroll:boundary] NO boundaryDates (periodHolidays empty?)");
+    }
+  }
+
+  console.log("[payroll:holidayAttMap] final state:");
+  for (const [empId, dateMap] of holidayAttMap) {
+    for (const [dk, entry] of dateMap) {
+      console.log(`[payroll:holidayAttMap]   emp=${empId} date=${dk} hoursOnDate=${entry.hoursOnDate} lateMinutes=${entry.lateMinutes} isCrossing=${entry.isCrossing}`);
     }
   }
 
@@ -848,7 +884,9 @@ export async function processRun(id: string) {
             const holidayDateKey = h.date.toISOString().slice(0, 10);
             const entry = holidayAttMap.get(emp.id)?.get(holidayDateKey);
 
-            // No qualifying attendance on this holiday date = day off, no holiday pay.
+            if (!entry) {
+              console.log(`[payroll:holiday] NO ENTRY emp=${emp.id} holiday=${holidayDateKey} — holidayAttMap has emp: ${holidayAttMap.has(emp.id)}`);
+            }
             if (!entry) return null;
 
             // Eligible hours are capped at 8 (standard daily rate basis, covers both 8hr and 12hr
