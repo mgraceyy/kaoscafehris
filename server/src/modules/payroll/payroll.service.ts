@@ -588,8 +588,10 @@ export async function processRun(id: string) {
       if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
       const empHMap = holidayAttMap.get(rec.employeeId)!;
       const existingH = empHMap.get(localOutDateKey);
-      // Prefer same-day records over crossing records when both land on the same local date.
-      if (!existingH || (existingH.isCrossing && !isCrossing)) {
+      // Keep the entry with the most hours on the holiday date. Crossing shifts
+      // (e.g. Apr 30 3rd shift → May 1) should not be overwritten by a same-day
+      // shift when both land on the same holiday date.
+      if (!existingH || hoursOnDate > existingH.hoursOnDate) {
         empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: computedLateMinutes, isCrossing });
       }
 
@@ -795,7 +797,7 @@ export async function processRun(id: string) {
           if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
           const empHMap = holidayAttMap.get(rec.employeeId)!;
           const existingBoundary = empHMap.get(localOutDateKey);
-          if (!existingBoundary || hoursOnDate > existingBoundary.hoursOnDate) {
+          if (!existingBoundary || hoursOnDate >= existingBoundary.hoursOnDate) {
             empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: effectiveLate, isCrossing: crossing });
           }
         }
@@ -939,8 +941,14 @@ export async function processRun(id: string) {
             const entry = holidayAttMap.get(emp.id)?.get(holidayDateKey);
 
             // Fallback: if holidayAttMap has no entry, derive hours from attendanceDateMap.
+            // Only use non-overnight records — overnight shifts starting on the holiday
+            // (e.g. May 1 3rd shift 11PM→8AM May 2) should not receive holiday pay;
+            // their holiday coverage comes from the prior day's crossing shift instead.
             const fallback = !entry
-              ? attendanceDateMap.get(emp.id)?.get(holidayDateKey)
+              ? (() => {
+                  const fb = attendanceDateMap.get(emp.id)?.get(holidayDateKey);
+                  return fb && !fb.isOvernight ? fb : undefined;
+                })()
               : undefined;
             if (!entry && !fallback) {
               console.log(`[payroll:holiday] NO ENTRY emp=${emp.id} holiday=${holidayDateKey} — holidayAttMap has emp: ${holidayAttMap.has(emp.id)}, attendanceDateMap has emp: ${attendanceDateMap.has(emp.id)}`);
