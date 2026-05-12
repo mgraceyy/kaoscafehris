@@ -512,14 +512,26 @@ export async function processRun(id: string) {
     const assignedOtHrs = assignedOtHoursMap.get(rec.employeeId)?.get(dateKey);
     const otHrs = isOtApproved ? (assignedOtHrs ?? toNum(rec.overtimeHours)) : 0;
 
+    const effectiveClockOut = (!isOtApproved && rec.clockOut && shiftEnd && rec.clockOut > shiftEnd)
+      ? shiftEnd
+      : rec.clockOut;
+
     // Use shift start as effective clock-in so late arrivals don't reduce
     // regular hours — lateness is handled via the monetary late deduction.
     // Early clock-ins are snapped to shift start. Without a shift, use
     // actual clock-in.
-    const effectiveClockIn = shiftStartForDate ?? rec.clockIn;
-    const effectiveClockOut = (!isOtApproved && rec.clockOut && shiftEnd && rec.clockOut > shiftEnd)
-      ? shiftEnd
-      : rec.clockOut;
+    // Overnight shift guard: when the attendance record is keyed to the
+    // clock-out date (e.g. 3rd shift 23:00→08:00), the shift start on the
+    // attendance date is the NEXT shift (23:00), which is after clock-out
+    // (08:00). Detect that and use the previous calendar day's shift start.
+    const effectiveClockIn = (() => {
+      if (!shiftStartForDate) return rec.clockIn;
+      if (effectiveClockOut && shiftStartForDate > effectiveClockOut) {
+        const prevDateKey = localDateKey(new Date(shiftStartForDate.getTime() - 24 * 60 * 60 * 1000), tz);
+        return scheduledShiftStartMap.get(rec.employeeId)?.get(prevDateKey) ?? rec.clockIn;
+      }
+      return shiftStartForDate;
+    })();
 
     // Use the effective (clipped) clock-in/out times when a shift exists.
     // Without a shift (manual records), use the stored hoursWorked directly.
