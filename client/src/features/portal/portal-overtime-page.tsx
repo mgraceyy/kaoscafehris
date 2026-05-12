@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import { TimePicker } from "@/components/ui/time-picker";
 import { extractErrorMessage } from "@/lib/api";
 import {
   getMyOvertimeRequests,
@@ -15,6 +16,21 @@ const MONTH_NAMES = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
 ];
+
+function computeOtHours(start: string, end: string): number {
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  let mins = eh * 60 + em - (sh * 60 + sm);
+  if (mins <= 0) mins += 24 * 60;
+  return Math.round((mins / 60) * 100) / 100;
+}
+
+function fmtTime(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m).padStart(2, "0")} ${period}`;
+}
 
 function fmtDate(iso: string) {
   const d = new Date(iso.slice(0, 10) + "T00:00:00");
@@ -44,10 +60,23 @@ function FileRequestSheet({ onClose }: { onClose: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [reason, setReason] = useState("");
 
+  const otHours = useMemo(() => {
+    if (!startTime || !endTime) return undefined;
+    return computeOtHours(startTime, endTime);
+  }, [startTime, endTime]);
+
   const mut = useMutation({
-    mutationFn: () => createOvertimeRequest({ date, reason }),
+    mutationFn: () => createOvertimeRequest({
+      date,
+      startTime: startTime || undefined,
+      endTime: endTime || undefined,
+      reason,
+      otHours: otHours ?? undefined,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["portal-overtime"] });
       toast("Overtime request submitted", "success");
@@ -59,6 +88,8 @@ function FileRequestSheet({ onClose }: { onClose: () => void }) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!date) { toast("Please select a date", "error"); return; }
+    if (!startTime) { toast("Please select a start time", "error"); return; }
+    if (!endTime) { toast("Please select an end time", "error"); return; }
     if (!reason.trim()) { toast("Please enter a reason", "error"); return; }
     mut.mutate();
   }
@@ -81,6 +112,26 @@ function FileRequestSheet({ onClose }: { onClose: () => void }) {
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">Start Time</label>
+              <TimePicker value={startTime} onChange={setStartTime} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">End Time</label>
+              <TimePicker value={endTime} onChange={setEndTime} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-gray-700">OT Hours</label>
+            <input
+              type="text"
+              value={otHours !== undefined ? otHours.toFixed(2) : ""}
+              readOnly
+              placeholder="Set start & end time"
+              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 cursor-not-allowed"
             />
           </div>
           <div className="space-y-1.5">
@@ -164,6 +215,15 @@ export default function PortalOvertimePage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-semibold text-gray-900 text-sm">{fmtDate(req.date)}</p>
+                {req.startTime && req.endTime && (
+                  <p className="text-sm text-gray-600 mt-0.5">
+                    {fmtTime(req.startTime)} – {fmtTime(req.endTime)}
+                    {req.otHours && <span className="ml-1.5 font-medium text-gray-700">{Number(req.otHours).toFixed(2)}h</span>}
+                  </p>
+                )}
+                {!req.startTime && req.otHours && (
+                  <p className="text-sm font-medium text-gray-700 mt-0.5">{Number(req.otHours).toFixed(2)}h</p>
+                )}
                 <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{req.reason}</p>
               </div>
               <StatusBadge status={req.status} />

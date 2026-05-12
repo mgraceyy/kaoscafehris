@@ -149,7 +149,10 @@ export async function getMyAttendance(
 export interface OvertimeRequest {
   id: string;
   date: string;
+  startTime: string | null;
+  endTime: string | null;
   reason: string;
+  otHours: string | null;
   status: "PENDING" | "APPROVED" | "REJECTED";
   reviewNotes: string | null;
   createdAt: string;
@@ -169,7 +172,10 @@ export async function getMyOvertimeRequests(): Promise<OvertimeRequest[]> {
 
 export async function createOvertimeRequest(input: {
   date: string;
+  startTime?: string;
+  endTime?: string;
   reason: string;
+  otHours?: number;
 }): Promise<OvertimeRequest> {
   const { data } = await api.post<{ data: OvertimeRequest }>("/overtime", input);
   return data.data;

@@ -313,6 +313,8 @@ model OvertimeRequest {
   employeeId String
   shiftId    String?        // optional link to a specific shift
   date       DateTime       @db.Date
+  startTime  String?        // HH:MM
+  endTime    String?        // HH:MM
   reason     String
   status     OvertimeStatus @default(PENDING)
   otHours    Decimal?       @db.Decimal(5, 2)

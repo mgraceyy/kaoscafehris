@@ -5,6 +5,8 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD
 export const createOvertimeSchema = z.object({
   shiftId: z.string().uuid().optional(),
   date: isoDate,
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM").optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM").optional(),
   reason: z.string().trim().min(1).max(500),
   otHours: z.number().positive().max(24).optional(),
 });

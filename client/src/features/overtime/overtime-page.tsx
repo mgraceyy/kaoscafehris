@@ -311,6 +311,9 @@ export default function OvertimePage() {
                       </span>
                     </td>
                     <td className="px-5 py-4 max-w-[200px]">
+                      {r.startTime && r.endTime && (
+                        <p className="tabular-nums text-gray-600 text-xs">{fmt12(r.startTime)} – {fmt12(r.endTime)}</p>
+                      )}
                       <p className="truncate text-gray-600">{r.reason}</p>
                       {r.reviewNotes && (
                         <p className="text-xs text-gray-400 italic mt-0.5">Note: {r.reviewNotes}</p>

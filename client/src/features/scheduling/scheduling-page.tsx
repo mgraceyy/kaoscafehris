@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listBranches } from "@/features/branches/branches.api";
+import { listEmployees } from "@/features/employees/employees.api";
 import {
   deleteShift,
   formatShiftTime,
@@ -68,6 +69,11 @@ export default function SchedulingPage() {
   const branchesQuery = useQuery({
     queryKey: ["branches", { active: true }],
     queryFn: () => listBranches({ isActive: true }),
+  });
+
+  const employeesQuery = useQuery({
+    queryKey: ["employees", { status: "ACTIVE" }],
+    queryFn: () => listEmployees({ status: "ACTIVE" }),
   });
 
   // Auto-select when there's only one branch
@@ -140,18 +146,15 @@ export default function SchedulingPage() {
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
-  // Collect unique employees across all shifts
+  // Collect unique employees from the employees query
   const employees = useMemo(() => {
-    const map = new Map<string, { id: string; firstName: string; lastName: string }>();
-    for (const shift of query.data ?? []) {
-      for (const a of shift.assignments) {
-        if (!map.has(a.employee.id)) map.set(a.employee.id, a.employee);
-      }
-    }
-    return Array.from(map.values()).sort((a, b) =>
-      `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
-    );
-  }, [query.data]);
+    return (employeesQuery.data ?? [])
+      .filter((e) => e.position !== "Administrator")
+      .map((e) => ({ id: e.id, firstName: e.firstName, lastName: e.lastName }))
+      .sort((a, b) =>
+        `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+      );
+  }, [employeesQuery.data]);
 
   const filteredEmployees = useMemo(
     () => employeeIds.length > 0 ? employees.filter((e) => employeeIds.includes(e.id)) : employees,
@@ -318,7 +321,7 @@ export default function SchedulingPage() {
                   <div className="my-1 border-t border-gray-100" />
                   {searchedEmployees.length === 0 ? (
                     <p className="px-3 py-2 text-xs text-gray-400">
-                      {employeeSearch.trim() ? "No employees match your search." : "No employees with shifts in this period."}
+                      {employeeSearch.trim() ? "No employees match your search." : "No active employees found."}
                     </p>
                   ) : (
                     searchedEmployees.map((emp) => (

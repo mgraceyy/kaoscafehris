@@ -70,13 +70,17 @@ export async function createRequest(employeeId: string, input: CreateOvertimeInp
   const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
   if (!employee) throw new AppError(404, "Employee not found");
 
+  const otHours = input.otHours ?? (input.startTime && input.endTime ? computeOtHours(input.startTime, input.endTime) : undefined);
+
   return prisma.overtimeRequest.create({
     data: {
       employeeId,
       shiftId: input.shiftId,
       date: dateOnly(input.date),
+      startTime: input.startTime,
+      endTime: input.endTime,
       reason: input.reason,
-      otHours: input.otHours,
+      otHours,
     },
     include: overtimeInclude,
   });

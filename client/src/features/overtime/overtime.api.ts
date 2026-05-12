@@ -7,6 +7,8 @@ export interface OvertimeRequest {
   employeeId: string;
   shiftId: string | null;
   date: string;
+  startTime: string | null;
+  endTime: string | null;
   reason: string;
   status: OvertimeStatus;
   otHours: string | null;
@@ -41,6 +43,8 @@ export async function listOvertimeRequests(filters: ListOvertimeFilters): Promis
 
 export async function createOvertimeRequest(body: {
   date: string;
+  startTime?: string;
+  endTime?: string;
   reason: string;
   shiftId?: string;
   otHours?: number;
