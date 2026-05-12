@@ -597,8 +597,12 @@ export async function processRun(id: string) {
       // Keep the entry with the most hours on the holiday date. Crossing shifts
       // (e.g. Apr 30 3rd shift → May 1) should not be overwritten by a same-day
       // shift when both land on the same holiday date.
+      // For crossing shifts the late minutes belong to the clock-in date
+      // (the shift's scheduled date), not the clock-out date. Zero them out
+      // so the holiday on the clock-out date isn't reduced by prior-day tardiness.
+      const effectiveLateForOut = isCrossing ? 0 : computedLateMinutes;
       if (!existingH || hoursOnDate > existingH.hoursOnDate) {
-        empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: computedLateMinutes, isCrossing });
+        empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: effectiveLateForOut, isCrossing });
       }
 
       // For crossing shifts, also store an entry under the clock-IN date so that any
@@ -807,7 +811,8 @@ export async function processRun(id: string) {
           const empHMap = holidayAttMap.get(rec.employeeId)!;
           const existingBoundary = empHMap.get(localOutDateKey);
           if (!existingBoundary || hoursOnDate >= existingBoundary.hoursOnDate) {
-            empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: effectiveLate, isCrossing: crossing });
+            // Late minutes belong to the previous day's shift, not the holiday.
+            empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: crossing });
           }
         }
       }
@@ -970,13 +975,10 @@ export async function processRun(id: string) {
               isCrossing: fallback!.isOvernight,
             };
 
-            // Eligible hours are capped at 8 (standard daily rate basis, covers both 8hr and 12hr
-            // shifts). For crossing shifts (Apr 30 3rd → May 1), lateMinutes applied to the prior
-            // day and don't reduce the holiday portion — just cap at actual hours on the holiday.
-            // For same-day shifts, late reduces eligibility as before.
-            const eligibleHours = effectiveEntry.isCrossing
-              ? Math.min(effectiveEntry.hoursOnDate, 8)
-              : Math.max(0, Math.min(effectiveEntry.hoursOnDate, 8 - effectiveEntry.lateMinutes / 60));
+            // Eligible hours are capped at 8 (standard daily rate basis). Late minutes
+            // reduce eligibility. Entries sourced from a different date (crossing clock-out,
+            // boundary) carry lateMinutes=0 so the holiday isn't reduced by prior-day tardiness.
+            const eligibleHours = Math.max(0, Math.min(effectiveEntry.hoursOnDate, 8 - effectiveEntry.lateMinutes / 60));
             const prorationFactor = round2(eligibleHours / 8);
 
             const pct = toNum(h.percentage);
