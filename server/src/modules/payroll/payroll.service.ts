@@ -333,11 +333,13 @@ export async function processRun(id: string) {
 
   // scheduledDatesMap:    empId → Set of dateKeys with a shift assignment.
   // scheduledHoursMap:    empId → dateKey → scheduled shift duration (hours).
+  // breakHoursMap:        empId → dateKey → unpaid break duration (hours).
   // scheduledShiftEndMap: empId → dateKey → scheduled shift end (UTC Date).
   // scheduledShiftStartMap: empId → dateKey → scheduled shift start (UTC Date).
   // overtimeApprovedDatesMap: empId → Set of dateKeys where OT is approved.
   const scheduledDatesMap = new Map<string, Set<string>>();
   const scheduledHoursMap = new Map<string, Map<string, number>>();
+  const breakHoursMap = new Map<string, Map<string, number>>();
   const scheduledShiftEndMap = new Map<string, Map<string, Date>>();
   const scheduledShiftStartMap = new Map<string, Map<string, Date>>();
   const overtimeApprovedDatesMap = new Map<string, Set<string>>();
@@ -351,7 +353,8 @@ export async function processRun(id: string) {
     const endMs = sa.shift.endTime.getTime();
     const shiftMs = endMs >= startMs ? endMs - startMs : endMs - startMs + 24 * 3_600_000;
     const breakMins = sa.shift.shiftType?.breakDuration ?? 60;
-    const shiftHrs = shiftMs / 3_600_000 - breakMins / 60;
+    const breakHrs = breakMins / 60;
+    const shiftHrs = shiftMs / 3_600_000 - breakHrs;
 
     if (!scheduledDatesMap.has(sa.employeeId)) scheduledDatesMap.set(sa.employeeId, new Set());
     scheduledDatesMap.get(sa.employeeId)!.add(dateKey);
@@ -359,6 +362,10 @@ export async function processRun(id: string) {
     if (!scheduledHoursMap.has(sa.employeeId)) scheduledHoursMap.set(sa.employeeId, new Map());
     const prev = scheduledHoursMap.get(sa.employeeId)!.get(dateKey) ?? 0;
     if (shiftHrs > prev) scheduledHoursMap.get(sa.employeeId)!.set(dateKey, shiftHrs);
+
+    if (!breakHoursMap.has(sa.employeeId)) breakHoursMap.set(sa.employeeId, new Map());
+    const prevBreak = breakHoursMap.get(sa.employeeId)!.get(dateKey) ?? 0;
+    if (breakHrs > prevBreak) breakHoursMap.get(sa.employeeId)!.set(dateKey, breakHrs);
 
     if (!scheduledShiftEndMap.has(sa.employeeId)) scheduledShiftEndMap.set(sa.employeeId, new Map());
     if (!scheduledShiftStartMap.has(sa.employeeId)) scheduledShiftStartMap.set(sa.employeeId, new Map());
@@ -437,13 +444,17 @@ export async function processRun(id: string) {
         const endMs = shift.endTime.getTime();
         const shiftMs = endMs >= startMs ? endMs - startMs : endMs - startMs + 24 * 3_600_000;
         const breakMins = shift.shiftType?.breakDuration ?? 60;
-        const shiftHrs = shiftMs / 3_600_000 - breakMins / 60;
+        const breakHrs = breakMins / 60;
+        const shiftHrs = shiftMs / 3_600_000 - breakHrs;
 
         for (const [empId, dates] of manualNoShiftMap) {
           if (!dates.has(dateKey)) continue;
           if (!scheduledHoursMap.has(empId)) scheduledHoursMap.set(empId, new Map());
           const prev = scheduledHoursMap.get(empId)!.get(dateKey) ?? 0;
           if (shiftHrs > prev) scheduledHoursMap.get(empId)!.set(dateKey, shiftHrs);
+          if (!breakHoursMap.has(empId)) breakHoursMap.set(empId, new Map());
+          const prevBreak = breakHoursMap.get(empId)!.get(dateKey) ?? 0;
+          if (breakHrs > prevBreak) breakHoursMap.get(empId)!.set(dateKey, breakHrs);
         }
       }
     }
@@ -501,6 +512,7 @@ export async function processRun(id: string) {
     const scheduledHrs = scheduledHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
     const shiftStartForDate = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey);
     const shiftEnd = scheduledShiftEndMap.get(rec.employeeId)?.get(dateKey);
+    const breakHrs = breakHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
 
     // Only count overtime hours if explicitly approved (shift-level, OvertimeRequest, or OvertimeSchedule).
     const isOtApproved = overtimeApprovedDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
@@ -517,11 +529,16 @@ export async function processRun(id: string) {
       ? shiftEnd
       : rec.clockOut;
 
-    const actualHrs = shiftStartForDate
+    const rawHrs = shiftStartForDate
       ? (effectiveClockOut ? hoursBetween(effectiveClockIn, effectiveClockOut) : scheduledHrs)
       : rec.hoursWorked !== null
         ? toNum(rec.hoursWorked)
         : scheduledHrs;
+
+    // Subtract unpaid break from the clocked span. The break is deducted up to
+    // the full scheduled break duration; partial shifts that are shorter than
+    // the break itself result in 0 actual hours.
+    const actualHrs = Math.max(0, rawHrs - breakHrs);
 
     // Regular hours = actual minus approved OT, capped at scheduled shift duration.
     // For manually-added attendance with no shift assignment, use actual hours directly (no cap).

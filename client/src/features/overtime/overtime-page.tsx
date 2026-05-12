@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Loader2, Search, Plus, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Search, Plus, Pencil, Trash2 } from "lucide-react";
 
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
@@ -428,7 +428,7 @@ export default function OvertimePage() {
                             className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
                             title="View details"
                           >
-                            <Eye className="h-3.5 w-3.5" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </button>
                           {r.status === "PENDING" ? (
                             <>
@@ -507,7 +507,7 @@ export default function OvertimePage() {
                             className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
                             title="View details"
                           >
-                            <Eye className="h-3.5 w-3.5" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </button>
                           {r.shiftId && r.overtimeApproved ? (
                             <button
@@ -566,7 +566,7 @@ export default function OvertimePage() {
                           className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
                           title="View details"
                         >
-                          <Eye className="h-3.5 w-3.5" />
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => { setEditing(s); setAssignOpen(true); }}
