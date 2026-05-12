@@ -352,6 +352,7 @@ export async function processRun(id: string) {
     const shiftMs = endMs >= startMs ? endMs - startMs : endMs - startMs + 24 * 3_600_000;
     const breakMins = sa.shift.shiftType?.breakDuration ?? 60;
     const shiftHrs = shiftMs / 3_600_000 - breakMins / 60;
+    console.log(`[payroll:shift] emp=${sa.employeeId} date=${dateKey} startMs=${startMs} endMs=${endMs} shiftMs=${shiftMs} breakMins=${breakMins} shiftHrs=${shiftHrs}`);
 
     if (!scheduledDatesMap.has(sa.employeeId)) scheduledDatesMap.set(sa.employeeId, new Set());
     scheduledDatesMap.get(sa.employeeId)!.add(dateKey);
@@ -904,6 +905,8 @@ export async function processRun(id: string) {
 
       const totalOtHours = round2(otHoursMap.get(emp.id) ?? 0);
       const totalHoursWorked = round2(hoursWorkedMap.get(emp.id) ?? 0);
+      // Total scheduled hours across all assigned shifts in the period (before lateness).
+      const totalScheduledHours = round2([...(scheduledHoursMap.get(emp.id)?.values() ?? [])].reduce((s, h) => s + h, 0));
 
       let basicPay: number;
       let overtimePay: number;
@@ -1076,7 +1079,7 @@ export async function processRun(id: string) {
       const grossPay = round2(basicPay + overtimePay + nightDiffPay + holidayPayTotal + bonuses + allowances + paidLeaveCredits + otherEarningsTotal);
       const netPay   = round2(grossPay - totalDeductions);
 
-      console.log(`[payroll:payslip] CREATE emp=${emp.id} basicPay=${basicPay} overtimePay=${overtimePay} holidayPay=${holidayPayTotal} nightDiff=${nightDiffPay} paidLeave=${paidLeaveCredits} bonuses=${bonuses} allowances=${allowances} otherEarnings=${otherEarningsTotal} grossPay=${grossPay} totalDeductions=${totalDeductions} netPay=${netPay} totalHours=${totalHoursWorked} totalOtHours=${totalOtHours} holidayEarningsCount=${holidayEarnings.length}`);
+      console.log(`[payroll:payslip] CREATE emp=${emp.id} basicPay=${basicPay} overtimePay=${overtimePay} holidayPay=${holidayPayTotal} nightDiff=${nightDiffPay} paidLeave=${paidLeaveCredits} bonuses=${bonuses} allowances=${allowances} otherEarnings=${otherEarningsTotal} grossPay=${grossPay} totalDeductions=${totalDeductions} netPay=${netPay} totalScheduledHours=${totalScheduledHours} totalHours=${totalHoursWorked} totalOtHours=${totalOtHours} totalLateMinutes=${lateMinutesMap.get(emp.id) ?? 0} holidayEarningsCount=${holidayEarnings.length}`);
 
       await tx.payslip.create({
         data: {
