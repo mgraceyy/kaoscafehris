@@ -288,7 +288,7 @@ export default function PortalLeavePage() {
   });
 
   return (
-    <div className="relative">
+    <div className="min-h-screen">
       {/* Header */}
       <div className="rounded-b-[28px] px-6 pt-14 pb-6" style={{ background: `linear-gradient(135deg, #6B0F0F 0%, ${BRAND} 50%, #9E1A1A 100%)` }}>
         <div className="flex items-center justify-between animate-fade-up">
@@ -300,7 +300,7 @@ export default function PortalLeavePage() {
         </div>
       </div>
 
-      <div className="px-4 pt-5 pb-24 space-y-4">
+      <div className="px-4 pt-5 pb-32 space-y-4">
         {/* Leave balance strip */}
         <div className="animate-fade-up stagger-2 bg-white rounded-2xl p-4 shadow-sm" style={{ borderTop: `3px solid ${BRAND}` }}>
           {balanceQuery.isLoading ? (
@@ -345,7 +345,7 @@ export default function PortalLeavePage() {
       </div>
 
       {/* Sticky bottom button */}
-      <div className="fixed bottom-16 left-0 right-0 px-4 pb-3 pt-1">
+      <div className="fixed bottom-20 left-0 right-0 px-4 pb-3 pt-1">
         <button
           onClick={() => setShowForm(true)}
           className="w-full rounded-full py-4 text-sm font-semibold text-white shadow-lg transition-colors"
