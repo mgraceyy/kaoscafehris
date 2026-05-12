@@ -622,47 +622,20 @@ export async function processRun(id: string) {
     }
   }
 
-  // Boundary attendance: for every holiday in the period, fetch 3rd-shift (overnight)
-  // attendance records from the day before whose clock-out falls on the holiday date.
-  // Only overnight shifts (endTime < startTime in UTC, e.g. 10pm-6am) qualify — a day
-  // shift's overtime tail past midnight does not earn holiday pay for the next day.
-  // This credits holiday pay in the period where the holiday belongs (e.g. Apr 30 3rd
-  // shift clocking out on May 1 → holiday pay appears in the May 1-15 payroll).
+  // Boundary attendance: for every holiday in the period, fetch attendance records
+  // from the day before whose clock-out falls on the holiday date. This credits
+  // holiday pay in the period where the holiday belongs (e.g. Apr 30 3rd shift
+  // clocking out on May 1 → holiday pay appears in the May 1-15 payroll).
   {
     // Collect the unique day-before dates that precede a holiday in this period.
     const boundaryDates = new Set<string>();
     for (const h of periodHolidays) {
-      const holidayKey = h.date.toISOString().slice(0, 10);
       const prev = new Date(h.date);
       prev.setUTCDate(prev.getUTCDate() - 1);
       boundaryDates.add(prev.toISOString().slice(0, 10));
     }
 
     if (boundaryDates.size > 0) {
-      // Fetch shift assignments on the boundary dates to identify 3rd-shift (overnight)
-      // assignments: endTime < startTime in UTC (e.g. 22:00-06:00).
-      const boundaryShiftAssignments = await prisma.shiftAssignment.findMany({
-        where: {
-          employeeId: { in: employeeIds },
-          shift: { date: { in: [...boundaryDates].map((d) => new Date(d + "T00:00:00.000Z")) } },
-        },
-        select: {
-          employeeId: true,
-          shift: { select: { date: true, startTime: true, endTime: true } },
-        },
-      });
-
-      // Set of "employeeId|dateKey" strings for attendance that belongs to a 3rd shift.
-      const thirdShiftSet = new Set<string>();
-      for (const sa of boundaryShiftAssignments) {
-        const startMs = sa.shift.startTime.getTime();
-        const endMs = sa.shift.endTime.getTime();
-        if (endMs < startMs) {
-          const dk = sa.shift.date.toISOString().slice(0, 10);
-          thirdShiftSet.add(`${sa.employeeId}|${dk}`);
-        }
-      }
-
       const boundaryAttendance = await prisma.attendance.findMany({
         where: {
           employeeId: { in: employeeIds },
@@ -687,8 +660,34 @@ export async function processRun(id: string) {
         // Only process if this record's clock-out falls on a holiday and the record's
         // date is the day before that holiday.
         if (holidayToPrevDate.get(localOutKey) !== recDateKey) continue;
-        // Only 3rd-shift (overnight) attendance qualifies for boundary holiday credit.
-        if (!thirdShiftSet.has(`${rec.employeeId}|${recDateKey}`)) continue;
+
+        // Only credit holiday pay when the attendance is from a 3rd / overnight
+        // shift: either the clock genuinely crosses midnight, or the employee
+        // clocked in late and all hours land on the holiday date (but the shift
+        // started the previous calendar day). A day-shift overtime tail past
+        // midnight is not a 3rd shift and does not earn next-day holiday pay.
+        const crossing = isCrossingLocal(rec.clockIn, rec.clockOut, tz);
+        if (!crossing) {
+          // Non-crossing: clock-in and clock-out on the same local date. This is
+          // a 3rd shift only if that date differs from the attendance date (e.g.
+          // attendance date Apr 30 but clock-in/out both on May 1 = late for an
+          // overnight shift).
+          const clockInLocal = localDateKey(rec.clockIn, tz);
+          if (clockInLocal === recDateKey) continue;
+        }
+        // For crossing shifts, also verify the shift assignment is overnight
+        // (endTime < startTime) when available. If no assignment found, allow
+        // the crossing shift through — it's inherently overnight.
+        if (crossing && scheduledShiftEndMap.has(rec.employeeId)) {
+          const shiftStart = scheduledShiftStartMap.get(rec.employeeId)?.get(recDateKey);
+          const shiftEnd = scheduledShiftEndMap.get(rec.employeeId)?.get(recDateKey);
+          if (shiftStart && shiftEnd) {
+            const startMs = shiftStart.getUTCHours() * 60 + shiftStart.getUTCMinutes();
+            const endMs = shiftEnd.getUTCHours() * 60 + shiftEnd.getUTCMinutes();
+            // endMs < startMs means the stored @db.Time wraps (e.g. 06:00 < 22:00 = overnight)
+            if (endMs >= startMs) continue;
+          }
+        }
 
         const dayBeforePeriodKey = recDateKey;
 
@@ -707,7 +706,6 @@ export async function processRun(id: string) {
 
           // Credit holiday pay for this boundary record.
           const localOutDateKey = localOutKey;
-          const crossing = isCrossingLocal(rec.clockIn, rec.clockOut, tz);
           const midnightUtc = localMidnightUtc(localOutDateKey, tz);
           const creditFromMs = crossing ? midnightUtc.getTime() : rec.clockIn.getTime();
           const capMs = midnightUtc.getTime() + 8 * 3_600_000;
@@ -717,7 +715,7 @@ export async function processRun(id: string) {
           const empHMap = holidayAttMap.get(rec.employeeId)!;
           const existingBoundary = empHMap.get(localOutDateKey);
           if (!existingBoundary || hoursOnDate > existingBoundary.hoursOnDate) {
-            empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: 0, isCrossing: true });
+            empHMap.set(localOutDateKey, { hoursOnDate, lateMinutes: effectiveLate, isCrossing: crossing });
           }
         }
       }
