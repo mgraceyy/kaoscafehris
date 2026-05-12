@@ -58,7 +58,7 @@ function computeLateMinutes(scheduledStart: Date, clockIn: Date): number {
   return Math.max(0, diffMinutes(scheduledStart, clockIn));
 }
 
-function hoursBetween(from: Date, to: Date): number {
+export function hoursBetween(from: Date, to: Date): number {
   return Math.max(0, Math.round(((to.getTime() - from.getTime()) / 3_600_000) * 100) / 100);
 }
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Search, Plus, Pencil, Trash2 } from "lucide-react";
+import { Eye, Loader2, Search, Plus, Pencil, Trash2 } from "lucide-react";
 
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
@@ -18,6 +18,7 @@ import {
   type AttendanceOvertimeRecord,
 } from "./overtime.api";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import OvertimeRequestDialog from "./overtime-request-dialog";
 import OvertimeAssignDialog from "./overtime-assign-dialog";
 import OvertimeReviewDialog from "./overtime-review-dialog";
@@ -83,6 +84,100 @@ function todayLabel() {
   });
 }
 
+function ViewOvertimeDialog({ row, open, onOpenChange }: { row: Row | null; open: boolean; onOpenChange: (open: boolean) => void }) {
+  if (!row) return null;
+  const d = row.data;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogHeader>
+        <DialogTitle>
+          {d.employee.firstName} {d.employee.lastName}
+        </DialogTitle>
+      </DialogHeader>
+      <div className="space-y-3 text-sm">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <p className="text-xs text-gray-400">OT Date</p>
+            <p className="font-medium text-gray-800">{d.date.slice(0, 10)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Type</p>
+            <p className="font-medium text-gray-800">
+              {row.kind === "request" ? "Request" : row.kind === "schedule" ? "Assigned" : "Attendance Overtime"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Branch</p>
+            <p className="font-medium text-gray-800">{d.employee.branch?.name ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Position</p>
+            <p className="font-medium text-gray-800">{d.employee.position}</p>
+          </div>
+        </div>
+
+        {row.kind === "schedule" || (row.kind === "request" && (d as OvertimeRequest).startTime && (d as OvertimeRequest).endTime) ? (
+          <div>
+            <p className="text-xs text-gray-400">OT Time</p>
+            <p className="font-medium text-gray-800">
+              {row.kind === "schedule"
+                ? `${fmt12((d as OvertimeSchedule).startTime)} – ${fmt12((d as OvertimeSchedule).endTime)}`
+                : `${fmt12((d as OvertimeRequest).startTime!)} – ${fmt12((d as OvertimeRequest).endTime!)}`}
+            </p>
+          </div>
+        ) : null}
+
+        <div>
+          <p className="text-xs text-gray-400">OT Hours</p>
+          <p className="font-medium text-gray-800">
+            {row.kind === "attendance-ot"
+              ? `${Number((d as AttendanceOvertimeRecord).overtimeHours).toFixed(2)}h`
+              : (d as OvertimeRequest | OvertimeSchedule).otHours
+                ? `${Number((d as OvertimeRequest | OvertimeSchedule).otHours!).toFixed(2)}h`
+                : "—"}
+          </p>
+        </div>
+
+        {row.kind === "request" && (
+          <>
+            <div>
+              <p className="text-xs text-gray-400">Status</p>
+              <p className="font-medium text-gray-800">{(d as OvertimeRequest).status}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Reason</p>
+              <p className="text-gray-700 whitespace-pre-wrap">{(d as OvertimeRequest).reason}</p>
+            </div>
+            {(d as OvertimeRequest).reviewNotes && (
+              <div>
+                <p className="text-xs text-gray-400">Review Notes</p>
+                <p className="text-gray-700 whitespace-pre-wrap">{(d as OvertimeRequest).reviewNotes}</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {row.kind === "schedule" && (d as OvertimeSchedule).notes && (
+          <div>
+            <p className="text-xs text-gray-400">Notes</p>
+            <p className="text-gray-700 whitespace-pre-wrap">{(d as OvertimeSchedule).notes}</p>
+          </div>
+        )}
+
+        {row.kind === "attendance-ot" && (
+          <div>
+            <p className="text-xs text-gray-400">Status</p>
+            <p className="font-medium text-gray-800">
+              {(d as AttendanceOvertimeRecord).overtimeApproved ? "Approved" : (d as AttendanceOvertimeRecord).overtimeRejected ? "Rejected" : "Pending"}
+            </p>
+          </div>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 export default function OvertimePage() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -98,6 +193,7 @@ export default function OvertimePage() {
   const [revertTarget, setRevertTarget] = useState<OvertimeRequest | null>(null);
   const [reviewTarget, setReviewTarget] = useState<OvertimeRequest | null>(null);
   const [reviewInitialStatus, setReviewInitialStatus] = useState<"APPROVED" | "REJECTED">("APPROVED");
+  const [viewRow, setViewRow] = useState<Row | null>(null);
 
   const requestsQuery = useQuery({
     queryKey: ["overtime"],
@@ -326,32 +422,41 @@ export default function OvertimePage() {
                     <td className="px-5 py-4"><StatusBadge status={r.status} /></td>
                     {canReview && (
                       <td className="px-5 py-4">
-                        {r.status === "PENDING" ? (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => { setReviewInitialStatus("APPROVED"); setReviewTarget(r); }}
-                              className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => { setReviewInitialStatus("REJECTED"); setReviewTarget(r); }}
-                              className="rounded-lg px-3 py-1.5 text-xs font-medium text-white"
-                              style={{ backgroundColor: BRAND }}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        ) : (r.status === "APPROVED" || r.status === "REJECTED") ? (
+                        <div className="flex gap-2 items-center">
                           <button
-                            onClick={() => setRevertTarget(r)}
-                            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                            onClick={() => setViewRow({ kind: "request", data: r })}
+                            className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
+                            title="View details"
                           >
-                            Revert
+                            <Eye className="h-3.5 w-3.5" />
                           </button>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
+                          {r.status === "PENDING" ? (
+                            <>
+                              <button
+                                onClick={() => { setReviewInitialStatus("APPROVED"); setReviewTarget(r); }}
+                                className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => { setReviewInitialStatus("REJECTED"); setReviewTarget(r); }}
+                                className="rounded-lg px-3 py-1.5 text-xs font-medium text-white"
+                                style={{ backgroundColor: BRAND }}
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : (r.status === "APPROVED" || r.status === "REJECTED") ? (
+                            <button
+                              onClick={() => setRevertTarget(r)}
+                              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                            >
+                              Revert
+                            </button>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -396,17 +501,26 @@ export default function OvertimePage() {
                     </td>
                     {canReview && (
                       <td className="px-5 py-4">
-                        {r.shiftId && r.overtimeApproved ? (
+                        <div className="flex gap-2 items-center">
                           <button
-                            onClick={() => attendanceOtApprove.mutate({ shiftId: r.shiftId!, employeeId: r.employee.id, approved: false })}
-                            disabled={attendanceOtApprove.isPending}
-                            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => setViewRow({ kind: "attendance-ot", data: r })}
+                            className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
+                            title="View details"
                           >
-                            Revoke
+                            <Eye className="h-3.5 w-3.5" />
                           </button>
-                        ) : (
-                          <span className="text-xs text-gray-300">{r.overtimeRejected ? "Rejected" : "No shift"}</span>
-                        )}
+                          {r.shiftId && r.overtimeApproved ? (
+                            <button
+                              onClick={() => attendanceOtApprove.mutate({ shiftId: r.shiftId!, employeeId: r.employee.id, approved: false })}
+                              disabled={attendanceOtApprove.isPending}
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              Revoke
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-300">{r.overtimeRejected ? "Rejected" : "No shift"}</span>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -448,6 +562,13 @@ export default function OvertimePage() {
                     <td className="px-5 py-4">
                       <div className="flex gap-2">
                         <button
+                          onClick={() => setViewRow({ kind: "schedule", data: s })}
+                          className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
+                          title="View details"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        <button
                           onClick={() => { setEditing(s); setAssignOpen(true); }}
                           className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
                         >
@@ -475,6 +596,7 @@ export default function OvertimePage() {
         )}
       </div>
 
+      <ViewOvertimeDialog row={viewRow} open={!!viewRow} onOpenChange={(o) => !o && setViewRow(null)} />
       <OvertimeRequestDialog open={requestOpen} onOpenChange={setRequestOpen} />
       <OvertimeAssignDialog
         open={assignOpen}

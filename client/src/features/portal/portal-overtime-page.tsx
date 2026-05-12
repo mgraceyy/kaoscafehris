@@ -95,16 +95,16 @@ function FileRequestSheet({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white" style={{ height: "100dvh" }}>
-      <div className="flex items-center justify-between px-5 pt-14 pb-5 shrink-0" style={{ backgroundColor: BRAND }}>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-white">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-5 pt-14 pb-5" style={{ backgroundColor: BRAND }}>
         <h2 className="text-xl font-bold text-white">File OT Request</h2>
         <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white">
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 space-y-4" style={{ backgroundColor: "#FAF0F0" }}>
+      <form onSubmit={handleSubmit}>
+        <div className="px-5 py-6 space-y-4" style={{ backgroundColor: "#FAF0F0" }}>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-700">Date</label>
             <input
@@ -146,7 +146,7 @@ function FileRequestSheet({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <div className="px-5 pb-8 pt-3 bg-white border-t border-gray-100">
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-5 pb-8 pt-3">
           <button
             type="submit"
             disabled={mut.isPending}

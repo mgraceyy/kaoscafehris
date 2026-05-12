@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { logAudit } from "../../lib/audit.js";
-import { getScheduledTimes } from "../attendance/attendance.service.js";
+import { getScheduledTimes, hoursBetween } from "../attendance/attendance.service.js";
 import { COMPANY_TZ, localDateKey, localCalendarDate, isCrossingLocal, localHoursSinceMidnight, localTimeInMinutes, localMidnightUtc } from "../../lib/timezone.js";
 import type {
   AdjustPayslipInput,
@@ -499,15 +499,30 @@ export async function processRun(id: string) {
     if (!hasShift && rec.source !== "MANUAL" && !periodHolidayDateKeys.has(dateKey)) continue;
 
     const scheduledHrs = scheduledHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
-    // If hoursWorked is null (clock-out not yet recorded) but a shift is scheduled,
-    // fall back to the shift duration so open records still count toward payroll.
-    const actualHrs = rec.hoursWorked !== null
-      ? toNum(rec.hoursWorked)
-      : scheduledHrs; // 0 when no shift — can't estimate without a clock-out
+    const shiftStartForDate = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey);
+    const shiftEnd = scheduledShiftEndMap.get(rec.employeeId)?.get(dateKey);
+
     // Only count overtime hours if explicitly approved (shift-level, OvertimeRequest, or OvertimeSchedule).
     const isOtApproved = overtimeApprovedDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
     const assignedOtHrs = assignedOtHoursMap.get(rec.employeeId)?.get(dateKey);
     const otHrs = isOtApproved ? (assignedOtHrs ?? toNum(rec.overtimeHours)) : 0;
+
+    // Clip clock-in/out to the scheduled shift window so early clock-ins and
+    // unapproved late clock-outs don't inflate regular hours. Manual records
+    // without a shift use raw hoursWorked directly.
+    const effectiveClockIn = shiftStartForDate && rec.clockIn < shiftStartForDate
+      ? shiftStartForDate
+      : rec.clockIn;
+    const effectiveClockOut = (!isOtApproved && rec.clockOut && shiftEnd && rec.clockOut > shiftEnd)
+      ? shiftEnd
+      : rec.clockOut;
+
+    const actualHrs = shiftStartForDate
+      ? (effectiveClockOut ? hoursBetween(effectiveClockIn, effectiveClockOut) : scheduledHrs)
+      : rec.hoursWorked !== null
+        ? toNum(rec.hoursWorked)
+        : scheduledHrs;
+
     // Regular hours = actual minus approved OT, capped at scheduled shift duration.
     // For manually-added attendance with no shift assignment, use actual hours directly (no cap).
     const regularHrs = scheduledHrs > 0
@@ -517,7 +532,6 @@ export async function processRun(id: string) {
 
     // Compute late minutes live from clock-in vs scheduled shift start so stale or
     // missing lateMinutes on the attendance record never bleed into the deduction.
-    const shiftStartForDate = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey);
     const computedLateMinutes = (() => {
       if (!shiftStartForDate) return rec.lateMinutes ?? 0;
       const delta = Math.floor((rec.clockIn.getTime() - shiftStartForDate.getTime()) / 60_000);
@@ -536,11 +550,8 @@ export async function processRun(id: string) {
 
     // Cap both ends of the night diff window to the scheduled shift so early
     // clock-ins and unapproved late clock-outs don't inflate night diff hours.
-    const shiftEnd = scheduledShiftEndMap.get(rec.employeeId)?.get(dateKey);
-    const ndClockIn  = shiftStartForDate && rec.clockIn < shiftStartForDate ? shiftStartForDate : rec.clockIn;
-    const ndClockOut = (!isOtApproved && rec.clockOut && shiftEnd && rec.clockOut > shiftEnd)
-      ? shiftEnd
-      : rec.clockOut;
+    const ndClockIn  = effectiveClockIn;
+    const ndClockOut = effectiveClockOut;
     const ndHrs = computeNightDiffHours(ndClockIn, ndClockOut);
     if (ndHrs > 0) {
       nightDiffHoursMap.set(rec.employeeId, (nightDiffHoursMap.get(rec.employeeId) ?? 0) + ndHrs);
