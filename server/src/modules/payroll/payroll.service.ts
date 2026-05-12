@@ -496,11 +496,15 @@ export async function processRun(id: string) {
     // Kiosk records only count on scheduled days or public holidays (shift generation
     // commonly excludes holidays, so no shift assignment exists even though the employee worked).
     // Admin-created (MANUAL) records are always counted regardless of schedule.
-    if (!hasShift && rec.source !== "MANUAL" && !periodHolidayDateKeys.has(dateKey)) continue;
+    if (!hasShift && rec.source !== "MANUAL" && !periodHolidayDateKeys.has(dateKey)) {
+      console.log(`[payroll:att] SKIP emp=${rec.employeeId} date=${dateKey} hasShift=${hasShift} source=${rec.source} isHoliday=${periodHolidayDateKeys.has(dateKey)}`);
+      continue;
+    }
 
     const scheduledHrs = scheduledHoursMap.get(rec.employeeId)?.get(dateKey) ?? 0;
     const shiftStartForDate = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey);
     const shiftEnd = scheduledShiftEndMap.get(rec.employeeId)?.get(dateKey);
+    console.log(`[payroll:att] PROC emp=${rec.employeeId} date=${dateKey} hasShift=${hasShift} scheduledHrs=${scheduledHrs} clockIn=${rec.clockIn?.toISOString()} clockOut=${rec.clockOut?.toISOString()} hoursWorked=${rec.hoursWorked} source=${rec.source}`);
 
     // Only count overtime hours if explicitly approved (shift-level, OvertimeRequest, or OvertimeSchedule).
     const isOtApproved = overtimeApprovedDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
@@ -606,6 +610,7 @@ export async function processRun(id: string) {
         // Fall back to the actual clock-in time when no shift assignment exists.
         const shiftStart = scheduledShiftStartMap.get(rec.employeeId)?.get(dateKey) ?? rec.clockIn;
         const isNightShift = localTimeInMinutes(shiftStart, tz) >= 22 * 60; // starts at or after 22:00 local
+        console.log(`[payroll:att] XING emp=${rec.employeeId} date=${dateKey} isCrossing=${isCrossing} isNightShift=${isNightShift} localTime=${localTimeInMinutes(shiftStart, tz)}`);
         if (!isNightShift) {
           // Cap early clock-in at the scheduled shift start so early login
           // does not inflate holiday pay credit (e.g. 6:41pm login for a 7pm
@@ -615,8 +620,10 @@ export async function processRun(id: string) {
           if (hoursOnInDate > 0) {
             const localInDateKey = localDateKey(rec.clockIn, tz);
             const existingIn = empHMap.get(localInDateKey);
+            console.log(`[payroll:att] IN-DATE emp=${rec.employeeId} localInDate=${localInDateKey} hoursOnInDate=${hoursOnInDate} existingIn=${!!existingIn} existingHours=${existingIn?.hoursOnDate}`);
             if (!existingIn) {
               empHMap.set(localInDateKey, { hoursOnDate: hoursOnInDate, lateMinutes: computedLateMinutes, isCrossing: true });
+              console.log(`[payroll:att] IN-DATE SET emp=${rec.employeeId} ${localInDateKey} = ${hoursOnInDate}`);
             }
           }
         }
@@ -977,6 +984,8 @@ export async function processRun(id: string) {
 
             if (amount <= 0) return null;
 
+            console.log(`[payroll:holiday] CREDIT emp=${emp.id} holiday=${holidayDateKey} hoursOnDate=${effectiveEntry.hoursOnDate} isCrossing=${effectiveEntry.isCrossing} lateMinutes=${effectiveEntry.lateMinutes} eligibleHours=${eligibleHours} proration=${prorationFactor} amount=${amount}`);
+
             const label = pct > 0
               ? `${h.name} (${pct}% × ${eligibleHours.toFixed(2)} hrs)`
               : h.name;
@@ -1068,6 +1077,8 @@ export async function processRun(id: string) {
 
       const grossPay = round2(basicPay + overtimePay + nightDiffPay + holidayPayTotal + bonuses + allowances + paidLeaveCredits + otherEarningsTotal);
       const netPay   = round2(grossPay - totalDeductions);
+
+      console.log(`[payroll:payslip] CREATE emp=${emp.id} basicPay=${basicPay} overtimePay=${overtimePay} holidayPay=${holidayPayTotal} nightDiff=${nightDiffPay} paidLeave=${paidLeaveCredits} bonuses=${bonuses} allowances=${allowances} otherEarnings=${otherEarningsTotal} grossPay=${grossPay} totalDeductions=${totalDeductions} netPay=${netPay} totalHours=${totalHoursWorked} totalOtHours=${totalOtHours} holidayEarningsCount=${holidayEarnings.length}`);
 
       await tx.payslip.create({
         data: {
