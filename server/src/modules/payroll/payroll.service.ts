@@ -639,6 +639,31 @@ export async function processRun(id: string) {
     console.log("[payroll:boundary] boundaryDates:", [...boundaryDates]);
 
     if (boundaryDates.size > 0) {
+      // Fetch shift assignments on the boundary dates to identify 3rd-shift
+      // (overnight) assignments: endTime < startTime in raw @db.Time (e.g. 22:00-06:00).
+      const boundaryShiftAssignments = await prisma.shiftAssignment.findMany({
+        where: {
+          employeeId: { in: employeeIds },
+          shift: { date: { in: [...boundaryDates].map((d) => new Date(d + "T00:00:00.000Z")) } },
+        },
+        select: {
+          employeeId: true,
+          shift: { select: { date: true, startTime: true, endTime: true } },
+        },
+      });
+
+      // Set of "employeeId|dateKey" for overnight shifts on the boundary dates.
+      const boundaryOvernightSet = new Set<string>();
+      for (const sa of boundaryShiftAssignments) {
+        const startMs = sa.shift.startTime.getUTCHours() * 60 + sa.shift.startTime.getUTCMinutes();
+        const endMs = sa.shift.endTime.getUTCHours() * 60 + sa.shift.endTime.getUTCMinutes();
+        if (endMs < startMs) {
+          const dk = sa.shift.date.toISOString().slice(0, 10);
+          boundaryOvernightSet.add(`${sa.employeeId}|${dk}`);
+        }
+      }
+      console.log("[payroll:boundary] boundaryOvernightSet:", [...boundaryOvernightSet]);
+
       const boundaryAttendance = await prisma.attendance.findMany({
         where: {
           employeeId: { in: employeeIds },
@@ -668,11 +693,26 @@ export async function processRun(id: string) {
           continue;
         }
         const recDateKey = rec.date.toISOString().slice(0, 10);
-        const localOutKey = localDateKey(rec.clockOut, tz);
+
+        // Detect overnight shifts on this attendance date. When clock-in/out
+        // were stored with the shift date (e.g. 3rd shift Apr 30 10pm-6am,
+        // clock-out 8am May 1 stored as 8am Apr 30), adjust times forward 24h
+        // so the clock-out lands on the correct calendar date.
+        const isOvernightShift = boundaryOvernightSet.has(`${rec.employeeId}|${recDateKey}`);
+        let effectiveClockIn = rec.clockIn;
+        let effectiveClockOut = rec.clockOut;
+        if (isOvernightShift && !isCrossingLocal(rec.clockIn, rec.clockOut, tz)) {
+          const clockInLocal = localDateKey(rec.clockIn, tz);
+          if (clockInLocal === recDateKey) {
+            effectiveClockIn = new Date(rec.clockIn.getTime() + 24 * 3_600_000);
+            effectiveClockOut = new Date(rec.clockOut.getTime() + 24 * 3_600_000);
+            console.log(`[payroll:boundary] ADJUST emp=${rec.employeeId}: +24h for overnight shift, clockIn=${effectiveClockIn.toISOString()} clockOut=${effectiveClockOut.toISOString()}`);
+          }
+        }
+
+        const localOutKey = localDateKey(effectiveClockOut, tz);
         const matchPrev = holidayToPrevDate.get(localOutKey);
         console.log(`[payroll:boundary] CHECK emp=${rec.employeeId} recDate=${recDateKey} localOut=${localOutKey} matchPrev=${matchPrev} match=${matchPrev === recDateKey}`);
-        // Only process if this record's clock-out falls on a holiday and the record's
-        // date is the day before that holiday.
         if (matchPrev !== recDateKey) {
           console.log(`[payroll:boundary] SKIP emp=${rec.employeeId}: not holiday-adjacent`);
           continue;
@@ -683,14 +723,14 @@ export async function processRun(id: string) {
         // clocked in late and all hours land on the holiday date (but the shift
         // started the previous calendar day). A day-shift overtime tail past
         // midnight is not a 3rd shift and does not earn next-day holiday pay.
-        const crossing = isCrossingLocal(rec.clockIn, rec.clockOut, tz);
+        const crossing = isCrossingLocal(effectiveClockIn, effectiveClockOut, tz);
         console.log(`[payroll:boundary]   crossing=${crossing}`);
         if (!crossing) {
           // Non-crossing: clock-in and clock-out on the same local date. This is
           // a 3rd shift only if that date differs from the attendance date (e.g.
           // attendance date Apr 30 but clock-in/out both on May 1 = late for an
           // overnight shift).
-          const clockInLocal = localDateKey(rec.clockIn, tz);
+          const clockInLocal = localDateKey(effectiveClockIn, tz);
           console.log(`[payroll:boundary]   non-crossing: clockInLocal=${clockInLocal} recDate=${recDateKey} same=${clockInLocal === recDateKey}`);
           if (clockInLocal === recDateKey) {
             console.log(`[payroll:boundary] SKIP emp=${rec.employeeId}: non-crossing same-date (not 3rd shift)`);
@@ -720,7 +760,7 @@ export async function processRun(id: string) {
         if (!attendanceDateMap.has(rec.employeeId)) attendanceDateMap.set(rec.employeeId, new Map());
         if (!attendanceDateMap.get(rec.employeeId)!.has(dayBeforePeriodKey)) {
           const isOvernight = !!(rec.clockOut &&
-            isCrossingLocal(rec.clockIn, rec.clockOut, tz));
+            isCrossingLocal(effectiveClockIn, effectiveClockOut, tz));
           const hoursWorked = toNum(rec.hoursWorked);
           const storedLate = rec.lateMinutes ?? 0;
           const effectiveLate = storedLate > 0 ? storedLate : Math.round(Math.max(0, 8 - hoursWorked) * 60);
@@ -733,9 +773,9 @@ export async function processRun(id: string) {
           // Credit holiday pay for this boundary record.
           const localOutDateKey = localOutKey;
           const midnightUtc = localMidnightUtc(localOutDateKey, tz);
-          const creditFromMs = crossing ? midnightUtc.getTime() : rec.clockIn.getTime();
+          const creditFromMs = crossing ? midnightUtc.getTime() : effectiveClockIn.getTime();
           const capMs = midnightUtc.getTime() + 8 * 3_600_000;
-          const outMs = Math.min(rec.clockOut.getTime(), capMs);
+          const outMs = Math.min(effectiveClockOut.getTime(), capMs);
           const hoursOnDate = Math.max(0, round2((outMs - creditFromMs) / 3_600_000));
           console.log(`[payroll:boundary] CREDIT emp=${rec.employeeId} holidayDate=${localOutDateKey} hoursOnDate=${hoursOnDate} lateMinutes=${effectiveLate} isCrossing=${crossing}`);
           if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
