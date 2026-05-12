@@ -263,10 +263,11 @@ export default function OvertimePage() {
           <thead style={{ background: "#FDFAFA" }}>
             <tr style={{ borderBottom: "1px solid #F5EDED" }}>
               {!isEmployee && <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Employee</th>}
-              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Date</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">OT Date</th>
               {!isEmployee && <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Branch</th>}
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Type</th>
-              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Details</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">OT Time</th>
+              <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Reason</th>
               <th className="px-5 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-gray-300">OT Hours</th>
               <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Status</th>
               {canReview && <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-300">Action</th>}
@@ -275,14 +276,14 @@ export default function OvertimePage() {
           <tbody className="divide-y" style={{ borderColor: "#F5EDED" }}>
             {isLoading && (
               <tr>
-                <td colSpan={(!isEmployee ? 2 : 0) + 5 + (canReview ? 1 : 0)} className="py-12 text-center">
+                <td colSpan={(!isEmployee ? 2 : 0) + 6 + (canReview ? 1 : 0)} className="py-12 text-center">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin text-gray-300" />
                 </td>
               </tr>
             )}
             {!isLoading && rows.length === 0 && (
               <tr>
-                <td colSpan={(!isEmployee ? 2 : 0) + 5 + (canReview ? 1 : 0)} className="py-12 text-center text-sm text-gray-400">
+                <td colSpan={(!isEmployee ? 2 : 0) + 6 + (canReview ? 1 : 0)} className="py-12 text-center text-sm text-gray-400">
                   No overtime records found.
                 </td>
               </tr>
@@ -310,10 +311,10 @@ export default function OvertimePage() {
                         Request
                       </span>
                     </td>
+                    <td className="px-5 py-4 tabular-nums text-gray-600 text-xs">
+                      {r.startTime && r.endTime ? `${fmt12(r.startTime)} – ${fmt12(r.endTime)}` : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-5 py-4 max-w-[200px]">
-                      {r.startTime && r.endTime && (
-                        <p className="tabular-nums text-gray-600 text-xs">{fmt12(r.startTime)} – {fmt12(r.endTime)}</p>
-                      )}
                       <p className="truncate text-gray-600">{r.reason}</p>
                       {r.reviewNotes && (
                         <p className="text-xs text-gray-400 italic mt-0.5">Note: {r.reviewNotes}</p>
@@ -379,6 +380,7 @@ export default function OvertimePage() {
                         Request
                       </span>
                     </td>
+                    <td className="px-5 py-4 tabular-nums text-xs text-gray-300">—</td>
                     <td className="px-5 py-4">
                       <p className="text-xs font-medium text-gray-500 italic">Attendance Overtime</p>
                     </td>
@@ -432,9 +434,11 @@ export default function OvertimePage() {
                       Assigned
                     </span>
                   </td>
+                  <td className="px-5 py-4 tabular-nums text-gray-600 text-xs">
+                    {fmt12(s.startTime)} – {fmt12(s.endTime)}
+                  </td>
                   <td className="px-5 py-4">
-                    <p className="tabular-nums text-gray-600">{fmt12(s.startTime)} – {fmt12(s.endTime)}</p>
-                    {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
+                    {s.notes && <p className="text-xs text-gray-400">{s.notes}</p>}
                   </td>
                   <td className="px-5 py-4 text-right font-semibold tabular-nums text-gray-800">
                     {s.otHours ? `${Number(s.otHours).toFixed(2)}h` : <span className="text-gray-300 font-normal">—</span>}

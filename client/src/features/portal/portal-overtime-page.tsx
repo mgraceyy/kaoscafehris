@@ -104,7 +104,7 @@ function FileRequestSheet({ onClose }: { onClose: () => void }) {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4" style={{ backgroundColor: "#FAF0F0" }}>
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 space-y-4" style={{ backgroundColor: "#FAF0F0" }}>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-700">Date</label>
             <input
