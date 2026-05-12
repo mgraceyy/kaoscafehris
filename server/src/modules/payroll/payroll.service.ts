@@ -584,9 +584,13 @@ export async function processRun(id: string) {
       const localOutDateKey = localDateKey(rec.clockOut, tz);
       const isCrossing = isCrossingLocal(rec.clockIn, rec.clockOut, tz);
       // Crossing: hours from local midnight of clock-out date to actual clock-out (e.g. 7hr for
-      //   a 3rd shift ending 7AM). Same-day: countedHrs (break-adjusted, consistent with pay calc).
+      //   a 3rd shift ending 7AM). When the clock-out date is itself a holiday, use the full
+      //   shift hours (capped at 8) so shifts that end exactly at midnight don't get zeroed out.
+      // Same-day: countedHrs (break-adjusted, consistent with pay calc).
       const hoursOnDate = isCrossing
-        ? Math.max(0, round2(localHoursSinceMidnight(rec.clockOut, tz)))
+        ? (periodHolidayDateKeys.has(localOutDateKey)
+            ? Math.min(countedHrs, 8)
+            : Math.max(0, round2(localHoursSinceMidnight(rec.clockOut, tz))))
         : countedHrs;
 
       if (!holidayAttMap.has(rec.employeeId)) holidayAttMap.set(rec.employeeId, new Map());
