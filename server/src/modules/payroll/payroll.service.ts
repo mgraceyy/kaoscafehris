@@ -512,12 +512,11 @@ export async function processRun(id: string) {
     const assignedOtHrs = assignedOtHoursMap.get(rec.employeeId)?.get(dateKey);
     const otHrs = isOtApproved ? (assignedOtHrs ?? toNum(rec.overtimeHours)) : 0;
 
-    // Clip clock-in/out to the scheduled shift window so early clock-ins and
-    // unapproved late clock-outs don't inflate regular hours. Manual records
-    // without a shift use raw hoursWorked directly.
-    const effectiveClockIn = shiftStartForDate && rec.clockIn < shiftStartForDate
-      ? shiftStartForDate
-      : rec.clockIn;
+    // Use shift start as effective clock-in so late arrivals don't reduce
+    // regular hours — lateness is handled via the monetary late deduction.
+    // Early clock-ins are snapped to shift start. Without a shift, use
+    // actual clock-in.
+    const effectiveClockIn = shiftStartForDate ?? rec.clockIn;
     const effectiveClockOut = (!isOtApproved && rec.clockOut && shiftEnd && rec.clockOut > shiftEnd)
       ? shiftEnd
       : rec.clockOut;
@@ -556,9 +555,9 @@ export async function processRun(id: string) {
     hoursWorkedMap.set(rec.employeeId, (hoursWorkedMap.get(rec.employeeId) ?? 0) + countedHrs);
     lateMinutesMap.set(rec.employeeId, (lateMinutesMap.get(rec.employeeId) ?? 0) + computedLateMinutes);
 
-    // Cap both ends of the night diff window to the scheduled shift so early
-    // clock-ins and unapproved late clock-outs don't inflate night diff hours.
-    const ndClockIn  = effectiveClockIn;
+    // Night diff is computed from actual clock-in/out (clipped for earlies,
+    // unapproved lates) so it only covers hours actually worked.
+    const ndClockIn  = shiftStartForDate && rec.clockIn < shiftStartForDate ? shiftStartForDate : rec.clockIn;
     const ndClockOut = effectiveClockOut;
     const ndHrs = computeNightDiffHours(ndClockIn, ndClockOut);
     if (ndHrs > 0) {
