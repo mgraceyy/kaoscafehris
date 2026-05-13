@@ -93,7 +93,6 @@ function todayLabel() {
 function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | null; open: boolean; onOpenChange: (open: boolean) => void; canEdit: boolean }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [editing, setEditing] = useState(false);
 
   const [editDate, setEditDate] = useState("");
   const [editStartTime, setEditStartTime] = useState("");
@@ -104,7 +103,6 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
 
   useEffect(() => {
     if (!row) return;
-    setEditing(false);
     const d = row.data;
     setEditDate(d.date.slice(0, 10));
     if (row.kind === "request") {
@@ -132,7 +130,6 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["overtime"] });
       toast("Overtime request updated", "success");
-      setEditing(false);
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
@@ -149,7 +146,6 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["overtime-schedules"] });
       toast("Schedule updated", "success");
-      setEditing(false);
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
@@ -205,6 +201,8 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
           ? attOtData!.overtimeApproved && !!attOtData!.shiftId
           : false;
 
+  const showTimes = isSchedule || (isRequest && requestData!.startTime && requestData!.endTime) || (canEdit && !isAttendanceOt);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
@@ -216,7 +214,7 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
         <div className="grid grid-cols-2 gap-2">
           <div>
             <p className="text-xs text-gray-400">OT Date</p>
-            {editing ? (
+            {canEdit ? (
               <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="mt-0.5 text-sm" />
             ) : (
               <p className="font-medium text-gray-800">{d.date.slice(0, 10)}</p>
@@ -238,11 +236,11 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
           </div>
         </div>
 
-        {(isSchedule || (isRequest && requestData!.startTime && requestData!.endTime) || (editing && !isAttendanceOt)) && (
+        {showTimes && (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <p className="text-xs text-gray-400">Start Time</p>
-              {editing ? (
+              {canEdit ? (
                 <TimePicker value={editStartTime} onChange={setEditStartTime} />
               ) : (
                 <p className="font-medium text-gray-800">{isSchedule ? fmt12(scheduleData!.startTime) : fmt12(requestData!.startTime!)}</p>
@@ -250,7 +248,7 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
             </div>
             <div>
               <p className="text-xs text-gray-400">End Time</p>
-              {editing ? (
+              {canEdit ? (
                 <TimePicker value={editEndTime} onChange={setEditEndTime} />
               ) : (
                 <p className="font-medium text-gray-800">{isSchedule ? fmt12(scheduleData!.endTime) : fmt12(requestData!.endTime!)}</p>
@@ -261,7 +259,7 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
 
         <div>
           <p className="text-xs text-gray-400">OT Hours</p>
-          {editing ? (
+          {canEdit && !isAttendanceOt ? (
             <Input
               type="number"
               step="0.5"
@@ -292,7 +290,7 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
             </div>
             <div>
               <p className="text-xs text-gray-400">Reason</p>
-              {editing ? (
+              {canEdit ? (
                 <Textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} className="mt-0.5 text-sm" rows={3} maxLength={500} />
               ) : (
                 <p className="text-gray-700 whitespace-pre-wrap">{requestData!.reason}</p>
@@ -310,7 +308,7 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
         {isSchedule && (
           <div>
             <p className="text-xs text-gray-400">Notes</p>
-            {editing ? (
+            {canEdit ? (
               <Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="mt-0.5 text-sm" rows={2} maxLength={500} />
             ) : (
               <p className="text-gray-700 whitespace-pre-wrap">{scheduleData!.notes || "—"}</p>
@@ -334,53 +332,34 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
 
       {canEdit && (
         <DialogFooter className="mt-4">
-          {editing ? (
-            <>
-              <Button variant="outline" onClick={() => setEditing(false)} disabled={updateRequestMut.isPending || updateScheduleMut.isPending}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (isRequest) updateRequestMut.mutate(requestData!.id);
-                  else if (isSchedule) updateScheduleMut.mutate(scheduleData!.id);
-                }}
-                disabled={updateRequestMut.isPending || updateScheduleMut.isPending}
-              >
-                {(updateRequestMut.isPending || updateScheduleMut.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                Update
-              </Button>
-            </>
-          ) : (
-            <>
-              {canRevert && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    if (isRequest) revertRequestMut.mutate(requestData!.id);
-                    else if (isSchedule) deleteScheduleMut.mutate(scheduleData!.id);
-                    else if (isAttendanceOt) revertAttendanceOtMut.mutate({ shiftId: attOtData!.shiftId!, employeeId: attOtData!.employee.id });
-                  }}
-                  disabled={revertRequestMut.isPending || deleteScheduleMut.isPending || revertAttendanceOtMut.isPending}
-                  className="gap-1.5"
-                >
-                  {(revertRequestMut.isPending || deleteScheduleMut.isPending || revertAttendanceOtMut.isPending) ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Undo2 className="h-4 w-4" />
-                  )}
-                  Revert
-                </Button>
+          {canRevert && (
+            <button
+              onClick={() => {
+                if (isRequest) revertRequestMut.mutate(requestData!.id);
+                else if (isSchedule) deleteScheduleMut.mutate(scheduleData!.id);
+                else if (isAttendanceOt) revertAttendanceOtMut.mutate({ shiftId: attOtData!.shiftId!, employeeId: attOtData!.employee.id });
+              }}
+              disabled={revertRequestMut.isPending || deleteScheduleMut.isPending || revertAttendanceOtMut.isPending}
+              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 inline-flex items-center gap-1.5"
+            >
+              {(revertRequestMut.isPending || deleteScheduleMut.isPending || revertAttendanceOtMut.isPending) ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Undo2 className="h-3.5 w-3.5" />
               )}
-              <Button
-                variant="outline"
-                onClick={() => setEditing(true)}
-                className="gap-1.5"
-              >
-                <Pencil className="h-4 w-4" />
-                Edit
-              </Button>
-            </>
+              Revert
+            </button>
           )}
+          <Button
+            onClick={() => {
+              if (isRequest) updateRequestMut.mutate(requestData!.id);
+              else if (isSchedule) updateScheduleMut.mutate(scheduleData!.id);
+            }}
+            disabled={updateRequestMut.isPending || updateScheduleMut.isPending}
+          >
+            {(updateRequestMut.isPending || updateScheduleMut.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+            Update
+          </Button>
         </DialogFooter>
       )}
     </Dialog>
@@ -722,7 +701,7 @@ export default function OvertimePage() {
                             <button
                               onClick={() => attendanceOtApprove.mutate({ shiftId: r.shiftId!, employeeId: r.employee.id, approved: false })}
                               disabled={attendanceOtApprove.isPending}
-                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
                             >
                               Revert
                             </button>
