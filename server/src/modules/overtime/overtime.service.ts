@@ -3,6 +3,7 @@ import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import type {
   CreateOvertimeInput,
+  UpdateOvertimeInput,
   ReviewOvertimeInput,
   ListOvertimeQuery,
   ApproveShiftOvertimeInput,
@@ -137,6 +138,32 @@ export async function revertRequest(id: string) {
   return prisma.overtimeRequest.update({
     where: { id },
     data: { status: "PENDING", reviewedBy: null, reviewedAt: null, reviewNotes: null },
+    include: overtimeInclude,
+  });
+}
+
+export async function updateRequest(id: string, input: UpdateOvertimeInput) {
+  const req = await prisma.overtimeRequest.findUnique({ where: { id } });
+  if (!req) throw new AppError(404, "Overtime request not found");
+
+  const startTime = input.startTime !== undefined ? input.startTime : req.startTime;
+  const endTime = input.endTime !== undefined ? input.endTime : req.endTime;
+  const otHours =
+    input.otHours !== undefined
+      ? input.otHours
+      : input.startTime !== undefined || input.endTime !== undefined
+        ? (startTime && endTime ? computeOtHours(startTime, endTime) : undefined)
+        : req.otHours;
+
+  return prisma.overtimeRequest.update({
+    where: { id },
+    data: {
+      ...(input.date ? { date: dateOnly(input.date) } : {}),
+      startTime,
+      endTime,
+      ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      otHours,
+    },
     include: overtimeInclude,
   });
 }

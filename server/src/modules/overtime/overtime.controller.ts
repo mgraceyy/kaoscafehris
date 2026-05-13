@@ -4,6 +4,7 @@ import prisma from "../../config/db.js";
 import {
   listOvertimeQuerySchema,
   createOvertimeSchema,
+  updateOvertimeSchema,
   reviewOvertimeSchema,
   approveShiftOvertimeSchema,
   createScheduleSchema,
@@ -64,6 +65,14 @@ export async function review(req: Request<{ id: string }>, res: Response, next: 
 export async function revert(req: Request<{ id: string }>, res: Response, next: NextFunction) {
   try {
     const data = await overtimeService.revertRequest(req.params.id);
+    res.json({ data });
+  } catch (err) { next(err); }
+}
+
+export async function update(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    const input = updateOvertimeSchema.parse(req.body);
+    const data = await overtimeService.updateRequest(req.params.id, input);
     res.json({ data });
   } catch (err) { next(err); }
 }

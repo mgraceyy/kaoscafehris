@@ -53,6 +53,14 @@ export async function createOvertimeRequest(body: {
   return data.data;
 }
 
+export async function updateOvertimeRequest(
+  id: string,
+  body: { date?: string; startTime?: string; endTime?: string; reason?: string; otHours?: number }
+): Promise<OvertimeRequest> {
+  const { data } = await api.patch<{ data: OvertimeRequest }>(`/overtime/${id}`, body);
+  return data.data;
+}
+
 export async function revertOvertimeRequest(id: string): Promise<OvertimeRequest> {
   const { data } = await api.patch<{ data: OvertimeRequest }>(`/overtime/${id}/revert`);
   return data.data;

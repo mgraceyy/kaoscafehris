@@ -339,12 +339,27 @@ function StateRow({
   return null;
 }
 
+type ByEmployeeSort = "hours" | "otHours" | "lateMins";
+
 function AttendanceSection({
   loading,
   error,
   data,
 }: SectionProps<import("./report.api").AttendanceReport>) {
+  const [byEmployeeSort, setByEmployeeSort] = useState<ByEmployeeSort>("hours");
   const empty = !loading && !error && (!data || data.totals.totalRecords === 0);
+
+  const sortedByEmployee = useMemo(() => {
+    if (!data?.byEmployee) return [];
+    const sorted = [...data.byEmployee];
+    sorted.sort((a, b) => {
+      if (byEmployeeSort === "hours") return b.totalHoursWorked - a.totalHoursWorked;
+      if (byEmployeeSort === "otHours") return b.totalOvertimeHours - a.totalOvertimeHours;
+      return b.totalLateMinutes - a.totalLateMinutes;
+    });
+    return sorted;
+  }, [data?.byEmployee, byEmployeeSort]);
+
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
@@ -388,6 +403,18 @@ function AttendanceSection({
       </div>
 
       <SectionDivider title="By Employee" />
+      <div className="flex items-center gap-3 mb-3">
+        <p className="text-xs font-medium text-gray-500">Sort by</p>
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
+          value={byEmployeeSort}
+          onChange={(e) => setByEmployeeSort(e.target.value as ByEmployeeSort)}
+        >
+          <option value="hours">Hours</option>
+          <option value="otHours">OT Hrs</option>
+          <option value="lateMins">Late Mins</option>
+        </select>
+      </div>
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
@@ -404,7 +431,7 @@ function AttendanceSection({
           </TableHeader>
           <TableBody className="divide-y divide-gray-50">
             <StateRow loading={loading} error={error} empty={empty} colSpan={8} fallback="Failed to load attendance report" />
-            {data?.byEmployee.map((e) => (
+            {sortedByEmployee.map((e) => (
               <TableRow key={e.employeeId} className="hover:bg-[#FAF5F5]">
                 <TableCell>
                   <div className="font-medium text-gray-900">{e.employeeName}</div>

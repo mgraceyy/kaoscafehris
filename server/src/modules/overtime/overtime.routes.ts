@@ -3,6 +3,7 @@ import { authenticate, authorize } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import {
   createOvertimeSchema,
+  updateOvertimeSchema,
   reviewOvertimeSchema,
   approveShiftOvertimeSchema,
   createScheduleSchema,
@@ -21,6 +22,14 @@ router.get("/attendance-ot", authorize("ADMIN", "MANAGER"), overtimeController.a
 
 // Employee submits a request
 router.post("/", validate(createOvertimeSchema), overtimeController.create);
+
+// Manager/Admin updates a request
+router.patch(
+  "/:id",
+  authorize("ADMIN", "MANAGER"),
+  validate(updateOvertimeSchema),
+  overtimeController.update
+);
 
 // Manager/Admin reviews a request
 router.patch(

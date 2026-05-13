@@ -11,6 +11,14 @@ export const createOvertimeSchema = z.object({
   otHours: z.number().positive().max(24).optional(),
 });
 
+export const updateOvertimeSchema = z.object({
+  date: isoDate.optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM").optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM").optional(),
+  reason: z.string().trim().min(1).max(500).optional(),
+  otHours: z.number().positive().max(24).optional(),
+});
+
 export const reviewOvertimeSchema = z.object({
   status: z.enum(["APPROVED", "REJECTED"]),
   reviewNotes: z.string().max(500).optional(),
@@ -46,6 +54,7 @@ export const listSchedulesQuerySchema = z.object({
 });
 
 export type CreateOvertimeInput = z.infer<typeof createOvertimeSchema>;
+export type UpdateOvertimeInput = z.infer<typeof updateOvertimeSchema>;
 export type ReviewOvertimeInput = z.infer<typeof reviewOvertimeSchema>;
 export type ListOvertimeQuery = z.infer<typeof listOvertimeQuerySchema>;
 export type ApproveShiftOvertimeInput = z.infer<typeof approveShiftOvertimeSchema>;

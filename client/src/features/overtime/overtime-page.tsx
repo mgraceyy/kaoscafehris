@@ -1,13 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Search, Plus, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Search, Plus, Pencil, Trash2, Undo2 } from "lucide-react";
 
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { useAuthStore } from "@/features/auth/auth.store";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 import {
   listOvertimeRequests,
   listOvertimeSchedules,
+  updateOvertimeRequest,
+  updateOvertimeSchedule,
   revertOvertimeRequest,
   deleteOvertimeSchedule,
   getAttendanceOvertimeRecords,
@@ -18,7 +24,7 @@ import {
   type AttendanceOvertimeRecord,
 } from "./overtime.api";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import OvertimeRequestDialog from "./overtime-request-dialog";
 import OvertimeAssignDialog from "./overtime-assign-dialog";
 import OvertimeReviewDialog from "./overtime-review-dialog";
@@ -84,9 +90,120 @@ function todayLabel() {
   });
 }
 
-function ViewOvertimeDialog({ row, open, onOpenChange }: { row: Row | null; open: boolean; onOpenChange: (open: boolean) => void }) {
+function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | null; open: boolean; onOpenChange: (open: boolean) => void; canEdit: boolean }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+
+  const [editDate, setEditDate] = useState("");
+  const [editStartTime, setEditStartTime] = useState("");
+  const [editEndTime, setEditEndTime] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editOtHours, setEditOtHours] = useState("");
+
+  useEffect(() => {
+    if (!row) return;
+    setEditing(false);
+    const d = row.data;
+    setEditDate(d.date.slice(0, 10));
+    if (row.kind === "request") {
+      setEditStartTime((d as OvertimeRequest).startTime ?? "");
+      setEditEndTime((d as OvertimeRequest).endTime ?? "");
+      setEditReason((d as OvertimeRequest).reason ?? "");
+      setEditOtHours((d as OvertimeRequest).otHours ?? "");
+    } else if (row.kind === "schedule") {
+      setEditStartTime((d as OvertimeSchedule).startTime);
+      setEditEndTime((d as OvertimeSchedule).endTime);
+      setEditNotes((d as OvertimeSchedule).notes ?? "");
+      setEditOtHours((d as OvertimeSchedule).otHours ?? "");
+    }
+  }, [row]);
+
+  const updateRequestMut = useMutation({
+    mutationFn: (id: string) =>
+      updateOvertimeRequest(id, {
+        date: editDate,
+        startTime: editStartTime || undefined,
+        endTime: editEndTime || undefined,
+        reason: editReason,
+        otHours: editOtHours ? Number(editOtHours) : undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["overtime"] });
+      toast("Overtime request updated", "success");
+      setEditing(false);
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const updateScheduleMut = useMutation({
+    mutationFn: (id: string) =>
+      updateOvertimeSchedule(id, {
+        date: editDate,
+        startTime: editStartTime,
+        endTime: editEndTime,
+        notes: editNotes || undefined,
+        otHours: editOtHours ? Number(editOtHours) : undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["overtime-schedules"] });
+      toast("Schedule updated", "success");
+      setEditing(false);
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const revertRequestMut = useMutation({
+    mutationFn: (id: string) => revertOvertimeRequest(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["overtime"] });
+      toast("Overtime request reverted", "success");
+      onOpenChange(false);
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const deleteScheduleMut = useMutation({
+    mutationFn: (id: string) => deleteOvertimeSchedule(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["overtime-schedules"] });
+      toast("Schedule removed", "success");
+      onOpenChange(false);
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const revertAttendanceOtMut = useMutation({
+    mutationFn: ({ shiftId, employeeId }: { shiftId: string; employeeId: string }) =>
+      setShiftOvertimeApproval(shiftId, employeeId, { overtimeApproved: false }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] });
+      toast("Overtime approval reverted", "success");
+      onOpenChange(false);
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
   if (!row) return null;
   const d = row.data;
+
+  const isRequest = row.kind === "request";
+  const isSchedule = row.kind === "schedule";
+  const isAttendanceOt = row.kind === "attendance-ot";
+
+  const requestData = isRequest ? (d as OvertimeRequest) : null;
+  const scheduleData = isSchedule ? (d as OvertimeSchedule) : null;
+  const attOtData = isAttendanceOt ? (d as AttendanceOvertimeRecord) : null;
+
+  const canRevert =
+    isRequest
+      ? requestData!.status === "APPROVED" || requestData!.status === "REJECTED"
+      : isSchedule
+        ? true
+        : isAttendanceOt
+          ? attOtData!.overtimeApproved && !!attOtData!.shiftId
+          : false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,12 +216,16 @@ function ViewOvertimeDialog({ row, open, onOpenChange }: { row: Row | null; open
         <div className="grid grid-cols-2 gap-2">
           <div>
             <p className="text-xs text-gray-400">OT Date</p>
-            <p className="font-medium text-gray-800">{d.date.slice(0, 10)}</p>
+            {editing ? (
+              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="mt-0.5 text-sm" />
+            ) : (
+              <p className="font-medium text-gray-800">{d.date.slice(0, 10)}</p>
+            )}
           </div>
           <div>
             <p className="text-xs text-gray-400">Type</p>
             <p className="font-medium text-gray-800">
-              {row.kind === "request" ? "Request" : row.kind === "schedule" ? "Assigned" : "Attendance Overtime"}
+              {isRequest ? "Request" : isSchedule ? "Assigned" : "Attendance Overtime"}
             </p>
           </div>
           <div>
@@ -117,63 +238,151 @@ function ViewOvertimeDialog({ row, open, onOpenChange }: { row: Row | null; open
           </div>
         </div>
 
-        {row.kind === "schedule" || (row.kind === "request" && (d as OvertimeRequest).startTime && (d as OvertimeRequest).endTime) ? (
-          <div>
-            <p className="text-xs text-gray-400">OT Time</p>
-            <p className="font-medium text-gray-800">
-              {row.kind === "schedule"
-                ? `${fmt12((d as OvertimeSchedule).startTime)} – ${fmt12((d as OvertimeSchedule).endTime)}`
-                : `${fmt12((d as OvertimeRequest).startTime!)} – ${fmt12((d as OvertimeRequest).endTime!)}`}
-            </p>
+        {(isSchedule || (isRequest && requestData!.startTime && requestData!.endTime) || (editing && !isAttendanceOt)) && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-xs text-gray-400">Start Time</p>
+              {editing ? (
+                <TimePicker value={editStartTime} onChange={setEditStartTime} />
+              ) : (
+                <p className="font-medium text-gray-800">{isSchedule ? fmt12(scheduleData!.startTime) : fmt12(requestData!.startTime!)}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">End Time</p>
+              {editing ? (
+                <TimePicker value={editEndTime} onChange={setEditEndTime} />
+              ) : (
+                <p className="font-medium text-gray-800">{isSchedule ? fmt12(scheduleData!.endTime) : fmt12(requestData!.endTime!)}</p>
+              )}
+            </div>
           </div>
-        ) : null}
+        )}
 
         <div>
           <p className="text-xs text-gray-400">OT Hours</p>
-          <p className="font-medium text-gray-800">
-            {row.kind === "attendance-ot"
-              ? `${Number((d as AttendanceOvertimeRecord).overtimeHours).toFixed(2)}h`
-              : (d as OvertimeRequest | OvertimeSchedule).otHours
-                ? `${Number((d as OvertimeRequest | OvertimeSchedule).otHours!).toFixed(2)}h`
-                : "—"}
-          </p>
+          {editing ? (
+            <Input
+              type="number"
+              step="0.5"
+              min="0.5"
+              max="24"
+              value={editOtHours}
+              onChange={(e) => setEditOtHours(e.target.value)}
+              className="mt-0.5 text-sm"
+            />
+          ) : (
+            <p className="font-medium text-gray-800">
+              {isAttendanceOt
+                ? `${Number(attOtData!.overtimeHours).toFixed(2)}h`
+                : (d as OvertimeRequest | OvertimeSchedule).otHours
+                  ? `${Number((d as OvertimeRequest | OvertimeSchedule).otHours!).toFixed(2)}h`
+                  : "—"}
+            </p>
+          )}
         </div>
 
-        {row.kind === "request" && (
+        {isRequest && (
           <>
             <div>
               <p className="text-xs text-gray-400">Status</p>
-              <p className="font-medium text-gray-800">{(d as OvertimeRequest).status}</p>
+              <p className="font-medium text-gray-800">
+                <StatusBadge status={requestData!.status} />
+              </p>
             </div>
             <div>
               <p className="text-xs text-gray-400">Reason</p>
-              <p className="text-gray-700 whitespace-pre-wrap">{(d as OvertimeRequest).reason}</p>
+              {editing ? (
+                <Textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} className="mt-0.5 text-sm" rows={3} maxLength={500} />
+              ) : (
+                <p className="text-gray-700 whitespace-pre-wrap">{requestData!.reason}</p>
+              )}
             </div>
-            {(d as OvertimeRequest).reviewNotes && (
+            {requestData!.reviewNotes && (
               <div>
                 <p className="text-xs text-gray-400">Review Notes</p>
-                <p className="text-gray-700 whitespace-pre-wrap">{(d as OvertimeRequest).reviewNotes}</p>
+                <p className="text-gray-700 whitespace-pre-wrap">{requestData!.reviewNotes}</p>
               </div>
             )}
           </>
         )}
 
-        {row.kind === "schedule" && (d as OvertimeSchedule).notes && (
+        {isSchedule && (
           <div>
             <p className="text-xs text-gray-400">Notes</p>
-            <p className="text-gray-700 whitespace-pre-wrap">{(d as OvertimeSchedule).notes}</p>
+            {editing ? (
+              <Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="mt-0.5 text-sm" rows={2} maxLength={500} />
+            ) : (
+              <p className="text-gray-700 whitespace-pre-wrap">{scheduleData!.notes || "—"}</p>
+            )}
           </div>
         )}
 
-        {row.kind === "attendance-ot" && (
+        {isAttendanceOt && (
           <div>
             <p className="text-xs text-gray-400">Status</p>
             <p className="font-medium text-gray-800">
-              {(d as AttendanceOvertimeRecord).overtimeApproved ? "Approved" : (d as AttendanceOvertimeRecord).overtimeRejected ? "Rejected" : "Pending"}
+              {attOtData!.overtimeApproved
+                ? <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: "#DCFCE7", color: "#16A34A" }}>Approved</span>
+                : attOtData!.overtimeRejected
+                  ? <StatusBadge status="REJECTED" />
+                  : <StatusBadge status="PENDING" />}
             </p>
           </div>
         )}
       </div>
+
+      {canEdit && (
+        <DialogFooter className="mt-4">
+          {editing ? (
+            <>
+              <Button variant="outline" onClick={() => setEditing(false)} disabled={updateRequestMut.isPending || updateScheduleMut.isPending}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (isRequest) updateRequestMut.mutate(requestData!.id);
+                  else if (isSchedule) updateScheduleMut.mutate(scheduleData!.id);
+                }}
+                disabled={updateRequestMut.isPending || updateScheduleMut.isPending}
+              >
+                {(updateRequestMut.isPending || updateScheduleMut.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                Update
+              </Button>
+            </>
+          ) : (
+            <>
+              {canRevert && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (isRequest) revertRequestMut.mutate(requestData!.id);
+                    else if (isSchedule) deleteScheduleMut.mutate(scheduleData!.id);
+                    else if (isAttendanceOt) revertAttendanceOtMut.mutate({ shiftId: attOtData!.shiftId!, employeeId: attOtData!.employee.id });
+                  }}
+                  disabled={revertRequestMut.isPending || deleteScheduleMut.isPending || revertAttendanceOtMut.isPending}
+                  className="gap-1.5"
+                >
+                  {(revertRequestMut.isPending || deleteScheduleMut.isPending || revertAttendanceOtMut.isPending) ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Undo2 className="h-4 w-4" />
+                  )}
+                  Revert
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => setEditing(true)}
+                className="gap-1.5"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      )}
     </Dialog>
   );
 }
@@ -266,7 +475,7 @@ export default function OvertimePage() {
 
   const revert = useMutation({
     mutationFn: (r: OvertimeRequest) => revertOvertimeRequest(r.id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["overtime"] }); toast("Overtime request reverted to pending", "success"); setRevertTarget(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["overtime"] }); toast("Overtime request reverted", "success"); setRevertTarget(null); },
     onError: (err) => { toast(extractErrorMessage(err), "error"); setRevertTarget(null); },
   });
 
@@ -515,7 +724,7 @@ export default function OvertimePage() {
                               disabled={attendanceOtApprove.isPending}
                               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                             >
-                              Revoke
+                              Revert
                             </button>
                           ) : (
                             <span className="text-xs text-gray-300">{r.overtimeRejected ? "Rejected" : "No shift"}</span>
@@ -596,7 +805,7 @@ export default function OvertimePage() {
         )}
       </div>
 
-      <ViewOvertimeDialog row={viewRow} open={!!viewRow} onOpenChange={(o) => !o && setViewRow(null)} />
+      <ViewOvertimeDialog row={viewRow} open={!!viewRow} onOpenChange={(o) => !o && setViewRow(null)} canEdit={canReview} />
       <OvertimeRequestDialog open={requestOpen} onOpenChange={setRequestOpen} />
       <OvertimeAssignDialog
         open={assignOpen}
