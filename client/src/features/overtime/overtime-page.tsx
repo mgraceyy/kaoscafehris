@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Search, Plus, Pencil, Trash2, Undo2 } from "lucide-react";
+import { Loader2, Search, Plus, Pencil, Undo2 } from "lucide-react";
 
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
@@ -458,12 +458,6 @@ export default function OvertimePage() {
     onError: (err) => { toast(extractErrorMessage(err), "error"); setRevertTarget(null); },
   });
 
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => deleteOvertimeSchedule(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["overtime-schedules"] }); toast("Schedule removed", "success"); },
-    onError: (err) => toast(extractErrorMessage(err), "error"),
-  });
-
   const allRequests = requestsQuery.data ?? [];
   const stats = useMemo(() => ({
     pending:  allRequests.filter((r) => r.status === "PENDING").length,
@@ -748,28 +742,13 @@ export default function OvertimePage() {
                   <td className="px-5 py-4"><StatusBadge status="APPROVED" /></td>
                   {canReview && (
                     <td className="px-5 py-4">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setViewRow({ kind: "schedule", data: s })}
-                          className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
-                          title="View details"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => { setEditing(s); setAssignOpen(true); }}
-                          className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          disabled={deleteMut.isPending}
-                          onClick={() => { if (confirm("Remove this overtime schedule?")) deleteMut.mutate(s.id); }}
-                          className="rounded-lg border border-gray-200 bg-white p-1.5 text-red-400 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => setViewRow({ kind: "schedule", data: s })}
+                        className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:bg-gray-50"
+                        title="View details"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
                     </td>
                   )}
                 </tr>

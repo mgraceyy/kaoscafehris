@@ -94,7 +94,6 @@ export function PayslipPreview({ data }: { data: PayslipDetail }) {
           <span className="font-semibold text-gray-800">{formatCurrency(dailyRate)}</span>
         </div>
         <div className="mt-1.5 text-xs flex gap-4">
-          <span><span className="text-gray-500">Total Scheduled Hours: </span><span className="font-semibold text-gray-800">{Number(data.totalScheduledHours).toFixed(2)} hrs</span></span>
           <span><span className="text-gray-500">Actual Worked Hours: </span><span className="font-semibold text-gray-800">{Number(data.totalHoursWorked).toFixed(2)} hrs</span></span>
         </div>
       </div>

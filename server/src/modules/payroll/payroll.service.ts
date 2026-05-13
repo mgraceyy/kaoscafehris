@@ -554,11 +554,13 @@ export async function processRun(id: string) {
         ? toNum(rec.hoursWorked)
         : scheduledHrs;
 
-    // Regular hours = actual minus approved OT, capped at scheduled shift duration.
+    // Regular hours = actual clocked time capped at scheduled shift duration.
+    // OT is additive on top (not carved out of regular hours).
     // For manually-added attendance with no shift assignment, use actual hours directly (no cap).
-    const regularHrs = scheduledHrs > 0
-      ? Math.min(Math.max(0, actualHrs - otHrs), scheduledHrs)
-      : Math.max(0, actualHrs - otHrs);
+    const baseRegularHrs = scheduledHrs > 0
+      ? Math.min(actualHrs, scheduledHrs)
+      : actualHrs;
+    const regularHrs = Math.max(0, baseRegularHrs);
     const countedHrs = round2(regularHrs + otHrs);
     if (hasShift) {
       console.log(`[payroll:att] HOURS emp=${rec.employeeId} date=${dateKey} scheduled=${scheduledHrs} actual=${round2(actualHrs)} regular=${regularHrs} ot=${otHrs} counted=${countedHrs}${countedHrs < scheduledHrs ? ` GAP=${round2(scheduledHrs - countedHrs)}` : ""}`);
