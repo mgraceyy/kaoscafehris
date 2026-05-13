@@ -502,9 +502,10 @@ model Payslip {
   netPay            Decimal   @db.Decimal(12, 2)
 
   // Attendance summary used for pay computation — stored for auditability.
-  totalHoursWorked  Decimal @db.Decimal(8, 2) @default(0)
-  totalOtHours      Decimal @db.Decimal(8, 2) @default(0)
-  totalLateMinutes  Int     @default(0)
+  totalHoursWorked     Decimal @db.Decimal(8, 2) @default(0)
+  totalScheduledHours  Decimal @db.Decimal(8, 2) @default(0)
+  totalOtHours         Decimal @db.Decimal(8, 2) @default(0)
+  totalLateMinutes     Int     @default(0)
 
   status            PayslipStatus @default(DRAFT)
   pdfUrl            String?       // generated payslip PDF path

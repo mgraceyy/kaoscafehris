@@ -232,7 +232,11 @@ export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Pro
                       <span className="tabular-nums font-medium">{formatRate(hourlyRate)}/hr</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Hours Worked</span>
+                      <span className="text-muted-foreground">Total Scheduled Hours</span>
+                      <span className="tabular-nums font-medium">{Number(d.totalScheduledHours).toFixed(2)} hrs</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Actual Worked Hours</span>
                       <span className="tabular-nums font-medium">{totalHrs.toFixed(2)} hrs</span>
                     </div>
                     <div className="flex justify-between pl-3 text-muted-foreground">

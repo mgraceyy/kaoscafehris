@@ -916,7 +916,7 @@ export async function processRun(id: string) {
 
       const totalOtHours = round2(otHoursMap.get(emp.id) ?? 0);
       const totalHoursWorked = round2(hoursWorkedMap.get(emp.id) ?? 0);
-      // Total scheduled hours across all assigned shifts in the period (before lateness).
+      // Total scheduled hours across all assigned shifts in the period (for display only, not pay computation).
       const totalScheduledHours = round2([...(scheduledHoursMap.get(emp.id)?.values() ?? [])].reduce((s, h) => s + h, 0));
 
       let basicPay: number;
@@ -1115,6 +1115,7 @@ export async function processRun(id: string) {
           totalDeductions,
           netPay,
           totalHoursWorked,
+          totalScheduledHours,
           totalOtHours,
           totalLateMinutes: lateMinutesMap.get(emp.id) ?? 0,
           status: "DRAFT",
