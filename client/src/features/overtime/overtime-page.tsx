@@ -181,6 +181,28 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
+  const approveAttendanceOtMut = useMutation({
+    mutationFn: ({ shiftId, employeeId }: { shiftId: string; employeeId: string }) =>
+      setShiftOvertimeApproval(shiftId, employeeId, { overtimeApproved: true }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] });
+      toast("Overtime approved", "success");
+      onOpenChange(false);
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const rejectAttendanceOtMut = useMutation({
+    mutationFn: ({ shiftId, employeeId }: { shiftId: string; employeeId: string }) =>
+      setShiftOvertimeApproval(shiftId, employeeId, { overtimeRejected: true }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] });
+      toast("Overtime rejected", "success");
+      onOpenChange(false);
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
   if (!row) return null;
   const d = row.data;
 
@@ -198,8 +220,11 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
       : isSchedule
         ? true
         : isAttendanceOt
-          ? attOtData!.overtimeApproved && !!attOtData!.shiftId
+          ? (attOtData!.overtimeApproved || attOtData!.overtimeRejected) && !!attOtData!.shiftId
           : false;
+
+  const canApproveAttendanceOt =
+    isAttendanceOt && !attOtData!.overtimeApproved && !attOtData!.overtimeRejected && !!attOtData!.shiftId;
 
   const showTimes = isSchedule || (isRequest && requestData!.startTime && requestData!.endTime) || (canEdit && !isAttendanceOt);
 
@@ -332,12 +357,42 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
 
       {canEdit && (
         <DialogFooter className="mt-4">
+          {canApproveAttendanceOt && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => approveAttendanceOtMut.mutate({ shiftId: attOtData!.shiftId!, employeeId: attOtData!.employee.id })}
+                disabled={approveAttendanceOtMut.isPending || rejectAttendanceOtMut.isPending}
+                className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600 disabled:opacity-50"
+              >
+                {approveAttendanceOtMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Approve
+              </button>
+              <button
+                onClick={() => rejectAttendanceOtMut.mutate({ shiftId: attOtData!.shiftId!, employeeId: attOtData!.employee.id })}
+                disabled={approveAttendanceOtMut.isPending || rejectAttendanceOtMut.isPending}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: BRAND }}
+              >
+                {rejectAttendanceOtMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Reject
+              </button>
+            </div>
+          )}
           {canRevert && (
             <button
               onClick={() => {
                 if (isRequest) revertRequestMut.mutate(requestData!.id);
                 else if (isSchedule) deleteScheduleMut.mutate(scheduleData!.id);
-                else if (isAttendanceOt) revertAttendanceOtMut.mutate({ shiftId: attOtData!.shiftId!, employeeId: attOtData!.employee.id });
+                else if (isAttendanceOt) {
+                  if (attOtData!.overtimeRejected) {
+                    // Revert rejection: clear the rejected flag
+                    setShiftOvertimeApproval(attOtData!.shiftId!, attOtData!.employee.id, { overtimeRejected: false })
+                      .then(() => { qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] }); toast("Overtime rejection reverted", "success"); onOpenChange(false); })
+                      .catch((err) => toast(extractErrorMessage(err), "error"));
+                  } else {
+                    revertAttendanceOtMut.mutate({ shiftId: attOtData!.shiftId!, employeeId: attOtData!.employee.id });
+                  }
+                }
               }}
               disabled={revertRequestMut.isPending || deleteScheduleMut.isPending || revertAttendanceOtMut.isPending}
               className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 inline-flex items-center gap-1.5"
@@ -350,16 +405,18 @@ function ViewOvertimeDialog({ row, open, onOpenChange, canEdit }: { row: Row | n
               Revert
             </button>
           )}
-          <Button
-            onClick={() => {
-              if (isRequest) updateRequestMut.mutate(requestData!.id);
-              else if (isSchedule) updateScheduleMut.mutate(scheduleData!.id);
-            }}
-            disabled={updateRequestMut.isPending || updateScheduleMut.isPending}
-          >
-            {(updateRequestMut.isPending || updateScheduleMut.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-            Update
-          </Button>
+          {!isAttendanceOt && (
+            <Button
+              onClick={() => {
+                if (isRequest) updateRequestMut.mutate(requestData!.id);
+                else if (isSchedule) updateScheduleMut.mutate(scheduleData!.id);
+              }}
+              disabled={updateRequestMut.isPending || updateScheduleMut.isPending}
+            >
+              {(updateRequestMut.isPending || updateScheduleMut.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Update
+            </Button>
+          )}
         </DialogFooter>
       )}
     </Dialog>
@@ -403,9 +460,19 @@ export default function OvertimePage() {
   const attendanceOtApprove = useMutation({
     mutationFn: ({ shiftId, employeeId, approved }: { shiftId: string; employeeId: string; approved: boolean }) =>
       setShiftOvertimeApproval(shiftId, employeeId, approved ? { overtimeApproved: true } : { overtimeApproved: false }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] });
+      toast(vars.approved ? "Overtime approved" : "Overtime approval reverted", "success");
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const attendanceOtReject = useMutation({
+    mutationFn: ({ shiftId, employeeId }: { shiftId: string; employeeId: string }) =>
+      setShiftOvertimeApproval(shiftId, employeeId, { overtimeRejected: true }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["overtime-attendance-ot"] });
-      toast("Overtime approved", "success");
+      toast("Overtime rejected", "success");
     },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
@@ -699,6 +766,24 @@ export default function OvertimePage() {
                             >
                               Revert
                             </button>
+                          ) : r.shiftId && !r.overtimeRejected ? (
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => attendanceOtApprove.mutate({ shiftId: r.shiftId!, employeeId: r.employee.id, approved: true })}
+                                disabled={attendanceOtApprove.isPending || attendanceOtReject.isPending}
+                                className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600 disabled:opacity-50"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => attendanceOtReject.mutate({ shiftId: r.shiftId!, employeeId: r.employee.id })}
+                                disabled={attendanceOtApprove.isPending || attendanceOtReject.isPending}
+                                className="rounded-lg px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                                style={{ backgroundColor: BRAND }}
+                              >
+                                Reject
+                              </button>
+                            </div>
                           ) : (
                             <span className="text-xs text-gray-300">{r.overtimeRejected ? "Rejected" : "No shift"}</span>
                           )}

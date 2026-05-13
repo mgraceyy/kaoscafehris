@@ -26,7 +26,7 @@ export interface PortalEmployee {
   emergencyPhone: string | null;
   emergencyRelation: string | null;
   position: string;
-  employmentStatus: "ACTIVE" | "INACTIVE" | "TERMINATED" | "ON_LEAVE";
+  employmentStatus: "FULL_TIME" | "PART_TIME" | "TRAINEE" | "RESERVED" | "TERMINATED";
   dateHired: string;
   basicSalary: string;
   sssNumber: string | null;

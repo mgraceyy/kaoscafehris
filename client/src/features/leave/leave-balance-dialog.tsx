@@ -81,8 +81,8 @@ export default function LeaveBalanceDialog({ open, onOpenChange }: Props) {
   const [filterEmployee, setFilterEmployee] = useState<string>("");
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { status: "ACTIVE" }],
-    queryFn: () => listEmployees({ status: "ACTIVE" }),
+    queryKey: ["employees", { status: "FULL_TIME" }],
+    queryFn: () => listEmployees({ status: "FULL_TIME" }),
     enabled: open,
     select: (data) => data.filter((e) => e.position !== "Administrator"),
   });

@@ -393,9 +393,10 @@ function round2(n: number): number {
 export interface HeadcountBranchRow {
   branchId: string;
   branchName: string;
-  active: number;
-  inactive: number;
-  onLeave: number;
+  fullTime: number;
+  partTime: number;
+  trainee: number;
+  reserved: number;
   terminated: number;
   total: number;
 }
@@ -407,9 +408,10 @@ export interface HeadcountPositionRow {
 
 export interface HeadcountReport {
   totals: {
-    active: number;
-    inactive: number;
-    onLeave: number;
+    fullTime: number;
+    partTime: number;
+    trainee: number;
+    reserved: number;
     terminated: number;
     total: number;
   };
@@ -436,23 +438,27 @@ export async function headcountSummary(
   const branchMap = new Map<string, HeadcountBranchRow>();
   const positionMap = new Map<string, number>();
   const totals = {
-    active: 0,
-    inactive: 0,
-    onLeave: 0,
+    fullTime: 0,
+    partTime: 0,
+    trainee: 0,
+    reserved: 0,
     terminated: 0,
     total: employees.length,
   };
 
   for (const e of employees) {
     switch (e.employmentStatus) {
-      case "ACTIVE":
-        totals.active++;
+      case "FULL_TIME":
+        totals.fullTime++;
         break;
-      case "INACTIVE":
-        totals.inactive++;
+      case "PART_TIME":
+        totals.partTime++;
         break;
-      case "ON_LEAVE":
-        totals.onLeave++;
+      case "TRAINEE":
+        totals.trainee++;
+        break;
+      case "RESERVED":
+        totals.reserved++;
         break;
       case "TERMINATED":
         totals.terminated++;
@@ -464,9 +470,10 @@ export async function headcountSummary(
       b = {
         branchId: e.branch.id,
         branchName: e.branch.name,
-        active: 0,
-        inactive: 0,
-        onLeave: 0,
+        fullTime: 0,
+        partTime: 0,
+        trainee: 0,
+        reserved: 0,
         terminated: 0,
         total: 0,
       };
@@ -474,14 +481,17 @@ export async function headcountSummary(
     }
     b.total++;
     switch (e.employmentStatus) {
-      case "ACTIVE":
-        b.active++;
+      case "FULL_TIME":
+        b.fullTime++;
         break;
-      case "INACTIVE":
-        b.inactive++;
+      case "PART_TIME":
+        b.partTime++;
         break;
-      case "ON_LEAVE":
-        b.onLeave++;
+      case "TRAINEE":
+        b.trainee++;
+        break;
+      case "RESERVED":
+        b.reserved++;
         break;
       case "TERMINATED":
         b.terminated++;

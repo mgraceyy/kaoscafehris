@@ -242,9 +242,10 @@ export async function headcountToPdf(r: HeadcountReport): Promise<Buffer> {
     ["Metric", "Value"],
     [contentWidth(doc) * 0.6, contentWidth(doc) * 0.4],
     [
-      ["Active", r.totals.active],
-      ["Inactive", r.totals.inactive],
-      ["On leave", r.totals.onLeave],
+      ["Full Time", r.totals.fullTime],
+      ["Part Time", r.totals.partTime],
+      ["Trainee", r.totals.trainee],
+      ["Reserved", r.totals.reserved],
       ["Terminated", r.totals.terminated],
       ["Total", r.totals.total],
     ],
@@ -255,13 +256,14 @@ export async function headcountToPdf(r: HeadcountReport): Promise<Buffer> {
   drawSectionHeader(doc, "By Branch");
   drawTable(
     doc,
-    ["Branch", "Active", "Inactive", "On Leave", "Terminated", "Total"],
-    [w * 0.28, w * 0.12, w * 0.14, w * 0.14, w * 0.16, w * 0.16],
+    ["Branch", "Full Time", "Part Time", "Trainee", "Reserved", "Terminated", "Total"],
+    [w * 0.24, w * 0.10, w * 0.10, w * 0.10, w * 0.10, w * 0.13, w * 0.13],
     r.byBranch.map((b) => [
       b.branchName,
-      b.active,
-      b.inactive,
-      b.onLeave,
+      b.fullTime,
+      b.partTime,
+      b.trainee,
+      b.reserved,
       b.terminated,
       b.total,
     ]),

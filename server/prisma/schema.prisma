@@ -24,10 +24,11 @@ enum Role {
 }
 
 enum EmploymentStatus {
-  ACTIVE
-  INACTIVE
+  TRAINEE
+  FULL_TIME
+  PART_TIME
+  RESERVED
   TERMINATED
-  ON_LEAVE
 }
 
 enum ShiftStatus {
@@ -202,7 +203,7 @@ model Employee {
 
   // Employment details
   position         String
-  employmentStatus EmploymentStatus @default(ACTIVE)
+  employmentStatus EmploymentStatus @default(FULL_TIME)
   dateHired        DateTime
   dateTerminated   DateTime?
   payType          PayType          @default(MONTHLY_FIXED)

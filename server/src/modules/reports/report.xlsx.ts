@@ -256,9 +256,10 @@ export async function headcountToXlsx(r: HeadcountReport): Promise<Buffer> {
   writeHeader(s, "KAOS Cafe — Headcount Report", "Current state", "B");
   s.addRow([]);
   s.addRow(["Metric", "Value"]).eachCell((c) => (c.font = { bold: true }));
-  s.addRow(["Active", r.totals.active]);
-  s.addRow(["Inactive", r.totals.inactive]);
-  s.addRow(["On leave", r.totals.onLeave]);
+  s.addRow(["Full Time", r.totals.fullTime]);
+  s.addRow(["Part Time", r.totals.partTime]);
+  s.addRow(["Trainee", r.totals.trainee]);
+  s.addRow(["Reserved", r.totals.reserved]);
   s.addRow(["Terminated", r.totals.terminated]);
   s.addRow(["Total", r.totals.total]);
   s.columns = [{ width: 18 }, { width: 12 }];
@@ -266,9 +267,10 @@ export async function headcountToXlsx(r: HeadcountReport): Promise<Buffer> {
   const b = wb.addWorksheet("By Branch");
   const bh = b.addRow([
     "Branch",
-    "Active",
-    "Inactive",
-    "On Leave",
+    "Full Time",
+    "Part Time",
+    "Trainee",
+    "Reserved",
     "Terminated",
     "Total",
   ]);
@@ -276,9 +278,10 @@ export async function headcountToXlsx(r: HeadcountReport): Promise<Buffer> {
   for (const row of r.byBranch) {
     b.addRow([
       row.branchName,
-      row.active,
-      row.inactive,
-      row.onLeave,
+      row.fullTime,
+      row.partTime,
+      row.trainee,
+      row.reserved,
       row.terminated,
       row.total,
     ]);

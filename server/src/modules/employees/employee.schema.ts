@@ -18,7 +18,7 @@ const requiredDate = z.preprocess(
 );
 
 const roleEnum = z.enum(["ADMIN", "MANAGER", "EMPLOYEE"]).default("EMPLOYEE");
-const employmentStatusEnum = z.enum(["ACTIVE", "INACTIVE", "TERMINATED", "ON_LEAVE"]);
+const employmentStatusEnum = z.enum(["TRAINEE", "FULL_TIME", "PART_TIME", "RESERVED", "TERMINATED"]);
 
 export const createEmployeeSchema = z.object({
   // User account
@@ -54,7 +54,7 @@ export const createEmployeeSchema = z.object({
   emergencyRelation: emptyToUndef(z.string().trim().max(60)),
 
   position: z.string().trim().min(1).max(100),
-  employmentStatus: employmentStatusEnum.default("ACTIVE"),
+  employmentStatus: employmentStatusEnum.default("FULL_TIME"),
   dateHired: requiredDate,
   payType: z.enum(["MONTHLY_FIXED", "HOURLY"]).default("MONTHLY_FIXED"),
   basicSalary: z

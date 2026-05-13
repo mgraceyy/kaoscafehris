@@ -50,7 +50,7 @@ const baseSchema = {
   lastName: z.string().trim().min(1, "Required"),
   dateOfBirth: z.string().optional(),
   position: z.string().trim().min(1, "Required"),
-  employmentStatus: z.enum(["ACTIVE", "INACTIVE", "TERMINATED", "ON_LEAVE"]),
+  employmentStatus: z.enum(["TRAINEE", "FULL_TIME", "PART_TIME", "RESERVED", "TERMINATED"]),
   dateHired: z.string().min(1, "Required"),
   payType: z.enum(["MONTHLY_FIXED", "HOURLY"]),
   basicSalary: z.union([z.string(), z.number()]).transform(toFloat).pipe(z.number().min(0)),
@@ -84,12 +84,13 @@ type FormValues = CreateValues & EditValues;
 
 function StatusBadge({ status }: { status: EmploymentStatus }) {
   const map: Record<EmploymentStatus, { bg: string; color: string; label: string }> = {
-    ACTIVE: { bg: "#DCFCE7", color: "#16A34A", label: "Active" },
-    ON_LEAVE: { bg: "#FEF3C7", color: "#D97706", label: "On Leave" },
-    INACTIVE: { bg: "#F3F4F6", color: "#6B7280", label: "Inactive" },
+    FULL_TIME: { bg: "#DCFCE7", color: "#16A34A", label: "Full Time" },
+    PART_TIME: { bg: "#DBEAFE", color: "#2563EB", label: "Part Time" },
+    TRAINEE: { bg: "#FEF3C7", color: "#D97706", label: "Trainee" },
+    RESERVED: { bg: "#F3F4F6", color: "#6B7280", label: "Reserved" },
     TERMINATED: { bg: "#FEE2E2", color: "#DC2626", label: "Terminated" },
   };
-  const s = map[status] ?? map.INACTIVE;
+  const s = map[status] ?? map.RESERVED;
   return (
     <span
       className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
@@ -145,7 +146,7 @@ export default function EmployeesPage() {
     defaultValues: {
       email: "", password: "", role: "EMPLOYEE", employeeId: "",
       branchId: "", firstName: "", lastName: "", position: "",
-      employmentStatus: "ACTIVE", dateHired: "",
+      employmentStatus: "FULL_TIME", dateHired: "",
       payType: "MONTHLY_FIXED",
       basicSalary: 0 as unknown as number,
       hourlyRate: undefined,
@@ -184,7 +185,7 @@ export default function EmployeesPage() {
       reset({
         email: "", password: "", role: "EMPLOYEE", employeeId: "",
         branchId: "", firstName: "", lastName: "", dateOfBirth: "", position: "",
-        employmentStatus: "ACTIVE", dateHired: "",
+        employmentStatus: "FULL_TIME", dateHired: "",
         payType: "MONTHLY_FIXED",
         basicSalary: 0 as unknown as number,
         hourlyRate: undefined,
@@ -321,9 +322,9 @@ export default function EmployeesPage() {
 
   const stats = {
     total: filtered.length,
-    active: filtered.filter(e => e.employmentStatus === "ACTIVE").length,
-    onLeave: filtered.filter(e => e.employmentStatus === "ON_LEAVE").length,
-    inactive: filtered.filter(e => e.employmentStatus === "INACTIVE").length,
+    fullTime: filtered.filter(e => e.employmentStatus === "FULL_TIME").length,
+    partTime: filtered.filter(e => e.employmentStatus === "PART_TIME").length,
+    trainee: filtered.filter(e => e.employmentStatus === "TRAINEE").length,
   };
 
   return (
@@ -378,18 +379,22 @@ export default function EmployeesPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="mb-6 grid grid-cols-3 gap-4">
+      <div className="mb-6 grid grid-cols-4 gap-4">
         <div className="animate-fade-up stagger-1 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: `4px solid ${BRAND}` }}>
           <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Total</p>
           <p className="font-heading text-4xl leading-none" style={{ color: BRAND }}>{stats.total}</p>
         </div>
         <div className="animate-fade-up stagger-2 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: "4px solid #16A34A" }}>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Active</p>
-          <p className="font-heading text-4xl leading-none text-green-600">{stats.active}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Full Time</p>
+          <p className="font-heading text-4xl leading-none text-green-600">{stats.fullTime}</p>
         </div>
-        <div className="animate-fade-up stagger-3 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: "4px solid #9CA3AF" }}>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Inactive</p>
-          <p className="font-heading text-4xl leading-none text-gray-400">{stats.inactive}</p>
+        <div className="animate-fade-up stagger-3 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: "4px solid #2563EB" }}>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Part Time</p>
+          <p className="font-heading text-4xl leading-none text-blue-600">{stats.partTime}</p>
+        </div>
+        <div className="animate-fade-up stagger-4 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: "4px solid #D97706" }}>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Trainee</p>
+          <p className="font-heading text-4xl leading-none text-amber-600">{stats.trainee}</p>
         </div>
       </div>
 
@@ -572,9 +577,10 @@ export default function EmployeesPage() {
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Employment Status *</label>
                       <select {...register("employmentStatus")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400 bg-white">
-                        <option value="ACTIVE">Active</option>
-                        <option value="INACTIVE">Inactive</option>
-                        <option value="ON_LEAVE">On Leave</option>
+                        <option value="FULL_TIME">Full Time</option>
+                        <option value="PART_TIME">Part Time</option>
+                        <option value="TRAINEE">Trainee</option>
+                        <option value="RESERVED">Reserved</option>
                         <option value="TERMINATED">Terminated</option>
                       </select>
                       {errors.employmentStatus && <p className="text-xs text-red-500 mt-1">{errors.employmentStatus.message}</p>}

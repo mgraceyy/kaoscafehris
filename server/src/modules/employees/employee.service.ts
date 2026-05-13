@@ -321,9 +321,9 @@ export async function importEmployees(csvContent: string): Promise<ImportResult>
         payType: resolvedPayType,
         basicSalary: resolvedPayType === "MONTHLY_FIXED" ? rateValue : 0,
         hourlyRate: resolvedPayType === "HOURLY" ? rateValue : undefined,
-        employmentStatus: (["ACTIVE", "INACTIVE", "ON_LEAVE"].includes(statusRaw)
+        employmentStatus: (["TRAINEE", "FULL_TIME", "PART_TIME", "RESERVED"].includes(statusRaw)
           ? statusRaw
-          : "ACTIVE") as "ACTIVE" | "INACTIVE" | "ON_LEAVE",
+          : "FULL_TIME") as "TRAINEE" | "FULL_TIME" | "PART_TIME" | "RESERVED",
         phone: row["phone"] || undefined,
         sssNumber: row["sssnumber"] || undefined,
         philhealthNumber: row["philhealthnumber"] || undefined,
@@ -423,7 +423,7 @@ export async function previewImportEmployees(csvContent: string): Promise<Import
     const roleRaw = (row["role"] ?? "").toUpperCase();
     const statusRaw = (row["employmentstatus"] ?? "").toUpperCase();
     const role = ["ADMIN", "MANAGER", "EMPLOYEE"].includes(roleRaw) ? roleRaw : "EMPLOYEE";
-    const employmentStatus = ["ACTIVE", "INACTIVE", "ON_LEAVE"].includes(statusRaw) ? statusRaw : "ACTIVE";
+    const employmentStatus = ["TRAINEE", "FULL_TIME", "PART_TIME", "RESERVED"].includes(statusRaw) ? statusRaw : "FULL_TIME";
     const branchRaw = row["branchid"] ?? "";
 
     const payTypeRaw = (row["paytype"] ?? "").toUpperCase();

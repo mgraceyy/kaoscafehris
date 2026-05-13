@@ -68,8 +68,8 @@ export default function OvertimeAssignDialog({ open, onOpenChange, editing }: Pr
   });
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { status: "ACTIVE" }],
-    queryFn: () => listEmployees({ status: "ACTIVE" }),
+    queryKey: ["employees", { status: "FULL_TIME" }],
+    queryFn: () => listEmployees({ status: "FULL_TIME" }),
     enabled: open,
   });
 

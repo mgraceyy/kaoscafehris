@@ -1,7 +1,7 @@
 import api from "@/lib/api";
 import type { Role } from "@/features/auth/auth.api";
 
-export type EmploymentStatus = "ACTIVE" | "INACTIVE" | "TERMINATED" | "ON_LEAVE";
+export type EmploymentStatus = "TRAINEE" | "FULL_TIME" | "PART_TIME" | "RESERVED" | "TERMINATED";
 export type PayType = "MONTHLY_FIXED" | "HOURLY";
 
 export interface EmployeeUser {

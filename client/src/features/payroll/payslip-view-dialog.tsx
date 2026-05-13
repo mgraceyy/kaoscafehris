@@ -20,9 +20,10 @@ function fmtShort(iso: string): string {
 
 function fmtEmploymentStatus(s: string): string {
   const map: Record<string, string> = {
-    ACTIVE: "Full Time",
-    ON_LEAVE: "On Leave",
-    INACTIVE: "Inactive",
+    FULL_TIME: "Full Time",
+    PART_TIME: "Part Time",
+    TRAINEE: "Trainee",
+    RESERVED: "Reserved",
     TERMINATED: "Terminated",
   };
   return map[s] ?? s;

@@ -20,7 +20,7 @@ export async function generateShifts(input: GenerateShiftsInput, userId?: string
   const employees = await prisma.employee.findMany({
     where: {
       branchId: input.branchId,
-      employmentStatus: "ACTIVE",
+      employmentStatus: { in: ["FULL_TIME", "PART_TIME", "TRAINEE"] },
       defaultShiftTypeId: { not: null },
     },
     include: { defaultShiftType: true },

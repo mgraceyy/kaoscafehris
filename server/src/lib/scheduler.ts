@@ -176,7 +176,7 @@ export async function checkUpcomingBirthdays() {
     const tomorrow = getTomorrow(tz);
 
     const employees = await prisma.employee.findMany({
-      where: { employmentStatus: "ACTIVE", dateOfBirth: { not: null } },
+      where: { employmentStatus: { in: ["FULL_TIME", "PART_TIME", "TRAINEE"] }, dateOfBirth: { not: null } },
       select: {
         employeeId: true, firstName: true, lastName: true,
         position: true, dateOfBirth: true,
@@ -229,7 +229,7 @@ export async function checkEmployeeMilestones() {
     const today = getDateParts(new Date(), tz);
 
     const employees = await prisma.employee.findMany({
-      where: { employmentStatus: "ACTIVE" },
+      where: { employmentStatus: { in: ["FULL_TIME", "PART_TIME", "TRAINEE"] } },
       select: {
         employeeId: true, firstName: true, lastName: true,
         position: true, dateHired: true,

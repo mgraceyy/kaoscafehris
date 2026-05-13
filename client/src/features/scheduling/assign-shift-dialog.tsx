@@ -93,8 +93,8 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
   });
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { status: "ACTIVE" }],
-    queryFn: () => listEmployees({ status: "ACTIVE" }),
+    queryKey: ["employees", { status: "FULL_TIME" }],
+    queryFn: () => listEmployees({ status: "FULL_TIME" }),
     enabled: open,
     select: (data) => data.filter((e) => e.position !== "Administrator"),
   });

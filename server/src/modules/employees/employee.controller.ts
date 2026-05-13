@@ -289,7 +289,7 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
       dateHired: "2024-01-15",
       payType: "MONTHLY_FIXED",
       rate: 18000,
-      employmentStatus: "ACTIVE",
+      employmentStatus: "FULL_TIME",
       phone: "09171234567",
       sssNumber: "12-3456789-0",
       philhealthNumber: "12-345678901-2",
@@ -345,10 +345,10 @@ export async function csvTemplate(_req: Request, res: Response, next: NextFuncti
       };
       ws.getCell(r, statusCol).dataValidation = {
         type: "list",
-        formulae: ['"ACTIVE,INACTIVE,ON_LEAVE"'],
+        formulae: ['"TRAINEE,FULL_TIME,PART_TIME,RESERVED"'],
         showErrorMessage: true,
         errorTitle: "Invalid status",
-        error: "Choose ACTIVE, INACTIVE, or ON_LEAVE.",
+        error: "Choose TRAINEE, FULL_TIME, PART_TIME, or RESERVED.",
       };
     }
 

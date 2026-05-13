@@ -103,7 +103,7 @@ export interface PayslipDetail extends PayslipSummary {
     basicSalary: string;
     payType: "MONTHLY_FIXED" | "HOURLY";
     hourlyRate: string | null;
-    employmentStatus: "ACTIVE" | "INACTIVE" | "TERMINATED" | "ON_LEAVE";
+    employmentStatus: "FULL_TIME" | "PART_TIME" | "TRAINEE" | "RESERVED" | "TERMINATED";
     sssNumber: string | null;
     philhealthNumber: string | null;
     pagibigNumber: string | null;

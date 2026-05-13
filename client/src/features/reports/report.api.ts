@@ -129,9 +129,10 @@ export async function getPayrollReport(
 export interface HeadcountBranchRow {
   branchId: string;
   branchName: string;
-  active: number;
-  inactive: number;
-  onLeave: number;
+  fullTime: number;
+  partTime: number;
+  trainee: number;
+  reserved: number;
   terminated: number;
   total: number;
 }
@@ -143,9 +144,10 @@ export interface HeadcountPositionRow {
 
 export interface HeadcountReport {
   totals: {
-    active: number;
-    inactive: number;
-    onLeave: number;
+    fullTime: number;
+    partTime: number;
+    trainee: number;
+    reserved: number;
     terminated: number;
     total: number;
   };

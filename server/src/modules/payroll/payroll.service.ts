@@ -250,7 +250,7 @@ export async function processRun(id: string) {
   const employees = await prisma.employee.findMany({
     where: {
       branchId: run.branchId,
-      employmentStatus: "ACTIVE",
+      employmentStatus: { in: ["FULL_TIME", "PART_TIME", "TRAINEE"] },
       OR: [
         { payType: "MONTHLY_FIXED", basicSalary: { gt: 0 } },
         { payType: "HOURLY", hourlyRate: { not: null } },

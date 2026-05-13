@@ -540,10 +540,11 @@ function HeadcountSection({
   const empty = !loading && !error && (!data || data.totals.total === 0);
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
-        <StatCard label="Active" value={data?.totals.active ?? 0} accent />
-        <StatCard label="Inactive" value={data?.totals.inactive ?? 0} />
-        <StatCard label="On Leave" value={data?.totals.onLeave ?? 0} />
+      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-6">
+        <StatCard label="Full Time" value={data?.totals.fullTime ?? 0} accent />
+        <StatCard label="Part Time" value={data?.totals.partTime ?? 0} />
+        <StatCard label="Trainee" value={data?.totals.trainee ?? 0} />
+        <StatCard label="Reserved" value={data?.totals.reserved ?? 0} />
         <StatCard label="Terminated" value={data?.totals.terminated ?? 0} tone="destructive" />
         <StatCard label="Total" value={data?.totals.total ?? 0} />
       </div>
@@ -554,21 +555,23 @@ function HeadcountSection({
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
               <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Active</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Inactive</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">On Leave</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Full Time</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Part Time</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Trainee</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Reserved</TableHead>
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Terminated</TableHead>
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="divide-y divide-gray-50">
-            <StateRow loading={loading} error={error} empty={empty} colSpan={6} fallback="Failed to load headcount" />
+            <StateRow loading={loading} error={error} empty={empty} colSpan={7} fallback="Failed to load headcount" />
             {data?.byBranch.map((b) => (
               <TableRow key={b.branchId} className="hover:bg-[#FAF5F5]">
                 <TableCell className="font-medium" style={{ color: BRAND }}>{b.branchName}</TableCell>
-                <TableCell className="text-right tabular-nums">{b.active}</TableCell>
-                <TableCell className="text-right tabular-nums">{b.inactive}</TableCell>
-                <TableCell className="text-right tabular-nums">{b.onLeave}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.fullTime}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.partTime}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.trainee}</TableCell>
+                <TableCell className="text-right tabular-nums">{b.reserved}</TableCell>
                 <TableCell className="text-right tabular-nums text-red-500">{b.terminated}</TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">{b.total}</TableCell>
               </TableRow>

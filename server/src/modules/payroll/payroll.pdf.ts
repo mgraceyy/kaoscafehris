@@ -55,6 +55,7 @@ type PayslipWithRelations = Prisma.PayslipGetPayload<{
 }>;
 
 const BRAND = "#8C1515";
+const ENTITLEMENTS = "#16A34A";
 
 // Helvetica (WinAnsi) cannot render U+20B1 — use "P" prefix.
 const PHP = (n: Prisma.Decimal | number | string): string => {
@@ -75,9 +76,10 @@ function fmtShort(d: Date): string {
 
 function fmtEmploymentStatus(s: string): string {
   const map: Record<string, string> = {
-    ACTIVE: "Full Time",
-    ON_LEAVE: "On Leave",
-    INACTIVE: "Inactive",
+    TRAINEE: "Trainee",
+    FULL_TIME: "Full Time",
+    PART_TIME: "Part Time",
+    RESERVED: "Reserved",
     TERMINATED: "Terminated",
   };
   return map[s] ?? s;
@@ -352,7 +354,7 @@ export function renderPayslip(
       label: "Regular Hours",
       units: numHours(payslip.basicPay),
       amount: PHP(payslip.basicPay),
-      amountColor: BRAND,
+      amountColor: ENTITLEMENTS,
     },
     ...earnings.map((e) => ({
       label: e.label,
@@ -363,10 +365,10 @@ export function renderPayslip(
           ? "0"
           : "",
       amount: PHP(e.amount),
-      amountColor: BRAND,
+      amountColor: ENTITLEMENTS,
     })),
   ];
-  y = drawSection(doc, "Entitlements", entRows, PHP(payslip.grossPay), BRAND, y, margin, pageW);
+  y = drawSection(doc, "Entitlements", entRows, PHP(payslip.grossPay), ENTITLEMENTS, y, margin, pageW);
   y += 10;
 
   // ── DEDUCTIONS TABLE ──────────────────────────────────────────────────────────
