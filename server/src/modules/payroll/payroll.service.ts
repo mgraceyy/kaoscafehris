@@ -560,6 +560,9 @@ export async function processRun(id: string) {
       ? Math.min(Math.max(0, actualHrs - otHrs), scheduledHrs)
       : Math.max(0, actualHrs - otHrs);
     const countedHrs = round2(regularHrs + otHrs);
+    if (hasShift) {
+      console.log(`[payroll:att] HOURS emp=${rec.employeeId} date=${dateKey} scheduled=${scheduledHrs} actual=${round2(actualHrs)} regular=${regularHrs} ot=${otHrs} counted=${countedHrs}${countedHrs < scheduledHrs ? ` GAP=${round2(scheduledHrs - countedHrs)}` : ""}`);
+    }
 
     // Compute late minutes live from clock-in vs scheduled shift start so stale or
     // missing lateMinutes on the attendance record never bleed into the deduction.
@@ -653,6 +656,17 @@ export async function processRun(id: string) {
             }
           }
         }
+      }
+    }
+  }
+
+  // Diagnostic: log scheduled dates with no attendance record (these contribute 0 to actual hours).
+  for (const [empId, dateSet] of scheduledDatesMap) {
+    const attDates = attendanceDateMap.get(empId);
+    for (const dateKey of dateSet) {
+      if (!attDates?.has(dateKey)) {
+        const schedHrs = scheduledHoursMap.get(empId)?.get(dateKey) ?? 0;
+        console.log(`[payroll:att] MISSING emp=${empId} date=${dateKey} scheduledHrs=${schedHrs} — no attendance record, 0 hours counted`);
       }
     }
   }
