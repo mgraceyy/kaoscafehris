@@ -494,10 +494,9 @@ export async function processRun(id: string) {
     const dateKey = rec.date.toISOString().slice(0, 10);
     const hasShift = scheduledDatesMap.get(rec.employeeId)?.has(dateKey) ?? false;
 
-    // Kiosk records only count on scheduled days or public holidays (shift generation
-    // commonly excludes holidays, so no shift assignment exists even though the employee worked).
-    // Admin-created (MANUAL) records are always counted regardless of schedule.
-    if (!hasShift && rec.source !== "MANUAL" && !periodHolidayDateKeys.has(dateKey)) {
+    // Kiosk and admin-created (MANUAL) records are always counted regardless of schedule.
+    // Shift generation commonly excludes holidays, so records on holidays count too.
+    if (!hasShift && rec.source !== "MANUAL" && rec.source !== "KIOSK" && !periodHolidayDateKeys.has(dateKey)) {
       console.log(`[payroll:att] SKIP emp=${rec.employeeId} date=${dateKey} hasShift=${hasShift} source=${rec.source} isHoliday=${periodHolidayDateKeys.has(dateKey)}`);
       continue;
     }
