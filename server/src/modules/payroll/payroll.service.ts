@@ -331,15 +331,17 @@ export async function processRun(id: string) {
     select: { employeeId: true, date: true, otHours: true },
   });
 
-  // scheduledDatesMap:    empId → Set of dateKeys with a shift assignment.
-  // scheduledHoursMap:    empId → dateKey → scheduled shift duration (hours).
-  // scheduledShiftEndMap: empId → dateKey → scheduled shift end (UTC Date).
+  // scheduledDatesMap:     empId → Set of dateKeys with a shift assignment.
+  // scheduledHoursMap:     empId → dateKey → scheduled shift duration (hours, after break deduction).
+  // scheduledShiftEndMap:  empId → dateKey → scheduled shift end (UTC Date).
   // scheduledShiftStartMap: empId → dateKey → scheduled shift start (UTC Date).
+  // shiftBreakMinutesMap:  empId → dateKey → break duration in minutes for the shift.
   // overtimeApprovedDatesMap: empId → Set of dateKeys where OT is approved.
   const scheduledDatesMap = new Map<string, Set<string>>();
   const scheduledHoursMap = new Map<string, Map<string, number>>();
   const scheduledShiftEndMap = new Map<string, Map<string, Date>>();
   const scheduledShiftStartMap = new Map<string, Map<string, Date>>();
+  const shiftBreakMinutesMap = new Map<string, Map<string, number>>();
   const overtimeApprovedDatesMap = new Map<string, Set<string>>();
   const assignedOtHoursMap = new Map<string, Map<string, number>>();
 
@@ -360,6 +362,9 @@ export async function processRun(id: string) {
     if (!scheduledHoursMap.has(sa.employeeId)) scheduledHoursMap.set(sa.employeeId, new Map());
     const prev = scheduledHoursMap.get(sa.employeeId)!.get(dateKey) ?? 0;
     if (shiftHrs > prev) scheduledHoursMap.get(sa.employeeId)!.set(dateKey, shiftHrs);
+
+    if (!shiftBreakMinutesMap.has(sa.employeeId)) shiftBreakMinutesMap.set(sa.employeeId, new Map());
+    shiftBreakMinutesMap.get(sa.employeeId)!.set(dateKey, breakMins);
 
     if (!scheduledShiftEndMap.has(sa.employeeId)) scheduledShiftEndMap.set(sa.employeeId, new Map());
     if (!scheduledShiftStartMap.has(sa.employeeId)) scheduledShiftStartMap.set(sa.employeeId, new Map());
@@ -533,10 +538,18 @@ export async function processRun(id: string) {
     })();
 
     // Use the effective (clipped) clock-in/out times when a shift exists.
+    // Deduct the shift's unpaid break from raw clock-in→out hours when the employee
+    // worked past the typical break threshold (4 h), so partial-day early-outs don't
+    // get credited for break time they didn't earn.
     // Without a shift (manual records), use the stored hoursWorked directly.
-    // The scheduledHrs cap already accounts for unpaid break time.
     const actualHrs = shiftStartForDate
-      ? (effectiveClockOut ? hoursBetween(effectiveClockIn, effectiveClockOut) : scheduledHrs)
+      ? (() => {
+          if (!effectiveClockOut) return scheduledHrs;
+          const rawHours = hoursBetween(effectiveClockIn, effectiveClockOut);
+          const breakMins = shiftBreakMinutesMap.get(rec.employeeId)?.get(dateKey) ?? 0;
+          const breakHrs = rawHours >= 4 ? breakMins / 60 : 0;
+          return Math.max(0, rawHours - breakHrs);
+        })()
       : rec.hoursWorked !== null
         ? toNum(rec.hoursWorked)
         : scheduledHrs;
