@@ -265,14 +265,16 @@ function StatCard({
   value,
   tone,
   accent,
+  green,
 }: {
   label: string;
   value: string | number;
   tone?: "destructive";
   accent?: boolean;
+  green?: boolean;
 }) {
-  const borderColor = accent ? BRAND : tone === "destructive" ? "#DC2626" : "#D4A0A0";
-  const valueColor = accent ? BRAND : tone === "destructive" ? "#DC2626" : "#111827";
+  const borderColor = green ? "#16A34A" : accent ? BRAND : tone === "destructive" ? "#DC2626" : "#D4A0A0";
+  const valueColor = green ? "#16A34A" : accent ? BRAND : tone === "destructive" ? "#DC2626" : "#111827";
 
   return (
     <div
@@ -340,7 +342,7 @@ function StateRow({
 }
 
 type ByBranchSort = "total" | "lateMins";
-type ByEmployeeSort = "hours" | "otHours" | "lateMins";
+type ByEmployeeSort = "present" | "late" | "absent" | "hours" | "otHours" | "lateMins";
 type SortDir = "asc" | "desc";
 
 function AttendanceSection({
@@ -388,6 +390,9 @@ function AttendanceSection({
     if (!data?.byEmployee) return [];
     const sorted = [...data.byEmployee];
     sorted.sort((a, b) => {
+      if (byEmployeeSort === "present") return (b.present - a.present) * empDir;
+      if (byEmployeeSort === "late") return (b.late - a.late) * empDir;
+      if (byEmployeeSort === "absent") return (b.absent - a.absent) * empDir;
       if (byEmployeeSort === "hours") return (b.totalHoursWorked - a.totalHoursWorked) * empDir;
       if (byEmployeeSort === "otHours") return (b.totalOvertimeHours - a.totalOvertimeHours) * empDir;
       return (b.totalLateMinutes - a.totalLateMinutes) * empDir;
@@ -466,9 +471,24 @@ function AttendanceSection({
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
               <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Employee</TableHead>
               <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Present</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Absent</TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleEmployeeSort("present")}
+              >
+                Present{byEmployeeSort === "present" ? (byEmployeeDir === "desc" ? " ▼" : " ▲") : " ↕"}
+              </TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleEmployeeSort("late")}
+              >
+                Late{byEmployeeSort === "late" ? (byEmployeeDir === "desc" ? " ▼" : " ▲") : " ↕"}
+              </TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleEmployeeSort("absent")}
+              >
+                Absent{byEmployeeSort === "absent" ? (byEmployeeDir === "desc" ? " ▼" : " ▲") : " ↕"}
+              </TableHead>
               <TableHead
                 className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
                 onClick={() => handleEmployeeSort("hours")}
@@ -519,7 +539,31 @@ function PayrollSection({
   error,
   data,
 }: SectionProps<import("./report.api").PayrollReport>) {
+  type ByPayrollEmployeeSort = "actualRegularPay" | "netPay";
+  const [byEmployeeSort, setByEmployeeSort] = useState<ByPayrollEmployeeSort>("netPay");
+  const [byEmployeeDir, setByEmployeeDir] = useState<SortDir>("desc");
   const empty = !loading && !error && (!data || data.totals.runCount === 0);
+
+  function handleEmployeeSort(col: ByPayrollEmployeeSort) {
+    if (byEmployeeSort === col) {
+      setByEmployeeDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setByEmployeeSort(col);
+      setByEmployeeDir("desc");
+    }
+  }
+
+  const empDir = byEmployeeDir === "desc" ? -1 : 1;
+  const sortedByEmployee = useMemo(() => {
+    if (!data?.byEmployee) return [];
+    const sorted = [...data.byEmployee];
+    sorted.sort((a, b) => {
+      if (byEmployeeSort === "actualRegularPay") return (b.actualRegularPay - a.actualRegularPay) * empDir;
+      return (b.netPay - a.netPay) * empDir;
+    });
+    return sorted;
+  }, [data?.byEmployee, byEmployeeSort, byEmployeeDir]);
+
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
@@ -527,7 +571,7 @@ function PayrollSection({
         <StatCard label="Payslips" value={data?.totals.payslipCount ?? 0} />
         <StatCard label="Total Gross" value={formatCurrency(data?.totals.totalGross ?? 0)} />
         <StatCard label="Total Deductions" value={formatCurrency(data?.totals.totalDeductions ?? 0)} tone="destructive" />
-        <StatCard label="Total Net Pay" value={formatCurrency(data?.totals.totalNet ?? 0)} accent />
+        <StatCard label="Total Net Pay" value={formatCurrency(data?.totals.totalNet ?? 0)} green />
       </div>
 
       <SectionDivider title="By Branch" />
@@ -552,7 +596,7 @@ function PayrollSection({
                 <TableCell className="text-right tabular-nums">{b.payslipCount}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatCurrency(b.totalGross)}</TableCell>
                 <TableCell className="text-right tabular-nums text-red-500">{formatCurrency(b.totalDeductions)}</TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(b.totalNet)}</TableCell>
+                <TableCell className="text-right font-semibold tabular-nums text-green-600">{formatCurrency(b.totalNet)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -583,7 +627,45 @@ function PayrollSection({
                 <TableCell className="text-gray-500 text-xs">{r.status}</TableCell>
                 <TableCell className="text-right tabular-nums">{r.payslipCount}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatCurrency(r.totalGross)}</TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(r.totalNet)}</TableCell>
+                <TableCell className="text-right font-semibold tabular-nums text-green-600">{formatCurrency(r.totalNet)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <SectionDivider title="By Employee" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-b border-gray-100 bg-gray-50/60">
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Employee</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleEmployeeSort("actualRegularPay")}
+              >
+                Actual Regular Pay{byEmployeeSort === "actualRegularPay" ? (byEmployeeDir === "desc" ? " ▼" : " ▲") : " ↕"}
+              </TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleEmployeeSort("netPay")}
+              >
+                Net Pay{byEmployeeSort === "netPay" ? (byEmployeeDir === "desc" ? " ▼" : " ▲") : " ↕"}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="divide-y divide-gray-50">
+            <StateRow loading={loading} error={error} empty={empty} colSpan={4} fallback="Failed to load payroll report" />
+            {sortedByEmployee.map((e) => (
+              <TableRow key={e.employeeId} className="hover:bg-[#FAF5F5]">
+                <TableCell>
+                  <div className="font-medium text-gray-900">{e.employeeName}</div>
+                  <div className="text-xs text-gray-400">{e.employeeCode}</div>
+                </TableCell>
+                <TableCell className="text-gray-600">{e.branchName}</TableCell>
+                <TableCell className="text-right font-medium tabular-nums">{formatCurrency(e.actualRegularPay)}</TableCell>
+                <TableCell className="text-right font-semibold tabular-nums text-green-600">{formatCurrency(e.netPay)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

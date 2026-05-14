@@ -316,9 +316,9 @@ export default function PayrollRunDetailPage() {
             {formatCurrency(totals.deductions)}
           </div>
         </div>
-        <div className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderLeftWidth: 4, borderLeftColor: BRAND }}>
+        <div className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderLeftWidth: 4, borderLeftColor: "#16A34A" }}>
           <div className="text-xs font-medium text-muted-foreground">Total Net Pay</div>
-          <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: BRAND }}>
+          <div className="mt-1 text-xl font-bold tabular-nums" style={{ color: "#16A34A" }}>
             {formatCurrency(totals.net)}
           </div>
         </div>

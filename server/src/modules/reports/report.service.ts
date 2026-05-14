@@ -253,6 +253,18 @@ export interface PayrollReportBranchRow {
   totalNet: number;
 }
 
+export interface PayrollEmployeeRow {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  branchId: string;
+  branchName: string;
+  basicPay: number;
+  lateDeductions: number;
+  actualRegularPay: number;
+  netPay: number;
+}
+
 export interface PayrollReport {
   range: { from: string; to: string };
   totals: {
@@ -264,6 +276,7 @@ export interface PayrollReport {
   };
   byBranch: PayrollReportBranchRow[];
   runs: PayrollReportRunRow[];
+  byEmployee: PayrollEmployeeRow[];
 }
 
 export async function payrollSummary(
@@ -291,6 +304,17 @@ export async function payrollSummary(
           grossPay: true,
           totalDeductions: true,
           netPay: true,
+          basicPay: true,
+          lateDeductions: true,
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              firstName: true,
+              lastName: true,
+              branch: { select: { id: true, name: true } },
+            },
+          },
         },
       },
     },
@@ -298,6 +322,7 @@ export async function payrollSummary(
   });
 
   const branchMap = new Map<string, PayrollReportBranchRow>();
+  const employeeMap = new Map<string, PayrollEmployeeRow>();
   const totals = {
     runCount: runs.length,
     payslipCount: 0,
@@ -317,6 +342,26 @@ export async function payrollSummary(
       gross += toNumber(p.grossPay);
       ded += toNumber(p.totalDeductions);
       net += toNumber(p.netPay);
+
+      const emp = p.employee;
+      let er = employeeMap.get(emp.id);
+      if (!er) {
+        er = {
+          employeeId: emp.id,
+          employeeCode: emp.employeeId,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          branchId: emp.branch.id,
+          branchName: emp.branch.name,
+          basicPay: 0,
+          lateDeductions: 0,
+          actualRegularPay: 0,
+          netPay: 0,
+        };
+        employeeMap.set(emp.id, er);
+      }
+      er.basicPay += toNumber(p.basicPay);
+      er.lateDeductions += toNumber(p.lateDeductions);
+      er.netPay += toNumber(p.netPay);
     }
 
     totals.payslipCount += payslipCount;
@@ -366,6 +411,16 @@ export async function payrollSummary(
     }))
     .sort((a, b) => b.totalNet - a.totalNet);
 
+  const byEmployee = Array.from(employeeMap.values())
+    .map((e) => ({
+      ...e,
+      basicPay: round2(e.basicPay),
+      lateDeductions: round2(e.lateDeductions),
+      actualRegularPay: round2(e.basicPay - e.lateDeductions),
+      netPay: round2(e.netPay),
+    }))
+    .sort((a, b) => b.netPay - a.netPay);
+
   return {
     range: {
       from: from.toISOString().slice(0, 10),
@@ -379,6 +434,7 @@ export async function payrollSummary(
     },
     byBranch,
     runs: runRows,
+    byEmployee,
   };
 }
 

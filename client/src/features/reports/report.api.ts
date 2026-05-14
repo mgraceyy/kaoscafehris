@@ -102,6 +102,18 @@ export interface PayrollRunRow {
   totalNet: number;
 }
 
+export interface PayrollEmployeeRow {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  branchId: string;
+  branchName: string;
+  basicPay: number;
+  lateDeductions: number;
+  actualRegularPay: number;
+  netPay: number;
+}
+
 export interface PayrollReport {
   range: DateRange;
   totals: {
@@ -113,6 +125,7 @@ export interface PayrollReport {
   };
   byBranch: PayrollBranchRow[];
   runs: PayrollRunRow[];
+  byEmployee: PayrollEmployeeRow[];
 }
 
 export async function getPayrollReport(

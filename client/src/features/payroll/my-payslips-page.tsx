@@ -97,7 +97,7 @@ export default function MyPayslipsPage() {
                 <TableCell className="text-right tabular-nums text-destructive">
                   {formatCurrency(p.totalDeductions)}
                 </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">
+                <TableCell className="text-right font-semibold tabular-nums text-green-600">
                   {formatCurrency(p.netPay)}
                 </TableCell>
                 <TableCell className="text-right">

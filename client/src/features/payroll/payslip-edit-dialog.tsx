@@ -445,7 +445,7 @@ export default function PayslipEditDialog({ open, onOpenChange, payslipId }: Pro
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Net Pay</div>
-                <div className="text-base font-bold tabular-nums">{formatCurrency(totals.net)}</div>
+                <div className="text-base font-bold tabular-nums text-green-600">{formatCurrency(totals.net)}</div>
               </div>
             </div>
           </div>

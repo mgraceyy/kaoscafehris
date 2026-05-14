@@ -199,7 +199,7 @@ export function PayslipPreview({ data }: { data: PayslipDetail }) {
         <span className="text-xs text-gray-500">Net pay</span>
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-gray-500">Total net pay:</span>
-          <span className="text-base font-bold tabular-nums" style={{ color: BRAND }}>
+          <span className="text-base font-bold tabular-nums text-green-600">
             {formatCurrency(data.netPay)}
           </span>
         </div>
