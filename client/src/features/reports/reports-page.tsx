@@ -460,18 +460,6 @@ function AttendanceSection({
       </div>
 
       <SectionDivider title="By Employee" />
-      <div className="flex items-center gap-3 mb-3">
-        <p className="text-xs font-medium text-gray-500">Sort by</p>
-        <select
-          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
-          value={byEmployeeSort}
-          onChange={(e) => handleEmployeeSort(e.target.value as ByEmployeeSort)}
-        >
-          <option value="hours">Hours</option>
-          <option value="otHours">OT Hrs</option>
-          <option value="lateMins">Late Mins</option>
-        </select>
-      </div>
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
@@ -485,20 +473,20 @@ function AttendanceSection({
                 className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
                 onClick={() => handleEmployeeSort("hours")}
               >
-                Hours{byEmployeeSort === "hours" && (byEmployeeDir === "desc" ? " ▼" : " ▲")}
+                Hours{byEmployeeSort === "hours" ? (byEmployeeDir === "desc" ? " ▼" : " ▲") : " ↕"}
               </TableHead>
               <TableHead
                 className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
                 onClick={() => handleEmployeeSort("otHours")}
               >
-                OT Hrs{byEmployeeSort === "otHours" && (byEmployeeDir === "desc" ? " ▼" : " ▲")}
+                OT Hrs{byEmployeeSort === "otHours" ? (byEmployeeDir === "desc" ? " ▼" : " ▲") : " ↕"}
               </TableHead>
               <TableHead
                 className="text-right text-[10px] font-bold uppercase tracking-widest cursor-pointer select-none hover:text-gray-600"
                 onClick={() => handleEmployeeSort("lateMins")}
                 style={{ color: byEmployeeSort === "lateMins" ? BRAND : undefined }}
               >
-                Late Mins{byEmployeeSort === "lateMins" && (byEmployeeDir === "desc" ? " ▼" : " ▲")}
+                Late Mins{byEmployeeSort === "lateMins" ? (byEmployeeDir === "desc" ? " ▼" : " ▲") : " ↕"}
               </TableHead>
             </TableRow>
           </TableHeader>
