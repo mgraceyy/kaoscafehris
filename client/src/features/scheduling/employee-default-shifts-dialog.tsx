@@ -40,10 +40,10 @@ export default function EmployeeDefaultShiftsDialog({ open, onOpenChange, branch
   const [selectedShiftTypeId, setSelectedShiftTypeId] = useState<string>("");
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { branchId, status: "FULL_TIME" }],
-    queryFn: () => listEmployees({ branchId, status: "FULL_TIME" }),
+    queryKey: ["employees", { branchId }],
+    queryFn: () => listEmployees({ branchId }),
     enabled: open && !!branchId,
-    select: (data) => data.filter((e) => e.position !== "Administrator"),
+    select: (data) => data.filter((e) => e.employmentStatus !== "TERMINATED" && e.position !== "Administrator"),
   });
 
   const shiftTypesQuery = useQuery({

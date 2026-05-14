@@ -362,7 +362,7 @@ export function renderPayslip(
         e.type === "OVERTIME"
           ? numHours(e.amount)
           : e.type === "HOLIDAY_PAY"
-          ? "0"
+          ? (() => { const m = e.label.match(/× (\d+\.?\d*) hrs/); return m ? m[1] : ""; })()
           : "",
       amount: PHP(e.amount),
       amountColor: ENTITLEMENTS,
@@ -374,7 +374,7 @@ export function renderPayslip(
   // ── DEDUCTIONS TABLE ──────────────────────────────────────────────────────────
   const dedRows: TableRow[] = deductions.map((d) => ({
     label: d.label,
-    units: d.type === "LATE" ? numHours(d.amount) : "",
+    units: d.type === "LATE" ? (() => { const m = d.label.match(/(\d+) min/); return m ? (Number(m[1]) / 60).toFixed(2) : ""; })() : "",
     amount: PHP(d.amount),
     amountColor: "#DC2626",
   }));

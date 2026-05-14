@@ -28,10 +28,10 @@ export default function AssignEmployeesDialog({ open, onOpenChange, shift }: Pro
   const [selected, setSelected] = useState<Record<string, string | undefined>>({});
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { status: "FULL_TIME" }],
-    queryFn: () => listEmployees({ status: "FULL_TIME" }),
+    queryKey: ["employees", "all"],
+    queryFn: () => listEmployees({}),
     enabled: open && !!shift,
-    select: (data) => data.filter((e) => e.position !== "Administrator"),
+    select: (data) => data.filter((e) => e.employmentStatus !== "TERMINATED" && e.position !== "Administrator"),
   });
 
   const branchesQuery = useQuery({

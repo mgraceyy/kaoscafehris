@@ -1012,9 +1012,10 @@ export async function processRun(id: string) {
               isCrossing: fallback!.isOvernight,
             };
 
-            // Eligible hours capped at 8. Late minutes always reduce eligibility,
-            // regardless of whether the entry came from a crossing shift or boundary.
-            const eligibleHours = Math.max(0, Math.min(effectiveEntry.hoursOnDate, 8 - effectiveEntry.lateMinutes / 60));
+            // Eligible hours capped at 8, then late minutes subtracted.
+            // This ensures lateness always reduces holiday pay — even when
+            // the employee works extra hours to make up the time.
+            const eligibleHours = Math.max(0, Math.min(effectiveEntry.hoursOnDate, 8) - effectiveEntry.lateMinutes / 60);
             const prorationFactor = round2(eligibleHours / 8);
 
             const pct = toNum(h.percentage);

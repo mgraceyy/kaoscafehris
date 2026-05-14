@@ -57,9 +57,10 @@ export default function AttendanceAddDialog({ open, onOpenChange }: Props) {
   const comboboxRef = useRef<HTMLDivElement>(null);
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { status: "FULL_TIME" }],
-    queryFn: () => listEmployees({ status: "FULL_TIME" }),
+    queryKey: ["employees", "all"],
+    queryFn: () => listEmployees({}),
     enabled: open,
+    select: (data) => data.filter((e) => e.employmentStatus !== "TERMINATED"),
   });
 
   const shiftTypesQuery = useQuery({

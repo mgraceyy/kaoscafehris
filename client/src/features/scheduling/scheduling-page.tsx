@@ -72,8 +72,8 @@ export default function SchedulingPage() {
   });
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", { status: "FULL_TIME" }],
-    queryFn: () => listEmployees({ status: "FULL_TIME" }),
+    queryKey: ["employees", "all"],
+    queryFn: () => listEmployees({}),
   });
 
   // Auto-select when there's only one branch
@@ -149,7 +149,7 @@ export default function SchedulingPage() {
   // Collect unique employees from the employees query
   const employees = useMemo(() => {
     return (employeesQuery.data ?? [])
-      .filter((e) => e.position !== "Administrator")
+      .filter((e) => e.employmentStatus !== "TERMINATED" && e.position !== "Administrator")
       .map((e) => ({ id: e.id, firstName: e.firstName, lastName: e.lastName }))
       .sort((a, b) =>
         `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)

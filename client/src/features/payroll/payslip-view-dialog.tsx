@@ -36,6 +36,16 @@ export function PayslipPreview({ data }: { data: PayslipDetail }) {
     : Math.round((Number(data.employee.basicSalary) / 26) * 100) / 100;
   const hourlyRate = dailyRate / 8;
 
+  const lateMinutesFromLabel = (label: string): number => {
+    const m = label.match(/(\d+) min/);
+    return m ? Number(m[1]) : 0;
+  };
+
+  const holidayHoursFromLabel = (label: string): string => {
+    const m = label.match(/× (\d+\.?\d*) hrs/);
+    return m ? m[1] : "";
+  };
+
   const toHours = (amount: string | number): string => {
     const n = Number(amount);
     if (!Number.isFinite(n) || n === 0 || hourlyRate <= 0) return "";
@@ -117,7 +127,7 @@ export function PayslipPreview({ data }: { data: PayslipDetail }) {
           <tr className="border-t border-gray-100">
             <td className="py-1.5 px-3 text-gray-700">Regular Hours</td>
             <td className="py-1.5 px-2 text-center text-gray-600">{toHours(data.basicPay)}</td>
-            <td className="py-1.5 px-3 text-right tabular-nums font-medium" style={{ color: BRAND }}>
+            <td className="py-1.5 px-3 text-right tabular-nums font-medium text-green-600">
               {formatCurrency(data.basicPay)}
             </td>
           </tr>
@@ -125,9 +135,9 @@ export function PayslipPreview({ data }: { data: PayslipDetail }) {
             <tr key={e.id} className="border-t border-gray-100">
               <td className="py-1.5 px-3 text-gray-700">{e.label}</td>
               <td className="py-1.5 px-2 text-center text-gray-600">
-                {e.type === "OVERTIME" ? toHours(e.amount) : e.type === "HOLIDAY_PAY" ? "0" : ""}
+                {e.type === "OVERTIME" ? toHours(e.amount) : e.type === "HOLIDAY_PAY" ? holidayHoursFromLabel(e.label) : ""}
               </td>
-              <td className="py-1.5 px-3 text-right tabular-nums font-medium" style={{ color: BRAND }}>
+              <td className="py-1.5 px-3 text-right tabular-nums font-medium text-green-600">
                 {formatCurrency(e.amount)}
               </td>
             </tr>
@@ -135,7 +145,7 @@ export function PayslipPreview({ data }: { data: PayslipDetail }) {
           <tr className="border-t border-gray-200 bg-gray-50">
             <td className="py-1.5 px-3 font-bold text-gray-800">Total</td>
             <td />
-            <td className="py-1.5 px-3 text-right tabular-nums font-bold" style={{ color: BRAND }}>
+            <td className="py-1.5 px-3 text-right tabular-nums font-bold text-green-700">
               {formatCurrency(data.grossPay)}
             </td>
           </tr>
@@ -166,7 +176,7 @@ export function PayslipPreview({ data }: { data: PayslipDetail }) {
               <tr key={d.id} className="border-t border-gray-100">
                 <td className="py-1.5 px-3 text-gray-700">{d.label}</td>
                 <td className="py-1.5 px-2 text-center text-gray-600">
-                  {d.type === "LATE" ? toHours(d.amount) : ""}
+                  {d.type === "LATE" ? (lateMinutesFromLabel(d.label) / 60).toFixed(2) : ""}
                 </td>
                 <td className="py-1.5 px-3 text-right tabular-nums font-medium text-red-600">
                   {formatCurrency(d.amount)}
