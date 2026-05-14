@@ -1016,7 +1016,7 @@ export async function processRun(id: string) {
             // This ensures lateness always reduces holiday pay — even when
             // the employee works extra hours to make up the time.
             const eligibleHours = Math.max(0, Math.min(effectiveEntry.hoursOnDate, 8) - effectiveEntry.lateMinutes / 60);
-            const prorationFactor = round2(eligibleHours / 8);
+            const prorationFactor = eligibleHours / 8;
 
             const pct = toNum(h.percentage);
             const amount = pct > 0
