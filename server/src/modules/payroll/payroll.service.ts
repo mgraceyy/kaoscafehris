@@ -1087,13 +1087,11 @@ export async function processRun(id: string) {
       }
 
       // Auto-compute unpaid leave deduction from approved UNPAID leave requests.
-      // MONTHLY_FIXED: daily rate = basicSalary / 26 (DOLE standard divisor).
-      // HOURLY: daily rate = hourlyRate × 8 hours.
+      // Only applies to MONTHLY_FIXED employees — hourly employees are no-work-no-pay.
+      // Daily rate = basicSalary / 26 (DOLE standard divisor).
       const unpaidDays = unpaidDaysMap.get(emp.id) ?? 0;
-      if (unpaidDays > 0) {
-        const dailyRate = emp.payType === "HOURLY"
-          ? round2(toNum(emp.hourlyRate) * 8)
-          : round2(toNum(emp.basicSalary) / 26);
+      if (unpaidDays > 0 && emp.payType !== "HOURLY") {
+        const dailyRate = round2(toNum(emp.basicSalary) / 26);
         const unpaidLeaveAmount = round2(dailyRate * unpaidDays);
         if (unpaidLeaveAmount > 0) {
           deductionRows.push({

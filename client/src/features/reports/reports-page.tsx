@@ -339,26 +339,61 @@ function StateRow({
   return null;
 }
 
+type ByBranchSort = "total" | "lateMins";
 type ByEmployeeSort = "hours" | "otHours" | "lateMins";
+type SortDir = "asc" | "desc";
 
 function AttendanceSection({
   loading,
   error,
   data,
 }: SectionProps<import("./report.api").AttendanceReport>) {
+  const [byBranchSort, setByBranchSort] = useState<ByBranchSort>("total");
+  const [byBranchDir, setByBranchDir] = useState<SortDir>("desc");
   const [byEmployeeSort, setByEmployeeSort] = useState<ByEmployeeSort>("hours");
+  const [byEmployeeDir, setByEmployeeDir] = useState<SortDir>("desc");
   const empty = !loading && !error && (!data || data.totals.totalRecords === 0);
 
+  function handleBranchSort(col: ByBranchSort) {
+    if (byBranchSort === col) {
+      setByBranchDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setByBranchSort(col);
+      setByBranchDir("desc");
+    }
+  }
+
+  function handleEmployeeSort(col: ByEmployeeSort) {
+    if (byEmployeeSort === col) {
+      setByEmployeeDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setByEmployeeSort(col);
+      setByEmployeeDir("desc");
+    }
+  }
+
+  const dir = byBranchDir === "desc" ? -1 : 1;
+  const sortedByBranch = useMemo(() => {
+    if (!data?.byBranch) return [];
+    const sorted = [...data.byBranch];
+    sorted.sort((a, b) => {
+      if (byBranchSort === "total") return (b.totalRecords - a.totalRecords) * dir;
+      return (b.totalLateMinutes - a.totalLateMinutes) * dir;
+    });
+    return sorted;
+  }, [data?.byBranch, byBranchSort, byBranchDir]);
+
+  const empDir = byEmployeeDir === "desc" ? -1 : 1;
   const sortedByEmployee = useMemo(() => {
     if (!data?.byEmployee) return [];
     const sorted = [...data.byEmployee];
     sorted.sort((a, b) => {
-      if (byEmployeeSort === "hours") return b.totalHoursWorked - a.totalHoursWorked;
-      if (byEmployeeSort === "otHours") return b.totalOvertimeHours - a.totalOvertimeHours;
-      return b.totalLateMinutes - a.totalLateMinutes;
+      if (byEmployeeSort === "hours") return (b.totalHoursWorked - a.totalHoursWorked) * empDir;
+      if (byEmployeeSort === "otHours") return (b.totalOvertimeHours - a.totalOvertimeHours) * empDir;
+      return (b.totalLateMinutes - a.totalLateMinutes) * empDir;
     });
     return sorted;
-  }, [data?.byEmployee, byEmployeeSort]);
+  }, [data?.byEmployee, byEmployeeSort, byEmployeeDir]);
 
   return (
     <div className="space-y-5">
@@ -374,21 +409,43 @@ function AttendanceSection({
       </div>
 
       <SectionDivider title="By Branch" />
+      <div className="flex items-center gap-3 mb-3">
+        <p className="text-xs font-medium text-gray-500">Sort by</p>
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
+          value={byBranchSort}
+          onChange={(e) => handleBranchSort(e.target.value as ByBranchSort)}
+        >
+          <option value="total">Total</option>
+          <option value="lateMins">Late Mins</option>
+        </select>
+      </div>
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
               <TableHead className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Branch</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Total</TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleBranchSort("total")}
+              >
+                Total{byBranchSort === "total" && (byBranchDir === "desc" ? " ▼" : " ▲")}
+              </TableHead>
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Present</TableHead>
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late</TableHead>
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Absent</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late Mins</TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleBranchSort("lateMins")}
+                style={{ color: byBranchSort === "lateMins" ? BRAND : undefined }}
+              >
+                Late Mins{byBranchSort === "lateMins" && (byBranchDir === "desc" ? " ▼" : " ▲")}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="divide-y divide-gray-50">
             <StateRow loading={loading} error={error} empty={empty} colSpan={6} fallback="Failed to load attendance report" />
-            {data?.byBranch.map((b) => (
+            {sortedByBranch.map((b) => (
               <TableRow key={b.branchId} className="hover:bg-[#FAF5F5]">
                 <TableCell className="font-medium" style={{ color: BRAND }}>{b.branchName}</TableCell>
                 <TableCell className="text-right tabular-nums">{b.totalRecords}</TableCell>
@@ -408,7 +465,7 @@ function AttendanceSection({
         <select
           className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
           value={byEmployeeSort}
-          onChange={(e) => setByEmployeeSort(e.target.value as ByEmployeeSort)}
+          onChange={(e) => handleEmployeeSort(e.target.value as ByEmployeeSort)}
         >
           <option value="hours">Hours</option>
           <option value="otHours">OT Hrs</option>
@@ -424,9 +481,25 @@ function AttendanceSection({
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Present</TableHead>
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late</TableHead>
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Absent</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Hours</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">OT Hrs</TableHead>
-              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">Late Mins</TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleEmployeeSort("hours")}
+              >
+                Hours{byEmployeeSort === "hours" && (byEmployeeDir === "desc" ? " ▼" : " ▲")}
+              </TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleEmployeeSort("otHours")}
+              >
+                OT Hrs{byEmployeeSort === "otHours" && (byEmployeeDir === "desc" ? " ▼" : " ▲")}
+              </TableHead>
+              <TableHead
+                className="text-right text-[10px] font-bold uppercase tracking-widest cursor-pointer select-none hover:text-gray-600"
+                onClick={() => handleEmployeeSort("lateMins")}
+                style={{ color: byEmployeeSort === "lateMins" ? BRAND : undefined }}
+              >
+                Late Mins{byEmployeeSort === "lateMins" && (byEmployeeDir === "desc" ? " ▼" : " ▲")}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="divide-y divide-gray-50">
