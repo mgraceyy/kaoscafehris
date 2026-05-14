@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { logAudit } from "../../lib/audit.js";
+import { sendMail } from "../../lib/email.js";
 import { getScheduledTimes, hoursBetween } from "../attendance/attendance.service.js";
 import { COMPANY_TZ, localDateKey, localCalendarDate, isCrossingLocal, localHoursSinceMidnight, localTimeInMinutes, localMidnightUtc } from "../../lib/timezone.js";
 import type {
@@ -27,6 +28,39 @@ function round2(n: number): number {
 function toNum(d: Prisma.Decimal | number | null | undefined): number {
   if (d === null || d === undefined) return 0;
   return typeof d === "number" ? d : Number(d);
+}
+
+function fmtLocal(date: Date) {
+  return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: COMPANY_TZ });
+}
+
+function payslipReadyHtml(opts: { employeeName: string; period: string; branchName: string }) {
+  return `
+    <div style="font-family:'Inter',sans-serif;color:#1a1a1a;max-width:640px">
+      <div style="background:linear-gradient(135deg,#1a5c2a,#2d7a3a);padding:24px 28px;border-radius:12px 12px 0 0">
+        <img src="https://xn--kaoscaf-hya.com/kaos-logo.svg" alt="KAOS Café" style="height:36px;filter:brightness(0) invert(1);margin-bottom:12px;display:block" />
+        <h2 style="margin:0;color:#fff;font-size:20px;font-weight:700">Payslip Ready</h2>
+        <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">Your payslip for this period is now available</p>
+      </div>
+      <div style="background:#fff;padding:24px 28px;border:1px solid #e6f0e6;border-top:none;border-radius:0 0 12px 12px">
+        <p style="margin:0 0 16px;font-size:14px">
+          Hi <strong>${opts.employeeName}</strong>, your payslip has been finalized and is ready for viewing.
+        </p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #e6f0e6;color:#666;width:100px">Period</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e6f0e6"><strong>${opts.period}</strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#666">Branch</td>
+            <td style="padding:8px 12px">${opts.branchName}</td>
+          </tr>
+        </table>
+        <p style="margin:20px 0 0;font-size:13px;color:#666">
+          Log in to the <a href="https://xn--kaoscaf-hya.com" style="color:#2d7a3a">KAOS HRIS Portal</a> to view and download your payslip.
+        </p>
+      </div>
+    </div>`;
 }
 
 // --- Query helpers ---------------------------------------------------------
@@ -1181,7 +1215,22 @@ export interface FullyPaidDeduction {
 export async function completeRun(id: string, userId: string) {
   const run = await prisma.payrollRun.findUnique({
     where: { id },
-    include: { payslips: { select: { id: true, employeeId: true } } },
+    include: {
+      branch: { select: { name: true } },
+      payslips: {
+        select: {
+          id: true,
+          employeeId: true,
+          employee: {
+            select: {
+              firstName: true,
+              lastName: true,
+              user: { select: { email: true } },
+            },
+          },
+        },
+      },
+    },
   });
   if (!run) throw new AppError(404, "Payroll run not found");
   if (run.status !== "PROCESSING") {
@@ -1240,6 +1289,27 @@ export async function completeRun(id: string, userId: string) {
     oldValues: { status: run.status },
     newValues: { status: "COMPLETED", processedBy: userId, processedAt: completed.processedAt },
   });
+
+  // Send email notifications to employees
+  const periodLabel = `${fmtLocal(run.periodStart)} – ${fmtLocal(run.periodEnd)}`;
+  for (const slip of run.payslips) {
+    const email = slip.employee.user?.email;
+    if (!email) continue;
+    try {
+      await sendMail({
+        to: email,
+        subject: `Payslip Ready — ${periodLabel}`,
+        html: payslipReadyHtml({
+          employeeName: `${slip.employee.firstName} ${slip.employee.lastName}`,
+          period: periodLabel,
+          branchName: run.branch.name,
+        }),
+      });
+    } catch (err) {
+      console.error(`[payroll] Failed to send payslip email to ${email}:`, err);
+    }
+  }
+
   return { run: completed, fullyPaidDeductions: fullyPaid };
 }
 
