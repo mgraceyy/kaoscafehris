@@ -139,23 +139,31 @@ export async function createRequest(input: CreateLeaveRequestInput) {
       replyTo: employeeUser?.email,
       subject: `Leave Request — ${empName} (${leaveLabel})`,
       html: `
-        <div style="font-family:'Inter',sans-serif;color:#1a1a1a;max-width:640px">
+        <div style="font-family:'Inter',Arial,sans-serif;color:#1a1a1a;max-width:600px;margin:0 auto">
           <div style="background:linear-gradient(135deg,#1e3b5c,#2c5282);padding:24px 28px;border-radius:12px 12px 0 0">
-            <img src="https://xn--kaoscaf-hya.com/kaos-logo.svg" alt="KAOS Café" style="height:36px;filter:brightness(0) invert(1);margin-bottom:12px;display:block" />
-            <h2 style="margin:0;color:#fff;font-size:20px;font-weight:700">Leave Request</h2>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">Awaiting your review</p>
+            <h2 style="margin:0;color:#fff;font-size:20px;font-weight:700;letter-spacing:-0.3px">Leave Request</h2>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px">Awaiting your review</p>
           </div>
-          <div style="background:#fff;padding:24px 28px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px">
-            <p style="margin:0 0 16px;font-size:14px">A new leave request has been filed and is awaiting your review.</p>
-            <table style="border-collapse:collapse;font-size:14px">
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Employee</td><td><strong>${empName}</strong></td></tr>
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Leave Type</td><td>${leaveLabel}</td></tr>
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Dates</td><td>${start} → ${end} (${created.totalDays} day${Number(created.totalDays) !== 1 ? "s" : ""})</td></tr>
-              ${created.reason ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Reason</td><td>${created.reason}</td></tr>` : ""}
+          <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;padding:28px">
+            <p style="margin:0 0 20px;font-size:14px;color:#374151">A new leave request has been filed and is awaiting your review.</p>
+            <table style="border-collapse:collapse;font-size:14px;width:100%;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+              <tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:11px 16px;color:#6b7280;font-weight:500;width:110px;background:#f8fafc">Employee</td>
+                <td style="padding:11px 16px;color:#111827;font-weight:600">${empName}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:11px 16px;color:#6b7280;font-weight:500;background:#f8fafc">Leave Type</td>
+                <td style="padding:11px 16px;color:#111827">${leaveLabel}</td>
+              </tr>
+              <tr${created.reason ? ' style="border-bottom:1px solid #e2e8f0"' : ""}>
+                <td style="padding:11px 16px;color:#6b7280;font-weight:500;background:#f8fafc">Dates</td>
+                <td style="padding:11px 16px;color:#111827">${start} &rarr; ${end} <span style="color:#6b7280;font-size:13px">(${created.totalDays} day${Number(created.totalDays) !== 1 ? "s" : ""})</span></td>
+              </tr>
+              ${created.reason ? `<tr><td style="padding:11px 16px;color:#6b7280;font-weight:500;background:#f8fafc;vertical-align:top">Reason</td><td style="padding:11px 16px;color:#374151">${created.reason}</td></tr>` : ""}
             </table>
-            <p style="margin:20px 0 0;font-size:13px;color:#666">
-              Log in to the <a href="https://xn--kaoscaf-hya.com" style="color:#2c5282">KAOS HRIS</a> to review this request.
-            </p>
+            <div style="margin-top:24px;text-align:center">
+              <a href="https://xn--kaoscaf-hya.com" style="display:inline-block;background:linear-gradient(135deg,#1e3b5c,#2c5282);color:#fff;text-decoration:none;padding:11px 28px;border-radius:8px;font-size:14px;font-weight:600">Review Request</a>
+            </div>
           </div>
         </div>
       `,
@@ -249,23 +257,28 @@ export async function reviewRequest(
       to: employeeUser.email,
       subject: `Your leave request has been ${isApproved ? "approved" : "rejected"}`,
       html: `
-        <div style="font-family:'Inter',sans-serif;color:#1a1a1a;max-width:640px">
-          <div style="background:linear-gradient(135deg,#1e3b5c,#2c5282);padding:24px 28px;border-radius:12px 12px 0 0">
-            <img src="https://xn--kaoscaf-hya.com/kaos-logo.svg" alt="KAOS Café" style="height:36px;filter:brightness(0) invert(1);margin-bottom:12px;display:block" />
-            <h2 style="margin:0;color:#fff;font-size:20px;font-weight:700">Leave ${isApproved ? "Approved" : "Rejected"}</h2>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">Your request has been reviewed</p>
+        <div style="font-family:'Inter',Arial,sans-serif;color:#1a1a1a;max-width:600px;margin:0 auto">
+          <div style="background:linear-gradient(135deg,${isApproved ? "#1e3b5c,#2c5282" : "#3b1e1e,#7f1d1d"});padding:24px 28px;border-radius:12px 12px 0 0">
+            <h2 style="margin:0;color:#fff;font-size:20px;font-weight:700;letter-spacing:-0.3px">Leave ${isApproved ? "Approved" : "Rejected"}</h2>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px">Your request has been reviewed</p>
           </div>
-          <div style="background:#fff;padding:24px 28px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px">
-            <p style="margin:0 0 16px;font-size:14px">Hi ${updated.employee.firstName},</p>
-            <p style="margin:0 0 16px;font-size:14px">Your leave request has been <strong>${isApproved ? "✅ approved" : "❌ rejected"}</strong>.</p>
-            <table style="border-collapse:collapse;font-size:14px">
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Leave Type</td><td>${leaveLabel}</td></tr>
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Dates</td><td>${start} → ${end} (${updated.totalDays} day${Number(updated.totalDays) !== 1 ? "s" : ""})</td></tr>
-              ${input.reviewNotes ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Notes</td><td>${input.reviewNotes}</td></tr>` : ""}
+          <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;padding:28px">
+            <p style="margin:0 0 8px;font-size:14px;color:#374151">Hi ${updated.employee.firstName},</p>
+            <p style="margin:0 0 20px;font-size:14px;color:#374151">Your leave request has been <strong style="color:${isApproved ? "#166534" : "#991b1b"}">${isApproved ? "approved" : "rejected"}</strong>.</p>
+            <table style="border-collapse:collapse;font-size:14px;width:100%;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+              <tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:11px 16px;color:#6b7280;font-weight:500;width:110px;background:#f8fafc">Leave Type</td>
+                <td style="padding:11px 16px;color:#111827">${leaveLabel}</td>
+              </tr>
+              <tr${input.reviewNotes ? ' style="border-bottom:1px solid #e2e8f0"' : ""}>
+                <td style="padding:11px 16px;color:#6b7280;font-weight:500;background:#f8fafc">Dates</td>
+                <td style="padding:11px 16px;color:#111827">${start} &rarr; ${end} <span style="color:#6b7280;font-size:13px">(${updated.totalDays} day${Number(updated.totalDays) !== 1 ? "s" : ""})</span></td>
+              </tr>
+              ${input.reviewNotes ? `<tr><td style="padding:11px 16px;color:#6b7280;font-weight:500;background:#f8fafc;vertical-align:top">Notes</td><td style="padding:11px 16px;color:#374151">${input.reviewNotes}</td></tr>` : ""}
             </table>
-            <p style="margin:20px 0 0;font-size:13px;color:#666">
-              Log in to the <a href="https://xn--kaoscaf-hya.com" style="color:#2c5282">KAOS HRIS</a> portal for details.
-            </p>
+            <div style="margin-top:24px;text-align:center">
+              <a href="https://xn--kaoscaf-hya.com" style="display:inline-block;background:linear-gradient(135deg,#1e3b5c,#2c5282);color:#fff;text-decoration:none;padding:11px 28px;border-radius:8px;font-size:14px;font-weight:600">View Details</a>
+            </div>
           </div>
         </div>
       `,

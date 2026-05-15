@@ -11,6 +11,11 @@ export interface PublicHoliday {
   percentage: number | null;
 }
 
+export async function listHolidayYears(): Promise<number[]> {
+  const { data } = await api.get<{ data: number[] }>("/holidays/years");
+  return data.data;
+}
+
 export async function listHolidays(year?: number): Promise<PublicHoliday[]> {
   const { data } = await api.get<{ data: PublicHoliday[] }>("/holidays", {
     params: year ? { year } : {},

@@ -17,6 +17,7 @@ import {
   createHoliday,
   deleteHoliday,
   listHolidays,
+  listHolidayYears,
   updateHoliday,
   type HolidayType,
   type PublicHoliday,
@@ -46,6 +47,7 @@ export default function HolidaysPage() {
   const { toast } = useToast();
   const currentYear = Number(new Intl.DateTimeFormat("en-CA", { timeZone: COMPANY_TZ, year: "numeric" }).format(new Date()));
   const [year, setYear] = useState(currentYear);
+  const yearsQuery = useQuery({ queryKey: ["holiday-years"], queryFn: listHolidayYears });
   const [searchTitle, setSearchTitle] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PublicHoliday | null>(null);
@@ -63,33 +65,27 @@ export default function HolidaysPage() {
     return query.data.filter((h) => h.name.toLowerCase().includes(q));
   }, [query.data, searchTitle]);
 
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["holidays"] });
+    qc.invalidateQueries({ queryKey: ["holiday-years"] });
+  };
+
   const createMut = useMutation({
     mutationFn: createHoliday,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["holidays"] });
-      toast("Holiday added", "success");
-      resetForm();
-    },
+    onSuccess: () => { invalidateAll(); toast("Holiday added", "success"); resetForm(); },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Partial<Omit<PublicHoliday, "id">> }) =>
       updateHoliday(id, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["holidays"] });
-      toast("Holiday updated", "success");
-      resetForm();
-    },
+    onSuccess: () => { invalidateAll(); toast("Holiday updated", "success"); resetForm(); },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
   const deleteMut = useMutation({
     mutationFn: deleteHoliday,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["holidays"] });
-      toast("Holiday deleted", "success");
-    },
+    onSuccess: () => { invalidateAll(); toast("Holiday deleted", "success"); },
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
 
@@ -137,7 +133,7 @@ export default function HolidaysPage() {
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
           >
-            {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+            {(yearsQuery.data ?? [currentYear - 1, currentYear, currentYear + 1]).map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>

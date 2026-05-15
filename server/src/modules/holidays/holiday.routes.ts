@@ -16,6 +16,22 @@ const holidaySchema = z.object({
   percentage: z.coerce.number().min(0).max(1000).nullable().optional(),
 });
 
+router.get("/years", async (_req, res, next) => {
+  try {
+    const tz = COMPANY_TZ;
+    const currentYear = parseInt(
+      new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric" }).format(new Date()),
+      10,
+    );
+    const rows = await prisma.publicHoliday.findMany({ select: { date: true } });
+    const yearSet = new Set(rows.map((r) => r.date.getUTCFullYear()));
+    yearSet.add(currentYear);
+    yearSet.add(currentYear + 1);
+    const years = Array.from(yearSet).sort((a, b) => a - b);
+    res.json({ data: years });
+  } catch (err) { next(err); }
+});
+
 router.get("/", async (req, res, next) => {
   try {
     const tz = COMPANY_TZ;
