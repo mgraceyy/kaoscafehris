@@ -1,9 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import ExcelJS from "exceljs";
 import { listEmployeeQuerySchema } from "./employee.schema.js";
 import * as employeeService from "./employee.service.js";
 import * as edService from "./employee-deductions.service.js";
 import * as eeService from "./employee-earnings.service.js";
+import * as docService from "./employee-document.service.js";
 import prisma from "../../config/db.js";
 
 type IdParams = { id: string };
@@ -140,6 +143,53 @@ export async function updateEarning(req: Request<EeParams>, res: Response, next:
 export async function removeEarning(req: Request<EeParams>, res: Response, next: NextFunction) {
   try {
     await eeService.removeEmployeeEarning(req.params.id, req.params.eeId);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// --- Employee Documents ------------------------------------------------------
+
+type DocParams = { id: string; docId: string };
+
+export async function listDocuments(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    const data = await docService.listEmployeeDocuments(req.params.id);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function uploadDocument(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    if (!req.file) {
+      res.status(400).json({ message: "No file uploaded" });
+      return;
+    }
+    const name = (req.body.name as string) || req.file.originalname;
+    const data = await docService.createEmployeeDocument(req.params.id, req.file, name);
+    res.status(201).json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function downloadDocument(req: Request<DocParams>, res: Response, next: NextFunction) {
+  try {
+    const doc = await docService.getDocumentById(req.params.docId, req.params.id);
+    const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "uploads");
+    const filePath = path.join(uploadsBase, "documents", doc.filename);
+    res.download(filePath, doc.originalName);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteDocument(req: Request<DocParams>, res: Response, next: NextFunction) {
+  try {
+    await docService.deleteEmployeeDocument(req.params.id, req.params.docId);
     res.status(204).send();
   } catch (err) {
     next(err);

@@ -230,6 +230,7 @@ model Employee {
   overtimeSchedules   OvertimeSchedule[]
   employeeDeductions  EmployeeDeduction[]
   employeeEarnings    EmployeeEarning[]
+  documents           EmployeeDocument[]
 
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -237,6 +238,22 @@ model Employee {
   @@index([branchId])
   @@index([employmentStatus])
   @@map("employees")
+}
+
+model EmployeeDocument {
+  id           String   @id @default(uuid())
+  employeeId   String
+  name         String   // user-provided label (e.g. "NBI Clearance")
+  filename     String   // stored filename on disk (UUID.ext)
+  originalName String   // original uploaded filename
+  mimeType     String
+  size         Int      // file size in bytes
+  uploadedAt   DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_documents")
 }
 
 // ============================================================================

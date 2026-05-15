@@ -31,6 +31,7 @@ import ImportPreviewDialog from "./import-preview-dialog";
 import EmployeeDeductionsTable, { type PendingDeduction } from "./employee-deductions-table";
 import { addEmployeeDeduction } from "./employee-deductions.api";
 import EmployeeEarningsTable, { type PendingEarning } from "./employee-earnings-table";
+import EmployeeDocumentsTable from "./employee-documents-table";
 import { addEmployeeEarning } from "./employee-earnings.api";
 
 const BRAND = "#8C1515";
@@ -710,6 +711,11 @@ export default function EmployeesPage() {
                     pendingEarnings={pendingEarnings}
                     onPendingChange={setPendingEarnings}
                   />
+                )}
+
+                {/* DOCUMENTS (edit mode only) */}
+                {detailEmployee && (
+                  <EmployeeDocumentsTable employeeId={detailEmployee.id} />
                 )}
 
           </div>
