@@ -161,8 +161,8 @@ export async function createRequest(input: CreateLeaveRequestInput) {
               </tr>
               ${created.reason ? `<tr><td style="padding:11px 16px;color:#6b7280;font-weight:500;background:#f8fafc;vertical-align:top">Reason</td><td style="padding:11px 16px;color:#374151">${created.reason}</td></tr>` : ""}
             </table>
-            <div style="margin-top:24px;text-align:center">
-              <a href="https://xn--kaoscaf-hya.com" style="display:inline-block;background:linear-gradient(135deg,#1e3b5c,#2c5282);color:#fff;text-decoration:none;padding:11px 28px;border-radius:8px;font-size:14px;font-weight:600">Review Request</a>
+            <div style="margin-top:24px;text-align:center;color:#6b7280;font-size:13px">
+              Please go to the portal to view this request.
             </div>
           </div>
         </div>
