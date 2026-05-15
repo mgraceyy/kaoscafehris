@@ -12,7 +12,7 @@ function dateOnly(isoDate: string): Date {
   return new Date(`${isoDate}T00:00:00.000Z`);
 }
 
-async function resolveEmployeeIdOrThrow(userId: string): Promise<string> {
+export async function resolveEmployeeIdOrThrow(userId: string): Promise<string> {
   const emp = await prisma.employee.findUnique({
     where: { userId },
     select: { id: true },

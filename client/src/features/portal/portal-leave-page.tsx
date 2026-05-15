@@ -68,32 +68,32 @@ function LeaveCard({ request }: { request: LeaveRequest }) {
   const typeColor = TYPE_COLORS[request.leaveType];
   return (
     <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between gap-3 mb-2">
         <p className="font-semibold text-sm" style={{ color: typeColor }}>{TYPE_LABEL[request.leaveType]}</p>
         <StatusBadge status={request.status} />
       </div>
 
       {request.reason && (
-        <p className="text-sm text-gray-600 mb-2">{request.reason}</p>
+        <p className="text-sm text-gray-600 mb-3">{request.reason}</p>
       )}
 
-      {request.status !== "PENDING" && (
-        <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
-          <div className="text-xs text-blue-500 font-semibold mb-1">Remarks</div>
-          <p className="text-sm text-blue-800">{request.reviewNotes || "—"}</p>
-        </div>
-      )}
-
-      <div className="flex gap-4 mb-3">
+      <div className="flex gap-6 mb-3">
         <div>
-          <div className="text-xs text-gray-400 mb-1">FROM</div>
-          <div className="text-sm font-semibold text-gray-800">{fmtDate(request.startDate.slice(0, 10))}</div>
+          <p className="text-xs text-gray-400 mb-0.5">FROM</p>
+          <p className="text-sm font-semibold text-gray-800">{fmtDate(request.startDate.slice(0, 10))}</p>
         </div>
         <div>
-          <div className="text-xs text-gray-400 mb-1">TO</div>
-          <div className="text-sm font-semibold text-gray-800">{fmtDate(request.endDate.slice(0, 10))}</div>
+          <p className="text-xs text-gray-400 mb-0.5">TO</p>
+          <p className="text-sm font-semibold text-gray-800">{fmtDate(request.endDate.slice(0, 10))}</p>
         </div>
       </div>
+
+      {request.reviewNotes && (
+        <div className="mt-1 mb-3 rounded-xl p-3" style={{ backgroundColor: "#FAF0F0" }}>
+          <p className="text-xs font-semibold mb-0.5" style={{ color: BRAND }}>Remarks</p>
+          <p className="text-sm text-gray-700">{request.reviewNotes}</p>
+        </div>
+      )}
 
       <p className="text-xs text-gray-400">
         Submitted {fmtDate(request.createdAt.slice(0, 10))}
@@ -288,13 +288,13 @@ export default function PortalLeavePage() {
   });
 
   return (
-    <div className="min-h-screen">
+    <div style={{ backgroundColor: "#FAF0F0", minHeight: "100vh" }}>
       {/* Header */}
       <div className="rounded-b-[28px] px-6 pt-14 pb-6" style={{ background: `linear-gradient(135deg, #6B0F0F 0%, ${BRAND} 50%, #9E1A1A 100%)` }}>
-        <div className="flex items-center justify-between animate-fade-up">
+        <div className="flex items-center justify-between">
           <div>
             <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-1">My Portal</p>
-            <h1 className="font-heading text-2xl italic text-white">Leave Request</h1>
+            <h1 className="font-heading text-2xl italic text-white">Leave</h1>
           </div>
           <img src="/kaos-logo.svg" alt="KAOS" className="h-10 w-auto brightness-0 invert opacity-40" />
         </div>
@@ -302,7 +302,7 @@ export default function PortalLeavePage() {
 
       <div className="px-4 pt-5 pb-32 space-y-4">
         {/* Leave balance strip */}
-        <div className="animate-fade-up stagger-2 bg-white rounded-2xl p-4 shadow-sm" style={{ borderTop: `3px solid ${BRAND}` }}>
+        <div className="bg-white rounded-2xl p-4 shadow-sm" style={{ borderTop: `3px solid ${BRAND}` }}>
           {balanceQuery.isLoading ? (
             <div className="flex justify-center py-2">
               <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
@@ -325,15 +325,22 @@ export default function PortalLeavePage() {
           )}
         </div>
 
-        <h2 className="font-heading text-lg text-gray-800 mt-4">Your Requests</h2>
+        <h2 className="font-heading text-lg text-gray-800">Your Requests</h2>
 
         {query.isLoading ? (
-          <div className="flex justify-center py-10">
+          <div className="flex justify-center py-14">
             <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
           </div>
         ) : query.data?.length === 0 ? (
-          <div className="py-10 text-center text-sm text-gray-400">
-            No leave requests yet.
+          <div className="flex flex-col items-center py-16 text-center">
+            <div
+              className="mb-3 flex h-14 w-14 items-center justify-center rounded-full"
+              style={{ backgroundColor: "#f3e8e8" }}
+            >
+              <CalendarDays className="h-6 w-6" style={{ color: BRAND }} />
+            </div>
+            <p className="font-semibold text-gray-700">No leave requests yet</p>
+            <p className="mt-1 text-sm text-gray-400">Tap the button below to file one</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -345,10 +352,12 @@ export default function PortalLeavePage() {
       </div>
 
       {/* Sticky bottom button */}
-      <div className="fixed bottom-20 left-0 right-0 px-4 pb-3 pt-1">
+      <div className="fixed bottom-16 left-0 right-0 z-40 px-4 pb-4 pt-6"
+        style={{ background: "linear-gradient(to top, #FAF0F0 60%, transparent)" }}
+      >
         <button
           onClick={() => setShowForm(true)}
-          className="w-full rounded-full py-4 text-sm font-semibold text-white shadow-lg transition-colors"
+          className="w-full rounded-full py-4 text-sm font-semibold text-white shadow-lg active:opacity-90 transition-opacity"
           style={{ backgroundColor: BRAND }}
         >
           New Leave Request

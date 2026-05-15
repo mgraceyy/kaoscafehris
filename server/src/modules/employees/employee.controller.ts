@@ -187,6 +187,19 @@ export async function downloadDocument(req: Request<DocParams>, res: Response, n
   }
 }
 
+export async function previewDocument(req: Request<DocParams>, res: Response, next: NextFunction) {
+  try {
+    const doc = await docService.getDocumentById(req.params.docId, req.params.id);
+    const uploadsBase = process.env.UPLOADS_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "uploads");
+    const filePath = path.resolve(path.join(uploadsBase, "documents", doc.filename));
+    res.setHeader("Content-Type", doc.mimeType);
+    res.setHeader("Content-Disposition", `inline; filename="${doc.originalName.replace(/"/g, "_")}"`);
+    res.sendFile(filePath);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function deleteDocument(req: Request<DocParams>, res: Response, next: NextFunction) {
   try {
     await docService.deleteEmployeeDocument(req.params.id, req.params.docId);

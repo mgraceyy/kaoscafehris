@@ -26,8 +26,7 @@ export async function uploadEmployeeDocument(
   form.append("name", name);
   const { data } = await api.post<{ data: EmployeeDocument }>(
     `/employees/${employeeId}/documents`,
-    form,
-    { headers: { "Content-Type": "multipart/form-data" } }
+    form
   );
   return data.data;
 }
@@ -41,4 +40,8 @@ export async function deleteEmployeeDocument(
 
 export function getDocumentDownloadUrl(employeeId: string, docId: string): string {
   return `/api/employees/${employeeId}/documents/${docId}/download`;
+}
+
+export function getDocumentPreviewUrl(employeeId: string, docId: string): string {
+  return `/api/employees/${employeeId}/documents/${docId}/preview`;
 }

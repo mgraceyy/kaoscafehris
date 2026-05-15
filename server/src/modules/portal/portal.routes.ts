@@ -13,8 +13,13 @@ import {
 import * as portalController from "./portal.controller.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const photosDir = path.join(__dirname, "..", "..", "..", "uploads", "photos");
+const uploadsBase = process.env.UPLOADS_DIR ?? path.join(__dirname, "..", "..", "..", "uploads");
+
+const photosDir = path.join(uploadsBase, "photos");
 fs.mkdirSync(photosDir, { recursive: true });
+
+const documentsDir = path.join(uploadsBase, "documents");
+fs.mkdirSync(documentsDir, { recursive: true });
 
 const photoUpload = multer({
   storage: multer.diskStorage({
@@ -31,6 +36,17 @@ const photoUpload = multer({
   },
 });
 
+const documentUpload = multer({
+  storage: multer.diskStorage({
+    destination: documentsDir,
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
 const router = Router();
 
 router.use(authenticate);
@@ -41,5 +57,12 @@ router.post("/profile/photo", photoUpload.single("photo"), portalController.uplo
 router.put("/password", validate(changePasswordSchema), portalController.changePassword);
 router.get("/schedule", portalController.getSchedule);
 router.get("/attendance", portalController.getAttendance);
+
+// Employee self-service documents
+router.get("/documents", portalController.listMyDocuments);
+router.post("/documents", documentUpload.single("file"), portalController.uploadMyDocument);
+router.get("/documents/:docId/preview", portalController.previewMyDocument);
+router.get("/documents/:docId/download", portalController.downloadMyDocument);
+router.delete("/documents/:docId", portalController.deleteMyDocument);
 
 export default router;

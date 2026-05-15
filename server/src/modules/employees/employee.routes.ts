@@ -54,6 +54,7 @@ router.delete("/:id/earnings/:eeId", employeeController.removeEarning);
 router.get("/:id/documents", employeeController.listDocuments);
 router.post("/:id/documents", documentUpload.single("file"), employeeController.uploadDocument);
 router.get("/:id/documents/:docId/download", employeeController.downloadDocument);
+router.get("/:id/documents/:docId/preview", employeeController.previewDocument);
 router.delete("/:id/documents/:docId", employeeController.deleteDocument);
 
 export default router;

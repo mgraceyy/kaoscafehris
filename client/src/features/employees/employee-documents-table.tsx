@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Loader2, Plus, Trash2, Download, Paperclip } from "lucide-react";
+import { Loader2, Plus, Trash2, Download, Paperclip, Eye, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
@@ -10,6 +10,8 @@ import {
   uploadEmployeeDocument,
   deleteEmployeeDocument,
   getDocumentDownloadUrl,
+  getDocumentPreviewUrl,
+  type EmployeeDocument,
 } from "./employee-documents.api";
 
 const BRAND = "#8C1515";
@@ -18,6 +20,10 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isPreviewable(mimeType: string): boolean {
+  return mimeType.startsWith("image/") || mimeType === "application/pdf";
 }
 
 interface Props {
@@ -32,6 +38,8 @@ export default function EmployeeDocumentsTable({ employeeId }: Props) {
   const [docName, setDocName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [previewDoc, setPreviewDoc] = useState<EmployeeDocument | null>(null);
 
   const docsQuery = useQuery({
     queryKey: ["employee-documents", employeeId],
@@ -98,7 +106,7 @@ export default function EmployeeDocumentsTable({ employeeId }: Props) {
                 <th className="px-3 py-2 text-left font-semibold uppercase tracking-wider text-gray-400">File Name</th>
                 <th className="px-3 py-2 text-right font-semibold uppercase tracking-wider text-gray-400">Size</th>
                 <th className="px-3 py-2 text-right font-semibold uppercase tracking-wider text-gray-400">Uploaded</th>
-                <th className="w-20" />
+                <th className="w-24" />
               </tr>
             </thead>
             <tbody>
@@ -126,6 +134,16 @@ export default function EmployeeDocumentsTable({ employeeId }: Props) {
                   </td>
                   <td className="px-2 py-2.5">
                     <div className="flex items-center justify-end gap-1">
+                      {isPreviewable(doc.mimeType) && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDoc(doc)}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                          title="Preview"
+                        >
+                          <Eye className="h-3 w-3" />
+                        </button>
+                      )}
                       <a
                         href={getDocumentDownloadUrl(employeeId, doc.id)}
                         download
@@ -169,7 +187,13 @@ export default function EmployeeDocumentsTable({ employeeId }: Props) {
                     )}
                   </td>
                   <td className="px-2 py-2 text-right">
-                    <span className="text-xs text-gray-400">—</span>
+                    {selectedFile ? (
+                      <span className="text-xs text-gray-500 truncate max-w-[80px] inline-block" title={selectedFile.name}>
+                        {selectedFile.name}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-2 py-2">
                     <div className="flex items-center justify-end gap-1">
@@ -181,7 +205,7 @@ export default function EmployeeDocumentsTable({ employeeId }: Props) {
                           const file = e.target.files?.[0];
                           if (file) {
                             setSelectedFile(file);
-                            if (!docName) setDocName(file.name);
+                            if (!docName) setDocName(file.name.replace(/\.[^/.]+$/, ""));
                           }
                         }}
                       />
@@ -214,6 +238,68 @@ export default function EmployeeDocumentsTable({ employeeId }: Props) {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Preview modal */}
+      {previewDoc && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setPreviewDoc(null)}
+        >
+          <div
+            className="flex flex-col bg-white rounded-xl shadow-2xl overflow-hidden w-full max-w-3xl max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Paperclip className="h-4 w-4 text-gray-400 shrink-0" />
+                <span className="font-semibold text-sm text-gray-800 truncate">{previewDoc.name}</span>
+                <span className="text-xs text-gray-400 truncate hidden sm:inline">{previewDoc.originalName}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={getDocumentDownloadUrl(employeeId, previewDoc.id)}
+                  download
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                  <Download className="h-3.5 w-3.5" /> Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDoc(null)}
+                  className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Preview area */}
+            <div className="flex-1 overflow-auto flex items-center justify-center bg-gray-50 min-h-0 p-4">
+              {previewDoc.mimeType.startsWith("image/") ? (
+                <img
+                  src={getDocumentPreviewUrl(employeeId, previewDoc.id)}
+                  alt={previewDoc.name}
+                  className="max-w-full max-h-full object-contain rounded shadow"
+                />
+              ) : previewDoc.mimeType === "application/pdf" ? (
+                <iframe
+                  src={getDocumentPreviewUrl(employeeId, previewDoc.id)}
+                  title={previewDoc.name}
+                  className="w-full rounded"
+                  style={{ minHeight: "60vh", height: "70vh" }}
+                />
+              ) : null}
+            </div>
+
+            {/* Footer: size + date */}
+            <div className="px-4 py-2 border-t bg-gray-50 shrink-0 flex items-center gap-4 text-xs text-gray-400">
+              <span>{formatFileSize(previewDoc.size)}</span>
+              <span>Uploaded {format(new Date(previewDoc.uploadedAt), "MMM d, yyyy")}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
