@@ -356,8 +356,23 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
 
   const tz = COMPANY_TZ;
   const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
+  const thresholdHours = await getSetting<number>("attendance.absent_if_no_clockin", 4);
 
-  if (!options?.skipOpenRecordGuard) {
+  // If the scheduler already created an auto-absent placeholder (clockIn at
+  // midnight of the shift date), we'll update it in-place instead of blocking
+  // the clock-in.  An admin-set ABSENT record has a real clockIn time and is
+  // intentionally skipped here — those stay as-is and block re-clock-in.
+  const autoAbsent = await prisma.attendance.findFirst({
+    where: {
+      employeeId: input.employeeId,
+      date: effectiveDateKey,
+      status: "ABSENT",
+      source: "MANUAL",
+      clockIn: effectiveDateKey,
+    },
+  });
+
+  if (!autoAbsent && !options?.skipOpenRecordGuard) {
     // Block if there's an open (no clock-out) record from a PREVIOUS date.
     const openPrevRecord = await prisma.attendance.findFirst({
       where: {
@@ -402,8 +417,9 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
     }
   }
 
-  let status: "PRESENT" | "LATE" = "PRESENT";
+  let status: "PRESENT" | "LATE" | "ABSENT" = "PRESENT";
   let lateMinutes: number | null = null;
+  let remarks: string | undefined;
 
   if (shift) {
     const { scheduledStart } = getScheduledTimes(effectiveDateKey, shift, tz);
@@ -424,8 +440,13 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
 
     const delta = computeLateMinutes(scheduledStart, correctedClockIn);
     if (delta > graceMinutes) {
-      status = "LATE";
       lateMinutes = delta;
+      if (delta >= thresholdHours * 60) {
+        status = "ABSENT";
+        remarks = "4+ hrs late";
+      } else {
+        status = "LATE";
+      }
     }
 
     // If corrected, use the corrected time for storage so payroll/holiday
@@ -433,6 +454,24 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
     if (correctedClockIn.getTime() !== clockInAt.getTime()) {
       clockInAt = correctedClockIn;
     }
+  }
+
+  if (autoAbsent) {
+    return prisma.attendance.update({
+      where: { id: autoAbsent.id },
+      data: {
+        clockIn: clockInAt,
+        status,
+        lateMinutes: lateMinutes ?? null,
+        remarks: remarks ?? null,
+        selfieIn: input.selfieIn ?? null,
+        clockInNote: input.clockInNote ?? null,
+        source: "KIOSK",
+        deviceId: input.deviceId ?? null,
+        localRecordId: input.localRecordId ?? null,
+      },
+      include: attendanceInclude,
+    });
   }
 
   return prisma.attendance.create({
@@ -443,6 +482,7 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
       clockIn: clockInAt,
       status,
       lateMinutes: lateMinutes ?? undefined,
+      remarks: remarks ?? undefined,
       selfieIn: input.selfieIn,
       clockInNote: input.clockInNote ?? undefined,
       deviceId: input.deviceId,

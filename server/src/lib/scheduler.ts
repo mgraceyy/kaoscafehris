@@ -1,7 +1,9 @@
 import cron from "node-cron";
 import prisma from "../config/db.js";
 import { sendMail } from "./email.js";
+import { getSetting } from "./settings-cache.js";
 import { COMPANY_TZ } from "./timezone.js";
+import { getScheduledTimes } from "../modules/attendance/attendance.service.js";
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -291,6 +293,109 @@ export async function checkEmployeeMilestones() {
   }
 }
 
+// ─── Absent check ─────────────────────────────────────────────────────────────
+
+export async function checkAbsentEmployees() {
+  try {
+    const tz = COMPANY_TZ;
+    const today = getDateParts(new Date(), tz);
+    const todayUTC = new Date(Date.UTC(today.year, today.month - 1, today.day));
+    const yesterdayUTC = new Date(todayUTC.getTime() - 24 * 60 * 60 * 1000);
+    const thresholdHours = await getSetting<number>("attendance.absent_if_no_clockin", 4);
+    const now = new Date();
+
+    const allShifts = await prisma.shift.findMany({
+      where: {
+        date: { in: [yesterdayUTC, todayUTC] },
+        status: "PUBLISHED",
+      },
+      include: {
+        assignments: {
+          include: {
+            employee: { select: { branchId: true } },
+          },
+        },
+      },
+    });
+
+    // Only process today's shifts plus yesterday's overnight shifts.
+    // This avoids re-marking past regular shifts if the server was down.
+    const shifts = allShifts.filter((s) => {
+      if (s.date.getTime() === todayUTC.getTime()) return true;
+      const startMins = s.startTime.getUTCHours() * 60 + s.startTime.getUTCMinutes();
+      const endMins = s.endTime.getUTCHours() * 60 + s.endTime.getUTCMinutes();
+      return endMins < startMins; // overnight shift from yesterday
+    });
+
+    if (shifts.length === 0) return;
+
+    // Collect all assigned employee IDs for bulk attendance lookup.
+    const allEmployeeIds = new Set<string>();
+    for (const shift of shifts) {
+      for (const a of shift.assignments) {
+        allEmployeeIds.add(a.employeeId);
+      }
+    }
+
+    // Fetch existing attendance records for all relevant employees across both dates.
+    const existingRecords = await prisma.attendance.findMany({
+      where: {
+        employeeId: { in: [...allEmployeeIds] },
+        date: { in: [yesterdayUTC, todayUTC] },
+      },
+      select: { employeeId: true, date: true },
+    });
+
+    // Build a set of "employeeId:dateKey" strings for O(1) lookup.
+    const recordKeys = new Set(
+      existingRecords.map((r) => `${r.employeeId}:${r.date.toISOString().slice(0, 10)}`),
+    );
+
+    const processed = new Set<string>();
+    let created = 0;
+
+    for (const shift of shifts) {
+      const { scheduledStart } = getScheduledTimes(shift.date, shift, tz);
+      const cutoff = new Date(scheduledStart.getTime() + thresholdHours * 60 * 60 * 1000);
+
+      if (now < cutoff) continue;
+
+      const dateKey = shift.date.toISOString().slice(0, 10);
+
+      for (const assignment of shift.assignments) {
+        const eid = assignment.employeeId;
+
+        if (processed.has(eid)) continue;
+        if (recordKeys.has(`${eid}:${dateKey}`)) continue;
+
+        const branchId = assignment.assignedBranchId ?? assignment.employee.branchId;
+
+        await prisma.attendance.create({
+          data: {
+            employeeId: eid,
+            branchId,
+            date: shift.date,
+            clockIn: shift.date,
+            status: "ABSENT",
+            source: "MANUAL",
+            syncStatus: "SYNCED",
+          },
+        });
+
+        processed.add(eid);
+        created++;
+        console.log(`[scheduler] Auto-marked absent: ${eid} (shift: ${shift.name}, date: ${dateKey})`);
+      }
+    }
+
+    if (created > 0) {
+      console.log(`[scheduler] Auto-marked ${created} employee(s) absent`);
+    }
+  } catch (err) {
+    console.error("[scheduler] Absent check failed:", err);
+  }
+}
+
 // ─── Start scheduler ──────────────────────────────────────────────────────────
 
 export async function startScheduler() {
@@ -300,4 +405,9 @@ export async function startScheduler() {
     await checkUpcomingBirthdays();
   }, { timezone: tz });
   console.log(`[scheduler] Daily checks scheduled — 08:00 ${tz} (milestones + birthdays)`);
+
+  cron.schedule("0 * * * *", async () => {
+    await checkAbsentEmployees();
+  }, { timezone: tz });
+  console.log(`[scheduler] Hourly absent check scheduled — ${tz}`);
 }
