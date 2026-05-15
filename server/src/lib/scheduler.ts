@@ -312,7 +312,7 @@ export async function checkAbsentEmployees() {
       include: {
         assignments: {
           include: {
-            employee: { select: { branchId: true } },
+            employee: { select: { branchId: true, payType: true } },
           },
         },
       },
@@ -365,6 +365,7 @@ export async function checkAbsentEmployees() {
       for (const assignment of shift.assignments) {
         const eid = assignment.employeeId;
 
+        if (assignment.employee.payType !== "HOURLY") continue;
         if (processed.has(eid)) continue;
         if (recordKeys.has(`${eid}:${dateKey}`)) continue;
 
