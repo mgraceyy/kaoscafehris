@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import multer from "multer";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 
@@ -38,6 +39,16 @@ export function errorHandler(
       message: "Validation failed",
       errors: err.flatten().fieldErrors,
     });
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    const messages: Record<string, string> = {
+      LIMIT_FILE_SIZE: "File is too large",
+      LIMIT_FILE_COUNT: "Too many files",
+      LIMIT_UNEXPECTED_FILE: "Unexpected file field",
+    };
+    res.status(400).json({ message: messages[err.code] ?? err.message });
     return;
   }
 
