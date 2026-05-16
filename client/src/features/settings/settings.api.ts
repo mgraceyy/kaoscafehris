@@ -70,3 +70,17 @@ export async function upsertGovTable(
 export async function deleteGovTable(id: string): Promise<void> {
   await api.delete(`/settings/government-tables/${id}`);
 }
+
+export type PermState = "on" | "off" | "locked";
+export type PermAction = "view" | "create" | "edit" | "delete";
+export type PermModule = "schedule" | "attendance" | "leave" | "branches" | "employees" | "payroll" | "reports" | "settings";
+export type RolePermissions = Partial<Record<PermModule, Partial<Record<PermAction, PermState>>>>;
+
+export async function getRolePermissions(role: string): Promise<RolePermissions | null> {
+  const { data } = await api.get<{ data: RolePermissions | null }>(`/settings/permissions/${role}`);
+  return data.data;
+}
+
+export async function saveRolePermissions(role: string, perms: RolePermissions): Promise<void> {
+  await api.put(`/settings/permissions/${role}`, perms);
+}

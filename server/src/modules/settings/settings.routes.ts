@@ -20,6 +20,9 @@ router.post(
 );
 router.delete("/government-tables/:id", settingsController.deleteGovernmentEntry);
 
+router.get("/permissions/:role", settingsController.getPermissions);
+router.put("/permissions/:role", settingsController.savePermissions);
+
 router.get("/", settingsController.list);
 router.put("/", validate(bulkUpdateSchema), settingsController.bulkUpdate);
 router.put(

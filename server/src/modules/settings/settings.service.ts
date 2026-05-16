@@ -1,6 +1,7 @@
 import prisma from "../../config/db.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { logAudit } from "../../lib/audit.js";
+import { invalidatePermissionCache } from "../../middleware/permission.js";
 import type {
   BulkUpdateInput,
   GovTableType,
@@ -152,6 +153,37 @@ export async function bulkUpdate(input: BulkUpdateInput): Promise<SettingOut[]> 
   }
 
   return results.map(mapRow);
+}
+
+// --- Role permissions ─────────────────────────────────────────────────────
+
+const VALID_ROLES = ["branch_manager", "employee"] as const;
+type PermRole = (typeof VALID_ROLES)[number];
+
+export async function getRolePermissions(role: PermRole): Promise<unknown> {
+  const key = `permissions.${role}`;
+  const row = await prisma.systemSetting.findUnique({ where: { key } });
+  if (!row) return null;
+  try { return JSON.parse(row.value); } catch { return null; }
+}
+
+export async function setRolePermissions(
+  role: PermRole,
+  perms: unknown
+): Promise<void> {
+  const key = `permissions.${role}`;
+  const row = await prisma.systemSetting.upsert({
+    where:  { key },
+    create: { key, value: JSON.stringify(perms), group: "permissions" },
+    update: { value: JSON.stringify(perms) },
+  });
+  invalidatePermissionCache();
+  await logAudit({
+    action: "UPDATE",
+    tableName: "system_settings",
+    recordId: row.id,
+    newValues: perms as Record<string, unknown>,
+  });
 }
 
 // --- Government contribution tables ---------------------------------------

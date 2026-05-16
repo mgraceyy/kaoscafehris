@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate, authorize } from "../../middleware/auth.js";
+import { authorizePermission } from "../../middleware/permission.js";
 import { validate } from "../../middleware/validate.js";
 import {
   createLeaveRequestSchema,
@@ -22,14 +23,14 @@ router.post(
 );
 router.patch(
   "/requests/:id/review",
-  authorize("ADMIN", "MANAGER"),
+  authorizePermission("leave", "edit"),
   validate(reviewLeaveSchema),
   leaveController.reviewRequest
 );
 router.patch("/requests/:id/cancel", leaveController.cancelRequest);
 router.patch(
   "/requests/:id/revert",
-  authorize("ADMIN", "MANAGER"),
+  authorizePermission("leave", "edit"),
   leaveController.revertRequest
 );
 

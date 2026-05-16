@@ -8,8 +8,12 @@ import { extractErrorMessage } from "@/lib/api";
 import {
   bulkUpdateSettings,
   listSettings,
+  getRolePermissions,
+  saveRolePermissions,
   type Setting,
   type BulkUpdateItem,
+  type RolePermissions,
+  type PermState,
 } from "./settings.api";
 
 const BRAND = "#8C1515";
@@ -122,7 +126,6 @@ const GROUP_DESC: Record<string, string> = {
 
 // ─── Permission types & role data ─────────────────────────────────────────────
 
-type PermState = "on" | "off" | "locked";
 type PermKey = "view" | "create" | "edit" | "delete";
 
 interface ModulePerms {
@@ -470,10 +473,6 @@ function GeneralTab() {
         <RoleConfigDialog
           role={configRole}
           onClose={() => setConfigRole(null)}
-          onSave={() => {
-            toast("Role permissions saved", "success");
-            setConfigRole(null);
-          }}
         />
       )}
     </div>
@@ -485,16 +484,54 @@ function GeneralTab() {
 interface RoleConfigDialogProps {
   role: RoleKey;
   onClose: () => void;
-  onSave: () => void;
 }
 
-function RoleConfigDialog({ role, onClose, onSave }: RoleConfigDialogProps) {
+function RoleConfigDialog({ role, onClose }: RoleConfigDialogProps) {
+  const { toast } = useToast();
+
   const [sections, setSections] = useState<PermSection[]>(() =>
     ROLE_SECTIONS[role].map((sec) => ({
       ...sec,
       modules: sec.modules.map((m) => ({ ...m, perms: { ...m.perms } })),
     }))
   );
+
+  // Load saved permissions and overlay them onto the defaults
+  const savedQuery = useQuery({
+    queryKey: ["role-permissions", role],
+    queryFn: () => getRolePermissions(role),
+  });
+
+  useEffect(() => {
+    const saved = savedQuery.data as RolePermissions | null | undefined;
+    if (!saved) return;
+    setSections(
+      ROLE_SECTIONS[role].map((sec) => ({
+        ...sec,
+        modules: sec.modules.map((mod) => {
+          const moduleKey = mod.name.toLowerCase() as keyof RolePermissions;
+          const savedModule = saved[moduleKey];
+          if (!savedModule) return { ...mod, perms: { ...mod.perms } };
+          const mergedPerms = { ...mod.perms } as Record<PermKey, PermState>;
+          for (const k of ["view", "create", "edit", "delete"] as PermKey[]) {
+            if (mergedPerms[k] !== "locked" && savedModule[k] !== undefined) {
+              mergedPerms[k] = savedModule[k] as PermState;
+            }
+          }
+          return { ...mod, perms: mergedPerms };
+        }),
+      }))
+    );
+  }, [savedQuery.data, role]);
+
+  const saveMut = useMutation({
+    mutationFn: (perms: RolePermissions) => saveRolePermissions(role, perms),
+    onSuccess: () => {
+      toast("Role permissions saved", "success");
+      onClose();
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
 
   function toggle(si: number, mi: number, perm: PermKey) {
     setSections((prev) =>
@@ -511,6 +548,20 @@ function RoleConfigDialog({ role, onClose, onSave }: RoleConfigDialogProps) {
             }
       )
     );
+  }
+
+  function handleSave() {
+    const perms: RolePermissions = {};
+    for (const sec of sections) {
+      for (const mod of sec.modules) {
+        const key = mod.name.toLowerCase() as keyof RolePermissions;
+        perms[key] = {} as Record<PermKey, PermState>;
+        for (const k of ["view", "create", "edit", "delete"] as PermKey[]) {
+          (perms[key] as Record<PermKey, PermState>)[k] = mod.perms[k];
+        }
+      }
+    }
+    saveMut.mutate(perms);
   }
 
   return createPortal(
@@ -628,16 +679,19 @@ function RoleConfigDialog({ role, onClose, onSave }: RoleConfigDialogProps) {
           <button
             type="button"
             onClick={onClose}
+            disabled={saveMut.isPending}
             className="rounded-lg border border-gray-200 px-5 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={onSave}
-            className="rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors"
+            onClick={handleSave}
+            disabled={saveMut.isPending || savedQuery.isLoading}
+            className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60"
             style={{ backgroundColor: BRAND }}
           >
+            {saveMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Save Changes
           </button>
         </div>

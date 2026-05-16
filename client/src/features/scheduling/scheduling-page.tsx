@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listBranches } from "@/features/branches/branches.api";
 import { listEmployees } from "@/features/employees/employees.api";
+import { useAuthStore } from "@/features/auth/auth.store";
 import {
   deleteShift,
   formatShiftTime,
@@ -41,6 +42,9 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function SchedulingPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const user = useAuthStore((s) => s.user);
+  const isManager = user?.role === "MANAGER";
+  const managerBranchId = isManager ? (user?.employee?.branchId ?? undefined) : undefined;
 
   const [view, setView] = useState<"weekly" | "monthly">("weekly");
   const [calendarWeek, setCalendarWeek] = useState<Date>(new Date());
@@ -72,16 +76,18 @@ export default function SchedulingPage() {
   });
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", "all"],
-    queryFn: () => listEmployees({}),
+    queryKey: ["employees", managerBranchId ?? "all"],
+    queryFn: () => listEmployees(managerBranchId ? { branchId: managerBranchId } : {}),
   });
 
-  // Auto-select when there's only one branch
+  // Auto-select branch: lock to manager's branch, or auto-select when only one branch exists
   useEffect(() => {
-    if (branchesQuery.data?.length === 1 && branchIds.length === 0) {
+    if (managerBranchId) {
+      setBranchIds([managerBranchId]);
+    } else if (branchesQuery.data?.length === 1 && branchIds.length === 0) {
       setBranchIds([branchesQuery.data[0].id]);
     }
-  }, [branchesQuery.data, branchIds]);
+  }, [branchesQuery.data, managerBranchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -149,7 +155,7 @@ export default function SchedulingPage() {
   // Collect unique employees from the employees query
   const employees = useMemo(() => {
     return (employeesQuery.data ?? [])
-      .filter((e) => e.employmentStatus !== "TERMINATED" && e.position !== "Administrator")
+      .filter((e) => e.employmentStatus !== "TERMINATED" && e.user.role !== "ADMIN")
       .map((e) => ({ id: e.id, firstName: e.firstName, lastName: e.lastName }))
       .sort((a, b) =>
         `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)

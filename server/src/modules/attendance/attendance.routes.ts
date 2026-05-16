@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import multer from "multer";
 import { authenticate, authorize } from "../../middleware/auth.js";
+import { authorizePermission } from "../../middleware/permission.js";
 import { validate } from "../../middleware/validate.js";
 import {
   clockInSchema,
@@ -47,20 +48,20 @@ router.post(
   attendanceController.uploadSelfie
 );
 router.post("/clock-in", validate(clockInSchema), attendanceController.clockIn);
-router.post("/manual", authorize("ADMIN", "MANAGER"), validate(manualCreateSchema), attendanceController.manualCreate);
+router.post("/manual", authorizePermission("attendance", "create"), validate(manualCreateSchema), attendanceController.manualCreate);
 router.post("/:id/clock-out", validate(clockOutSchema), attendanceController.clockOut);
 router.post("/sync", validate(syncBatchSchema), attendanceController.sync);
 
-router.get("/", authorize("ADMIN", "MANAGER"), attendanceController.list);
-router.get("/assigned-shift", authorize("ADMIN", "MANAGER"), attendanceController.assignedShift);
+router.get("/", authorizePermission("attendance", "view"), attendanceController.list);
+router.get("/assigned-shift", authorizePermission("attendance", "view"), attendanceController.assignedShift);
 router.post("/fix-overnight-clocks", authorize("ADMIN"), attendanceController.fixOvernightClocks);
-router.get("/:id", authorize("ADMIN", "MANAGER"), attendanceController.getById);
+router.get("/:id", authorizePermission("attendance", "view"), attendanceController.getById);
 router.put(
   "/:id",
-  authorize("ADMIN"),
+  authorizePermission("attendance", "edit"),
   validate(manualAdjustSchema),
   attendanceController.adjust
 );
-router.delete("/:id", authorize("ADMIN"), attendanceController.deleteRecord);
+router.delete("/:id", authorizePermission("attendance", "delete"), attendanceController.deleteRecord);
 
 export default router;

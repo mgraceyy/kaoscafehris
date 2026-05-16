@@ -20,6 +20,7 @@ import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listBranches } from "@/features/branches/branches.api";
 import { listEmployees } from "@/features/employees/employees.api";
+import { useAuthStore } from "@/features/auth/auth.store";
 import { createShift, type AssignEmployeeEntry } from "./scheduling.api";
 import { listShiftTypes } from "./shift-types.api";
 import RecurrencePicker, {
@@ -55,6 +56,8 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
   const qc = useQueryClient();
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
+  const user = useAuthStore((s) => s.user);
+  const managerBranchId = user?.role === "MANAGER" ? (user?.employee?.branchId ?? "") : "";
 
   const [recurrence, setRecurrence] = useState<RecurrenceConfig>(
     defaultRecurrence(initialDate ?? today)
@@ -71,7 +74,7 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      branchId: "",
+      branchId: managerBranchId,
       shiftTypeId: "",
       dateFrom: initialDate ?? today,
     },
@@ -96,18 +99,18 @@ export default function AssignShiftDialog({ open, onOpenChange, initialDate }: P
     queryKey: ["employees", "all"],
     queryFn: () => listEmployees({}),
     enabled: open,
-    select: (data) => data.filter((e) => e.employmentStatus !== "TERMINATED" && e.position !== "Administrator"),
+    select: (data) => data.filter((e) => e.employmentStatus !== "TERMINATED" && e.user.role !== "ADMIN"),
   });
 
   useEffect(() => {
     if (open) {
       const start = initialDate ?? today;
-      reset({ branchId: "", shiftTypeId: "", dateFrom: start });
+      reset({ branchId: managerBranchId, shiftTypeId: "", dateFrom: start });
       setRecurrence(defaultRecurrence(start));
       setSelectedIds(new Set());
       setSearch("");
     }
-  }, [open, reset, initialDate]);
+  }, [open, reset, initialDate, managerBranchId]);
 
   useEffect(() => {
     if (dateFrom) {

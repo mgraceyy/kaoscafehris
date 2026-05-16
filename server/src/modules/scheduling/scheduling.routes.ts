@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate, authorize } from "../../middleware/auth.js";
+import { authorizePermission } from "../../middleware/permission.js";
 import { validate } from "../../middleware/validate.js";
 import {
   assignEmployeesSchema,
@@ -19,27 +20,31 @@ router.get("/shifts", schedulingController.listShifts);
 router.get("/shifts/:id", schedulingController.getShift);
 router.post(
   "/shifts",
-  authorize("ADMIN"),
+  authorizePermission("schedule", "create"),
   validate(createShiftSchema),
   schedulingController.createShift
 );
 router.put(
   "/shifts/:id",
-  authorize("ADMIN"),
+  authorizePermission("schedule", "edit"),
   validate(updateShiftSchema),
   schedulingController.updateShift
 );
-router.delete("/shifts/:id", authorize("ADMIN"), schedulingController.deleteShift);
+router.delete(
+  "/shifts/:id",
+  authorizePermission("schedule", "delete"),
+  schedulingController.deleteShift
+);
 
 router.post(
   "/shifts/:id/assignments",
-  authorize("ADMIN"),
+  authorizePermission("schedule", "create"),
   validate(assignEmployeesSchema),
   schedulingController.assignEmployees
 );
 router.delete(
   "/shifts/:id/assignments/:employeeId",
-  authorize("ADMIN"),
+  authorizePermission("schedule", "delete"),
   schedulingController.unassignEmployee
 );
 
