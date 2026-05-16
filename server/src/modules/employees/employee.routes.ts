@@ -27,34 +27,37 @@ const documentUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-router.use(authenticate, authorize("ADMIN"));
+router.use(authenticate);
 
-router.get("/", employeeController.list);
-router.get("/import/template", employeeController.csvTemplate);
-router.get("/:id", employeeController.getById);
-router.post("/", validate(createEmployeeSchema), employeeController.create);
-router.post("/import/preview", csvUpload.single("file"), employeeController.previewImportCsv);
-router.post("/import", csvUpload.single("file"), employeeController.importCsv);
-router.put("/:id", validate(updateEmployeeSchema), employeeController.update);
-router.delete("/:id", employeeController.deactivate);
+// Read-only routes: accessible by both ADMIN and MANAGER
+router.get("/", authorize("ADMIN", "MANAGER"), employeeController.list);
+router.get("/:id", authorize("ADMIN", "MANAGER"), employeeController.getById);
+
+// Admin-only routes
+router.get("/import/template", authorize("ADMIN"), employeeController.csvTemplate);
+router.post("/", authorize("ADMIN"), validate(createEmployeeSchema), employeeController.create);
+router.post("/import/preview", authorize("ADMIN"), csvUpload.single("file"), employeeController.previewImportCsv);
+router.post("/import", authorize("ADMIN"), csvUpload.single("file"), employeeController.importCsv);
+router.put("/:id", authorize("ADMIN"), validate(updateEmployeeSchema), employeeController.update);
+router.delete("/:id", authorize("ADMIN"), employeeController.deactivate);
 
 // Employee deduction assignments
-router.get("/:id/deductions", employeeController.listDeductions);
-router.post("/:id/deductions", employeeController.addDeduction);
-router.patch("/:id/deductions/:edId", employeeController.updateDeduction);
-router.delete("/:id/deductions/:edId", employeeController.removeDeduction);
+router.get("/:id/deductions", authorize("ADMIN"), employeeController.listDeductions);
+router.post("/:id/deductions", authorize("ADMIN"), employeeController.addDeduction);
+router.patch("/:id/deductions/:edId", authorize("ADMIN"), employeeController.updateDeduction);
+router.delete("/:id/deductions/:edId", authorize("ADMIN"), employeeController.removeDeduction);
 
 // Employee earning assignments
-router.get("/:id/earnings", employeeController.listEarnings);
-router.post("/:id/earnings", employeeController.addEarning);
-router.patch("/:id/earnings/:eeId", employeeController.updateEarning);
-router.delete("/:id/earnings/:eeId", employeeController.removeEarning);
+router.get("/:id/earnings", authorize("ADMIN"), employeeController.listEarnings);
+router.post("/:id/earnings", authorize("ADMIN"), employeeController.addEarning);
+router.patch("/:id/earnings/:eeId", authorize("ADMIN"), employeeController.updateEarning);
+router.delete("/:id/earnings/:eeId", authorize("ADMIN"), employeeController.removeEarning);
 
 // Employee documents
-router.get("/:id/documents", employeeController.listDocuments);
-router.post("/:id/documents", documentUpload.single("file"), employeeController.uploadDocument);
-router.get("/:id/documents/:docId/download", employeeController.downloadDocument);
-router.get("/:id/documents/:docId/preview", employeeController.previewDocument);
-router.delete("/:id/documents/:docId", employeeController.deleteDocument);
+router.get("/:id/documents", authorize("ADMIN"), employeeController.listDocuments);
+router.post("/:id/documents", authorize("ADMIN"), documentUpload.single("file"), employeeController.uploadDocument);
+router.get("/:id/documents/:docId/download", authorize("ADMIN"), employeeController.downloadDocument);
+router.get("/:id/documents/:docId/preview", authorize("ADMIN"), employeeController.previewDocument);
+router.delete("/:id/documents/:docId", authorize("ADMIN"), employeeController.deleteDocument);
 
 export default router;
