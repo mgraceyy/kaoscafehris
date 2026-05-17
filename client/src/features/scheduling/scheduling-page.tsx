@@ -213,11 +213,10 @@ export default function SchedulingPage() {
   return (
     <div className="mx-auto max-w-full px-4 py-8 md:px-8">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between animate-fade-up relative z-50">
-        <div>
+      <div className="mb-6 animate-fade-up relative z-50">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="font-heading text-3xl font-bold text-gray-900">Schedule</h1>
-        </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
             <button
               onClick={() => setView("weekly")}
@@ -368,6 +367,7 @@ export default function SchedulingPage() {
           >
             + Add Shift
           </button>
+        </div>
         </div>
       </div>
 

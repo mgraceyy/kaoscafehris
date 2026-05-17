@@ -72,7 +72,7 @@ export default function PayrollPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-heading text-3xl font-bold text-gray-900">Employee Payroll</h1>
         <button
           onClick={() => setCreateOpen(true)}

@@ -185,10 +185,10 @@ export default function AppShell() {
       </header>
 
       {/* ── Mobile drawer ──────────────────────────────── */}
-      {/* Backdrop */}
+      {/* Backdrop — z-[80] so it covers page elements that use z-50 (e.g. scheduling dropdowns) */}
       <div
         className={cn(
-          "fixed inset-0 z-40 md:hidden transition-opacity duration-300",
+          "fixed inset-0 z-[80] md:hidden transition-opacity duration-300",
           mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         )}
         style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
@@ -198,7 +198,7 @@ export default function AppShell() {
       {/* Drawer panel */}
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-white shadow-2xl md:hidden",
+          "fixed inset-y-0 left-0 z-[90] flex w-72 flex-col bg-white shadow-2xl md:hidden",
           "transition-transform duration-300 ease-in-out",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
