@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { extractErrorMessage } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import Pagination from "@/components/ui/pagination";
 import { listEmployees } from "@/features/employees/employees.api";
 import {
   listBranches,
@@ -84,6 +85,8 @@ export default function BranchesPage() {
   const [panelBranch, setPanelBranch] = useState<Branch | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const isEdit = !!panelBranch;
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const query = useQuery({
     queryKey: ["branches", {}],
@@ -101,6 +104,8 @@ export default function BranchesPage() {
   const totalBranches = branches.length;
   const activeBranches = branches.filter((b) => b.isActive).length;
   const inactiveBranches = branches.filter((b) => !b.isActive).length;
+  const totalPages = Math.max(1, Math.ceil(branches.length / PAGE_SIZE));
+  const pageRecords = branches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const {
     register,
@@ -228,7 +233,7 @@ export default function BranchesPage() {
                 </td>
               </tr>
             )}
-            {branches.map((b) => (
+            {pageRecords.map((b) => (
               <tr key={b.id} className="transition-colors hover:bg-[#FAF5F5]" style={{ borderBottom: "1px solid #F5EDED" }}>
                 <td className="px-5 py-4 font-semibold" style={{ color: BRAND }}>
                   {b.name}
@@ -260,6 +265,8 @@ export default function BranchesPage() {
             ))}
           </tbody>
         </table>
+
+        <Pagination page={page} totalPages={totalPages} totalRecords={branches.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
 
       {/* Slide Panel */}

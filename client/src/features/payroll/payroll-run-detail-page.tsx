@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
+import Pagination from "@/components/ui/pagination";
 import {
   cancelRun,
   completeRun,
@@ -80,6 +81,8 @@ export default function PayrollRunDetailPage() {
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [settledDeductions, setSettledDeductions] = useState<FullyPaidDeduction[]>([]);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
   const exportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -199,6 +202,9 @@ export default function PayrollRunDetailPage() {
     },
     { gross: 0, deductions: 0, net: 0 }
   );
+
+  const totalPages = Math.max(1, Math.ceil(run.payslips.length / PAGE_SIZE));
+  const pageRecords = run.payslips.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 md:px-8">
@@ -346,7 +352,7 @@ export default function PayrollRunDetailPage() {
                 </TableCell>
               </TableRow>
             )}
-            {run.payslips.map((p) => (
+            {pageRecords.map((p) => (
               <TableRow key={p.id}>
                 <TableCell>
                   <div className="font-medium">
@@ -414,6 +420,8 @@ export default function PayrollRunDetailPage() {
             ))}
           </TableBody>
         </Table>
+
+        <Pagination page={page} totalPages={totalPages} totalRecords={run.payslips.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
 
       <PayslipEditDialog

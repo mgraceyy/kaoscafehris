@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
 import { extractErrorMessage } from "@/lib/api";
+import Pagination from "@/components/ui/pagination";
 import { listBranches } from "@/features/branches/branches.api";
 import { listRuns, type PayrollRunSummary, type PayrollStatus } from "./payroll.api";
 import PayrollRunCreateDialog from "./payroll-run-create-dialog";
@@ -51,6 +52,8 @@ export default function PayrollPage() {
   const [branchId, setBranchId] = useState("");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const branchesQuery = useQuery({
     queryKey: ["branches", {}],
@@ -68,6 +71,9 @@ export default function PayrollPage() {
     const q = search.toLowerCase();
     return data.filter((r) => r.branch.name.toLowerCase().includes(q));
   }, [query.data, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRecords = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
@@ -93,7 +99,7 @@ export default function PayrollPage() {
                 className="w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none"
                 placeholder="Search by branch name"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               />
             </div>
           </div>
@@ -101,7 +107,7 @@ export default function PayrollPage() {
             <select
               className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
               value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
+              onChange={(e) => { setBranchId(e.target.value); setPage(1); }}
             >
               <option value="">All Branches</option>
               {branchesQuery.data?.map((b) => (
@@ -146,7 +152,7 @@ export default function PayrollPage() {
                 </td>
               </tr>
             )}
-            {filtered.map((r) => (
+            {pageRecords.map((r) => (
               <tr
                 key={r.id}
                 className="group transition-colors hover:bg-[#FAF5F5]"
@@ -182,6 +188,8 @@ export default function PayrollPage() {
             ))}
           </tbody>
         </table>
+
+        <Pagination page={page} totalPages={totalPages} totalRecords={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
 
       <PayrollRunCreateDialog open={createOpen} onOpenChange={setCreateOpen} />

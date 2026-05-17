@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
+import Pagination from "@/components/ui/pagination";
 import { extractErrorMessage } from "@/lib/api";
 import {
   createHoliday,
@@ -52,6 +53,8 @@ export default function HolidaysPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PublicHoliday | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const query = useQuery({
     queryKey: ["holidays", year],
@@ -64,6 +67,9 @@ export default function HolidaysPage() {
     const q = searchTitle.toLowerCase();
     return query.data.filter((h) => h.name.toLowerCase().includes(q));
   }, [query.data, searchTitle]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRecords = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["holidays"] });
@@ -131,7 +137,7 @@ export default function HolidaysPage() {
           <select
             className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
             value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
+            onChange={(e) => { setYear(Number(e.target.value)); setPage(1); }}
           >
             {(yearsQuery.data ?? [currentYear - 1, currentYear, currentYear + 1]).map((y) => (
               <option key={y} value={y}>{y}</option>
@@ -158,7 +164,7 @@ export default function HolidaysPage() {
               type="text"
               placeholder="Search by title..."
               value={searchTitle}
-              onChange={(e) => setSearchTitle(e.target.value)}
+              onChange={(e) => { setSearchTitle(e.target.value); setPage(1); }}
               className="w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none"
             />
           </div>
@@ -292,7 +298,7 @@ export default function HolidaysPage() {
                 </td>
               </tr>
             )}
-            {filtered.map((h) => (
+            {pageRecords.map((h) => (
               <tr key={h.id} className="hover:bg-gray-50/50">
                 <td className="px-5 py-4">
                   <span className="flex items-center gap-2 text-gray-700">
@@ -337,6 +343,8 @@ export default function HolidaysPage() {
             ))}
           </tbody>
         </table>
+
+        <Pagination page={page} totalPages={totalPages} totalRecords={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
     </div>
   );

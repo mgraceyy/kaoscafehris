@@ -28,6 +28,7 @@ import { Dialog, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui
 import OvertimeRequestDialog from "./overtime-request-dialog";
 import OvertimeAssignDialog from "./overtime-assign-dialog";
 import OvertimeReviewDialog from "./overtime-review-dialog";
+import Pagination from "@/components/ui/pagination";
 import { COMPANY_TZ } from "@/lib/timezone";
 
 const BRAND = "#8C1515";
@@ -439,6 +440,8 @@ export default function OvertimePage() {
   const [reviewTarget, setReviewTarget] = useState<OvertimeRequest | null>(null);
   const [reviewInitialStatus, setReviewInitialStatus] = useState<"APPROVED" | "REJECTED">("APPROVED");
   const [viewRow, setViewRow] = useState<Row | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const requestsQuery = useQuery({
     queryKey: ["overtime"],
@@ -518,6 +521,8 @@ export default function OvertimePage() {
     return combined;
   }, [requestsQuery.data, schedulesQuery.data, attendanceOtQuery.data, search, statusFilter, canReview]);
 
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const pageRecords = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const revert = useMutation({
     mutationFn: (r: OvertimeRequest) => revertOvertimeRequest(r.id),
@@ -586,12 +591,12 @@ export default function OvertimePage() {
             className="w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none"
             placeholder="Search by name or ID..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+          onChange={(e) => { setStatusFilter(e.target.value as typeof statusFilter); setPage(1); }}
           className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
         >
           <option value="">All Statuses</option>
@@ -633,7 +638,7 @@ export default function OvertimePage() {
                 </td>
               </tr>
             )}
-            {!isLoading && rows.map((row) => {
+            {!isLoading && pageRecords.map((row) => {
               if (row.kind === "request") {
                 const r = row.data;
                 return (
@@ -841,10 +846,8 @@ export default function OvertimePage() {
             })}
           </tbody>
         </table>
-        {rows.length > 0 && (
-          <div className="border-t border-gray-100 px-5 py-3">
-            <p className="text-xs text-gray-400">Showing {rows.length} record{rows.length !== 1 ? "s" : ""}</p>
-          </div>
+        {!isLoading && rows.length > 0 && (
+          <Pagination page={page} totalPages={totalPages} totalRecords={rows.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
         )}
       </div>
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import Pagination from "@/components/ui/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { extractErrorMessage } from "@/lib/api";
 import {
@@ -36,8 +37,14 @@ export default function DeductionsPage() {
   const [editing, setEditing] = useState<Deduction | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [confirmDelete, setConfirmDelete] = useState<Deduction | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const query = useQuery({ queryKey: ["deductions"], queryFn: listDeductions });
+
+  const data = query.data ?? [];
+  const totalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
+  const pageRecords = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   function openAdd() {
     setEditing(null);
@@ -203,14 +210,14 @@ export default function DeductionsPage() {
                 </td>
               </tr>
             )}
-            {!query.isLoading && (query.data ?? []).length === 0 && (
+            {!query.isLoading && data.length === 0 && (
               <tr>
                 <td colSpan={4} className="py-10 text-center text-sm text-gray-400">
                   No deductions yet. Click "Add Deduction" to create one.
                 </td>
               </tr>
             )}
-            {(query.data ?? []).map((d) => (
+            {pageRecords.map((d) => (
               <tr key={d.id} className="hover:bg-gray-50/60">
                 <td className="py-3 font-medium text-gray-800">{d.name}</td>
                 <td className="py-3 text-gray-500 text-xs">
@@ -243,6 +250,8 @@ export default function DeductionsPage() {
             ))}
           </tbody>
         </table>
+
+        <Pagination page={page} totalPages={totalPages} totalRecords={data.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
 
       <ConfirmDialog

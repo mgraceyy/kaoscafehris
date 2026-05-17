@@ -213,7 +213,7 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
 
       <form
         onSubmit={handleSubmit((v) => mutation.mutate(v))}
-        className="space-y-4 pt-4"
+        className="space-y-3 pt-2"
         noValidate
       >
         {/* Selfie previews */}
@@ -230,11 +230,11 @@ export default function AttendanceAdjustDialog({ open, onOpenChange, record }: P
                     <img
                       src={url}
                       alt={label}
-                      className="h-20 w-20 rounded-xl object-cover shadow ring-2 ring-gray-100 hover:ring-red-400 transition-all cursor-zoom-in"
+                      className="h-16 w-16 rounded-xl object-cover shadow ring-2 ring-gray-100 hover:ring-red-400 transition-all cursor-zoom-in"
                     />
                   </button>
                 ) : (
-                  <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-gray-100">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-gray-100">
                     <Camera className="h-6 w-6 text-gray-300" />
                   </div>
                 )}

@@ -16,6 +16,7 @@ import {
   type LeaveStatus,
   type LeaveType,
 } from "./leave.api";
+import Pagination from "@/components/ui/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import LeaveReviewDialog from "./leave-review-dialog";
 import LeaveBalanceDialog from "./leave-balance-dialog";
@@ -136,6 +137,8 @@ export default function LeavePage() {
   const [reviewTarget, setReviewTarget] = useState<LeaveRequest | null>(null);
   const [reviewInitialStatus, setReviewInitialStatus] = useState<"APPROVED" | "REJECTED">("APPROVED");
   const [revertTarget, setRevertTarget] = useState<LeaveRequest | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const tz = COMPANY_TZ;
   const currentYear = useMemo(() => {
@@ -191,6 +194,9 @@ export default function LeavePage() {
     if (branchId) data = data.filter((r) => r.employee.branchId === branchId);
     return data;
   }, [allData, search, typeFilter, statusFilter, branchId]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRecords = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const stats = useMemo(() => ({
     pending: allData.filter((r) => r.status === "PENDING").length,
@@ -285,14 +291,14 @@ export default function LeavePage() {
             className="w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none"
             placeholder="Search by name or ID..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
         {!isEmployee && (
           <select
             className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
             value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
+            onChange={(e) => { setBranchId(e.target.value); setPage(1); }}
           >
             <option value="">All Branches</option>
             {branchesQuery.data?.map((b) => (
@@ -303,7 +309,7 @@ export default function LeavePage() {
         <select
           className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as "" | LeaveType)}
+          onChange={(e) => { setTypeFilter(e.target.value as "" | LeaveType); setPage(1); }}
         >
           <option value="">All Types</option>
           {(Object.keys(TYPE_LABEL) as LeaveType[]).map((t) => (
@@ -313,7 +319,7 @@ export default function LeavePage() {
         <select
           className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as "" | LeaveStatus)}
+          onChange={(e) => { setStatusFilter(e.target.value as "" | LeaveStatus); setPage(1); }}
         >
           <option value="">All Statuses</option>
           <option value="PENDING">Pending</option>
@@ -354,7 +360,7 @@ export default function LeavePage() {
                 </td>
               </tr>
             )}
-            {filtered.map((r) => {
+            {pageRecords.map((r) => {
               const isPending = r.status === "PENDING";
               return (
                 <tr
@@ -421,10 +427,8 @@ export default function LeavePage() {
             })}
           </tbody>
         </table>
-        {filtered.length > 0 && (
-          <div className="border-t border-gray-100 px-5 py-3">
-            <p className="text-xs text-gray-400">Showing {filtered.length} of {allData.length} requests</p>
-          </div>
+        {!query.isLoading && filtered.length > 0 && (
+          <Pagination page={page} totalPages={totalPages} totalRecords={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
         )}
       </div>
 

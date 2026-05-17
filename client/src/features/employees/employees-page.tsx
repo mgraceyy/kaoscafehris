@@ -5,6 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/components/ui/toast";
+import Pagination from "@/components/ui/pagination";
 import { extractErrorMessage } from "@/lib/api";
 import { listBranches } from "@/features/branches/branches.api";
 import {
@@ -129,6 +130,8 @@ export default function EmployeesPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [pendingDeductions, setPendingDeductions] = useState<PendingDeduction[]>([]);
   const [pendingEarnings, setPendingEarnings] = useState<PendingEarning[]>([]);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
   const isEdit = !!detailEmployee;
 
   const resolver = useMemo(
@@ -321,6 +324,9 @@ export default function EmployeesPage() {
     (e) => e.position !== "Administrator"
   );
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRecords = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   const hasBranches = (branchesQuery.data?.length ?? 0) > 0;
 
   const stats = {
@@ -416,13 +422,13 @@ export default function EmployeesPage() {
             className="w-full rounded-full border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm focus:outline-none"
             placeholder="Search by name or ID..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
         <select
           className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
           value={branchId}
-          onChange={(e) => setBranchId(e.target.value)}
+          onChange={(e) => { setBranchId(e.target.value); setPage(1); }}
         >
           <option value="">All Branches</option>
           {branchesQuery.data?.map((b) => (
@@ -432,7 +438,7 @@ export default function EmployeesPage() {
         <select
           className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700"
           value={role}
-          onChange={(e) => setRole(e.target.value)}
+          onChange={(e) => { setRole(e.target.value); setPage(1); }}
         >
           <option value="">All Roles</option>
           <option value="ADMIN">Admin</option>
@@ -477,7 +483,7 @@ export default function EmployeesPage() {
                 </td>
               </tr>
             )}
-            {filtered.map((e) => (
+            {pageRecords.map((e) => (
               <tr
                 key={e.id}
                 className="transition-colors hover:bg-[#FAF5F5]"
@@ -521,6 +527,8 @@ export default function EmployeesPage() {
             ))}
           </tbody>
         </table>
+
+        <Pagination page={page} totalPages={totalPages} totalRecords={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
 
 

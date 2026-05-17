@@ -49,7 +49,7 @@ export function Dialog({ open, onOpenChange, children, className }: DialogProps)
         >
           <X className="h-4 w-4" />
         </button>
-        <div className="overflow-y-auto p-6">
+        <div className="overflow-y-auto p-6 min-h-0">
           {children}
         </div>
       </div>

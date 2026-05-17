@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
+import Pagination from "@/components/ui/pagination";
 import {
   downloadPayslipPdf,
   formatCurrency,
@@ -23,6 +24,8 @@ import { PayslipPreview } from "./payslip-view-dialog";
 export default function MyPayslipsPage() {
   const { toast } = useToast();
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const query = useQuery({
     queryKey: ["my-payslips"],
@@ -40,6 +43,10 @@ export default function MyPayslipsPage() {
       downloadPayslipPdf(id, filename),
     onError: (err) => toast(extractErrorMessage(err), "error"),
   });
+
+  const payslips = query.data ?? [];
+  const totalPages = Math.max(1, Math.ceil(payslips.length / PAGE_SIZE));
+  const pageRecords = payslips.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 md:px-8">
@@ -84,7 +91,7 @@ export default function MyPayslipsPage() {
                 </TableCell>
               </TableRow>
             )}
-            {query.data?.map((p) => (
+            {pageRecords.map((p) => (
               <TableRow key={p.id}>
                 <TableCell className="whitespace-nowrap tabular-nums">
                   {p.payrollRun.periodStart.slice(0, 10)} →{" "}
@@ -130,6 +137,8 @@ export default function MyPayslipsPage() {
             ))}
           </TableBody>
         </Table>
+
+        <Pagination page={page} totalPages={totalPages} totalRecords={payslips.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
 
       {/* Payslip preview panel */}
