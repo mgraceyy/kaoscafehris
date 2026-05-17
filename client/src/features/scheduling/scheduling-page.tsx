@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
+import { addDays, addMonths, addWeeks, eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek, subMonths, subWeeks } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Trash2, UserPlus, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -44,13 +44,8 @@ export default function SchedulingPage() {
   const [view, setView] = useState<"weekly" | "monthly">("weekly");
   const [calendarWeek, setCalendarWeek] = useState<Date>(new Date());
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
-  const [branchIds, setBranchIds] = useState<string[]>([]);
-  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
-  const branchDropdownRef = useRef<HTMLDivElement>(null);
-  const [employeeIds, setEmployeeIds] = useState<string[]>([]);
-  const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
-  const [employeeSearch, setEmployeeSearch] = useState("");
-  const employeeDropdownRef = useRef<HTMLDivElement>(null);
+  const [branchId, setBranchId] = useState<string>("");
+  const [employeeId, setEmployeeId] = useState<string>("");
   const [assignShiftDialogOpen, setAssignShiftDialogOpen] = useState(false);
   const [assignShiftInitialDate, setAssignShiftInitialDate] = useState<string | undefined>();
   const [dialogShift, setDialogShift] = useState<Shift | null>(null);
@@ -77,20 +72,14 @@ export default function SchedulingPage() {
 
   // Auto-select when only one branch exists
   useEffect(() => {
-    if (branchesQuery.data?.length === 1 && branchIds.length === 0) {
-      setBranchIds([branchesQuery.data[0].id]);
+    if (branchesQuery.data?.length === 1 && !branchId) {
+      setBranchId(branchesQuery.data[0].id);
     }
   }, [branchesQuery.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close dropdowns when clicking outside
+  // Close date picker when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
-        setBranchDropdownOpen(false);
-      }
-      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(e.target as Node)) {
-        setEmployeeDropdownOpen(false);
-      }
       if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
         setDatePickerOpen(false);
       }
@@ -106,14 +95,14 @@ export default function SchedulingPage() {
   const filters = useMemo(() => {
     const isWeekly = view === "weekly";
     return {
-      branchIds: branchIds.length > 0 ? branchIds : undefined,
+      branchIds: branchId ? [branchId] : undefined,
       startDate: format(isWeekly ? calWeekStart : calMonthStart, "yyyy-MM-dd"),
-      endDate: format(isWeekly ? addWeeks(calWeekStart, 1) : calMonthEnd, "yyyy-MM-dd"),
+      endDate: format(isWeekly ? addDays(calWeekStart, 6) : calMonthEnd, "yyyy-MM-dd"),
     };
-  }, [branchIds, view, calWeekStart, calMonthStart, calMonthEnd]);
+  }, [branchId, view, calWeekStart, calMonthStart, calMonthEnd]);
 
   const query = useQuery({
-    queryKey: ["shifts", view, branchIds.join(","), filters.startDate, filters.endDate],
+    queryKey: ["shifts", view, branchId, filters.startDate, filters.endDate],
     queryFn: () => listShifts(filters),
   });
 
@@ -156,17 +145,9 @@ export default function SchedulingPage() {
   }, [employeesQuery.data]);
 
   const filteredEmployees = useMemo(
-    () => employeeIds.length > 0 ? employees.filter((e) => employeeIds.includes(e.id)) : employees,
-    [employees, employeeIds]
+    () => employeeId ? employees.filter((e) => e.id === employeeId) : employees,
+    [employees, employeeId]
   );
-
-  const searchedEmployees = useMemo(() => {
-    if (!employeeSearch.trim()) return employees;
-    const q = employeeSearch.trim().toLowerCase();
-    return employees.filter(
-      (e) => `${e.firstName} ${e.lastName}`.toLowerCase().includes(q)
-    );
-  }, [employees, employeeSearch]);
 
   // Build day columns
   const weekDays = DAYS.map((label, i) => {
@@ -184,33 +165,76 @@ export default function SchedulingPage() {
     );
   }
 
-  // Shifts for a specific day, optionally filtered by selected employees
+  // Shifts for a specific day, optionally filtered by selected employee
   function shiftsForDay(dayIso: string): Shift[] {
     return (query.data ?? []).filter((s) => {
       if (s.date.slice(0, 10) !== dayIso) return false;
-      if (employeeIds.length === 0) return true;
-      return s.assignments.some((a) => employeeIds.includes(a.employee.id));
+      if (!employeeId) return true;
+      return s.assignments.some((a) => a.employee.id === employeeId);
     });
   }
 
   // Unassigned shifts — hidden when employee filter is active (they have no assignees to match)
   const unassignedShifts = useMemo(() => {
-    if (employeeIds.length > 0) return [];
+    if (employeeId) return [];
     return (query.data ?? []).filter((s) => s.assignments.length === 0);
-  }, [query.data, employeeIds]);
+  }, [query.data, employeeId]);
 
   const rangeLabel = `${format(calWeekStart, "MMMM d")} - ${format(
-    addWeeks(calWeekStart, 1), "MMMM d, yyyy"
+    addDays(calWeekStart, 6), "MMMM d, yyyy"
   )}`;
 
   return (
     <div className="mx-auto max-w-full px-4 py-8 md:px-8">
       {/* Header */}
-      <div className="mb-6 animate-fade-up relative z-30">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div className="mb-6 animate-fade-up">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="font-heading text-3xl font-bold text-gray-900">Schedule</h1>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setTemplateDialogOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Shift Types
+            </button>
+            <button
+              onClick={() => { setAssignShiftInitialDate(undefined); setAssignShiftDialogOpen(true); }}
+              className="flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
+              style={{ backgroundColor: BRAND }}
+            >
+              + Add Shift
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-5 flex flex-wrap gap-3 rounded-2xl bg-white p-4 shadow-sm items-center animate-fade-up">
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200"
+          value={branchId}
+          onChange={(e) => setBranchId(e.target.value)}
+        >
+          <option value="">All Branches</option>
+          {(branchesQuery.data ?? []).map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+        <select
+          className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200"
+          value={employeeId}
+          onChange={(e) => setEmployeeId(e.target.value)}
+        >
+          <option value="">All Employees</option>
+          {employees.map((emp) => (
+            <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Navigator */}
+      <div className="mb-5 flex items-center justify-between rounded-2xl bg-white px-5 py-3 shadow-sm">
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
             <button
               onClick={() => setView("weekly")}
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -232,214 +256,83 @@ export default function SchedulingPage() {
               Monthly
             </button>
           </div>
-          {branchesQuery.data && branchesQuery.data.length > 1 && (
-            <div className="relative z-50" ref={branchDropdownRef}>
-              <button
-                onClick={() => setBranchDropdownOpen((o) => !o)}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                {branchIds.length === 0
-                  ? "All Branches"
-                  : branchIds.length === 1
-                  ? branchesQuery.data.find((b) => b.id === branchIds[0])?.name ?? "1 Branch"
-                  : `${branchIds.length} Branches`}
-                <ChevronDown className="h-4 w-4 text-gray-400" />
-              </button>
-              {branchDropdownOpen && (
-                <div className="absolute left-0 sm:right-0 sm:left-auto top-full z-50 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white shadow-lg max-h-64 overflow-y-auto">
-                  <div className="p-1 bg-white rounded-lg">
-                    <label className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5"
-                        checked={branchIds.length === 0}
-                        onChange={() => setBranchIds([])}
-                      />
-                      <span className="font-medium">All Branches</span>
-                    </label>
-                    <div className="my-1 border-t border-gray-100" />
-                    {branchesQuery.data.map((b) => (
-                      <label
-                        key={b.id}
-                        className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50"
-                      >
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5"
-                          checked={branchIds.includes(b.id)}
-                          onChange={(e) =>
-                            setBranchIds((prev) =>
-                              e.target.checked
-                                ? [...prev, b.id]
-                                : prev.filter((id) => id !== b.id)
-                            )
-                          }
-                        />
-                        {b.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <div className="relative z-50" ref={employeeDropdownRef}>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => view === "weekly" ? setCalendarWeek((d) => subWeeks(d, 1)) : setCalendarMonth((d) => subMonths(d, 1))}
+            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div className="relative" ref={datePickerRef}>
             <button
-              onClick={() => { setEmployeeDropdownOpen((o) => !o); setEmployeeSearch(""); }}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              onClick={() => {
+                setPickerYear(view === "weekly" ? calendarWeek.getFullYear() : calendarMonth.getFullYear());
+                setDatePickerOpen((o) => !o);
+              }}
+              className="flex items-center gap-1 text-sm font-semibold text-gray-800 hover:text-gray-600 transition-colors"
             >
-              {employeeIds.length === 0
-                ? "All Employees"
-                : employeeIds.length === 1
-                ? (() => { const e = employees.find((emp) => emp.id === employeeIds[0]); return e ? `${e.firstName} ${e.lastName}` : "1 Employee"; })()
-                : `${employeeIds.length} Employees`}
+              {view === "weekly" ? rangeLabel : format(calendarMonth, "MMMM yyyy")}
               <ChevronDown className="h-4 w-4 text-gray-400" />
             </button>
-            {employeeDropdownOpen && (
-              <div className="absolute left-0 sm:right-0 sm:left-auto top-full z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white shadow-lg max-h-64 overflow-y-auto">
-                <div className="p-1 bg-white rounded-lg">
-                  <div className="px-2 py-2">
-                    <input
-                      type="text"
-                      placeholder="Search employees..."
-                      value={employeeSearch}
-                      onChange={(e) => setEmployeeSearch(e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
-                    />
-                  </div>
-                  <label className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5"
-                      checked={employeeIds.length === 0}
-                      onChange={() => setEmployeeIds([])}
-                    />
-                    <span className="font-medium">All Employees</span>
-                  </label>
-                  <div className="my-1 border-t border-gray-100" />
-                  {searchedEmployees.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-gray-400">
-                      {employeeSearch.trim() ? "No employees match your search." : "No active employees found."}
-                    </p>
-                  ) : (
-                    searchedEmployees.map((emp) => (
-                      <label
-                        key={emp.id}
-                        className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50"
-                      >
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5"
-                          checked={employeeIds.includes(emp.id)}
-                          onChange={(e) =>
-                            setEmployeeIds((prev) =>
-                              e.target.checked
-                                ? [...prev, emp.id]
-                                : prev.filter((id) => id !== emp.id)
-                            )
+            {datePickerOpen && (
+              <div className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-xl border border-gray-200 bg-white shadow-lg p-4 w-72">
+                {/* Year selector */}
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => setPickerYear((y) => y - 1)}
+                    className="rounded p-1 text-gray-500 hover:bg-gray-100 transition-colors"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="text-sm font-semibold text-gray-800">{pickerYear}</span>
+                  <button
+                    onClick={() => setPickerYear((y) => y + 1)}
+                    className="rounded p-1 text-gray-500 hover:bg-gray-100 transition-colors"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                {/* Month grid */}
+                <div className="grid grid-cols-3 gap-1">
+                  {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((m, idx) => {
+                    const target = new Date(pickerYear, idx, 1);
+                    const isActive = view === "weekly"
+                      ? calendarWeek.getMonth() === idx && calendarWeek.getFullYear() === pickerYear
+                      : calendarMonth.getMonth() === idx && calendarMonth.getFullYear() === pickerYear;
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => {
+                          if (view === "weekly") {
+                            setCalendarWeek(target);
+                          } else {
+                            setCalendarMonth(target);
                           }
-                        />
-                        {emp.firstName} {emp.lastName}
-                      </label>
-                    ))
-                  )}
+                          setDatePickerOpen(false);
+                        }}
+                        className={`rounded-lg py-1.5 text-sm font-medium transition-colors ${
+                          isActive
+                            ? "text-white"
+                            : "text-gray-700 hover:bg-gray-100"
+                        }`}
+                        style={isActive ? { backgroundColor: BRAND } : undefined}
+                      >
+                        {m}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
           </div>
           <button
-            onClick={() => setTemplateDialogOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            onClick={() => view === "weekly" ? setCalendarWeek((d) => addWeeks(d, 1)) : setCalendarMonth((d) => addMonths(d, 1))}
+            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
           >
-            Shift Types
+            <ChevronRight className="h-5 w-5" />
           </button>
-          <button
-            onClick={() => { setAssignShiftInitialDate(undefined); setAssignShiftDialogOpen(true); }}
-            className="flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
-            style={{ backgroundColor: BRAND }}
-          >
-            + Add Shift
-          </button>
-          </div>
-          </div>
         </div>
-
-      {/* Navigator */}
-      <div className="mb-5 flex items-center justify-between rounded-2xl bg-white px-5 py-3 shadow-sm">
-        <button
-          onClick={() => view === "weekly" ? setCalendarWeek((d) => subWeeks(d, 1)) : setCalendarMonth((d) => subMonths(d, 1))}
-          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-        <div className="relative" ref={datePickerRef}>
-          <button
-            onClick={() => {
-              setPickerYear(view === "weekly" ? calendarWeek.getFullYear() : calendarMonth.getFullYear());
-              setDatePickerOpen((o) => !o);
-            }}
-            className="flex items-center gap-1 text-sm font-semibold text-gray-800 hover:text-gray-600 transition-colors"
-          >
-            {view === "weekly" ? rangeLabel : format(calendarMonth, "MMMM yyyy")}
-            <ChevronDown className="h-4 w-4 text-gray-400" />
-          </button>
-          {datePickerOpen && (
-            <div className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-xl border border-gray-200 bg-white shadow-lg p-4 w-72">
-              {/* Year selector */}
-              <div className="flex items-center justify-between mb-3">
-                <button
-                  onClick={() => setPickerYear((y) => y - 1)}
-                  className="rounded p-1 text-gray-500 hover:bg-gray-100 transition-colors"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="text-sm font-semibold text-gray-800">{pickerYear}</span>
-                <button
-                  onClick={() => setPickerYear((y) => y + 1)}
-                  className="rounded p-1 text-gray-500 hover:bg-gray-100 transition-colors"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-              {/* Month grid */}
-              <div className="grid grid-cols-3 gap-1">
-                {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((m, idx) => {
-                  const target = new Date(pickerYear, idx, 1);
-                  const isActive = view === "weekly"
-                    ? calendarWeek.getMonth() === idx && calendarWeek.getFullYear() === pickerYear
-                    : calendarMonth.getMonth() === idx && calendarMonth.getFullYear() === pickerYear;
-                  return (
-                    <button
-                      key={m}
-                      onClick={() => {
-                        if (view === "weekly") {
-                          setCalendarWeek(target);
-                        } else {
-                          setCalendarMonth(target);
-                        }
-                        setDatePickerOpen(false);
-                      }}
-                      className={`rounded-lg py-1.5 text-sm font-medium transition-colors ${
-                        isActive
-                          ? "text-white"
-                          : "text-gray-700 hover:bg-gray-100"
-                      }`}
-                      style={isActive ? { backgroundColor: BRAND } : undefined}
-                    >
-                      {m}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-        <button
-          onClick={() => view === "weekly" ? setCalendarWeek((d) => addWeeks(d, 1)) : setCalendarMonth((d) => addMonths(d, 1))}
-          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
+        <div className="flex-1" />
       </div>
 
       {/* No shift types warning */}
@@ -489,8 +382,8 @@ export default function SchedulingPage() {
               {filteredEmployees.length === 0 && unassignedShifts.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
-                    {employeeIds.length > 0
-                      ? "No shifts found for the selected employees this week."
+                    {employeeId
+                      ? "No shifts found for the selected employee this week."
                       : "No shifts this week. Click \"+ Add Shift\" to create one."}
                   </td>
                 </tr>

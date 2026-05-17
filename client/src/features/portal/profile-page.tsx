@@ -3,7 +3,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, KeyRound, Loader2, Pencil } from "lucide-react";
+import { format } from "date-fns";
+import {
+  Camera, Download, Eye, FileText, KeyRound, Loader2,
+  Paperclip, Pencil, Plus, Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,9 +22,15 @@ import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import {
   changePassword,
+  deleteMyDocument,
+  getMyDocumentDownloadUrl,
+  getMyDocumentPreviewUrl,
   getProfile,
+  listMyDocuments,
   updateProfile,
+  uploadMyDocument,
   uploadProfilePhoto,
+  type MyDocument,
   type UpdateProfileInput,
 } from "./portal.api";
 
@@ -36,6 +46,243 @@ const profileSchema = z.object({
 });
 
 type ProfileValues = z.infer<typeof profileSchema>;
+
+// ─── Document helpers ─────────────────────────────────────────────────────────
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isPreviewable(mimeType: string) {
+  return mimeType.startsWith("image/") || mimeType === "application/pdf";
+}
+
+// ─── Upload Document Sheet ─────────────────────────────────────────────────────
+
+function UploadDocumentSheet({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [docName, setDocName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const mut = useMutation({
+    mutationFn: () => uploadMyDocument(docName.trim(), selectedFile!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-documents"] });
+      toast("Document uploaded", "success");
+      onClose();
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const canUpload = docName.trim().length > 0 && selectedFile !== null;
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogHeader>
+        <DialogTitle>Upload Document</DialogTitle>
+        <DialogDescription>Add a file to your profile.</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 pt-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="doc-name">Document Name</Label>
+          <Input
+            id="doc-name"
+            value={docName}
+            onChange={(e) => setDocName(e.target.value)}
+            placeholder="e.g. NBI Clearance, Resume"
+            autoFocus
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>File</Label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                setSelectedFile(file);
+                if (!docName.trim()) setDocName(file.name.replace(/\.[^/.]+$/, ""));
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full flex items-center gap-3 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-500 hover:border-gray-300 transition-colors"
+          >
+            <Paperclip className="h-4 w-4 text-muted-foreground" />
+            {selectedFile ? (
+              <div className="text-left min-w-0">
+                <p className="font-medium text-gray-800 truncate">{selectedFile.name}</p>
+                <p className="text-xs text-gray-400">{formatFileSize(selectedFile.size)}</p>
+              </div>
+            ) : (
+              <span>Choose a file</span>
+            )}
+          </button>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button type="button" disabled={!canUpload || mut.isPending} onClick={() => mut.mutate()}>
+          {mut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          Upload
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
+// ─── Document Preview Sheet ────────────────────────────────────────────────────
+
+function DocumentPreviewSheet({ doc, onClose }: { doc: MyDocument; onClose: () => void }) {
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogHeader>
+        <DialogTitle className="truncate">{doc.name}</DialogTitle>
+        <DialogDescription className="truncate">{doc.originalName}</DialogDescription>
+      </DialogHeader>
+      <div className="flex-1 overflow-auto flex items-center justify-center min-h-[40vh] bg-gray-50 rounded-lg">
+        {doc.mimeType.startsWith("image/") ? (
+          <img
+            src={getMyDocumentPreviewUrl(doc.id)}
+            alt={doc.name}
+            className="max-w-full max-h-[60vh] object-contain"
+          />
+        ) : (
+          <iframe
+            src={getMyDocumentPreviewUrl(doc.id)}
+            title={doc.name}
+            className="w-full rounded"
+            style={{ height: "60vh" }}
+          />
+        )}
+      </div>
+      <div className="text-xs text-muted-foreground flex gap-4 pt-2">
+        <span>{formatFileSize(doc.size)}</span>
+        <span>Uploaded {format(new Date(doc.uploadedAt), "MMM d, yyyy")}</span>
+      </div>
+      <DialogFooter>
+        <a
+          href={getMyDocumentDownloadUrl(doc.id)}
+          download
+          className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium border border-gray-200 hover:bg-gray-50"
+        >
+          <Download className="h-4 w-4" />
+          Download
+        </a>
+        <Button type="button" variant="outline" onClick={onClose}>Close</Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
+// ─── My Documents Card ─────────────────────────────────────────────────────────
+
+function MyDocumentsCard() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<MyDocument | null>(null);
+
+  const docsQuery = useQuery({
+    queryKey: ["my-documents"],
+    queryFn: listMyDocuments,
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (docId: string) => deleteMyDocument(docId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-documents"] });
+      toast("Document deleted", "success");
+    },
+    onError: (err) => toast(extractErrorMessage(err), "error"),
+  });
+
+  const docs = docsQuery.data ?? [];
+
+  return (
+    <>
+      <div className="rounded-lg border bg-card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold">Documents</h2>
+            <p className="text-sm text-muted-foreground">Clearances, IDs, certificates, and other files.</p>
+          </div>
+          <Button size="sm" onClick={() => setUploadOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Upload
+          </Button>
+        </div>
+
+        {docsQuery.isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : docs.length === 0 ? (
+          <div className="flex flex-col items-center py-8 text-center">
+            <FileText className="h-8 w-8 text-muted-foreground mb-2" />
+            <p className="text-sm text-muted-foreground">No documents uploaded yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {docs.map((doc) => (
+              <div
+                key={doc.id}
+                className="flex items-center gap-3 rounded-lg border px-4 py-3"
+              >
+                <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{doc.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatFileSize(doc.size)} · {format(new Date(doc.uploadedAt), "MMM d, yyyy")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {isPreviewable(doc.mimeType) && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDoc(doc)}
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-gray-100 transition-colors"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                  )}
+                  <a
+                    href={getMyDocumentDownloadUrl(doc.id)}
+                    download
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-gray-100 transition-colors"
+                  >
+                    <Download className="h-4 w-4" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => deleteMut.mutate(doc.id)}
+                    disabled={deleteMut.isPending}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-red-400 hover:bg-red-50 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {uploadOpen && <UploadDocumentSheet onClose={() => setUploadOpen(false)} />}
+      {previewDoc && <DocumentPreviewSheet doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
+    </>
+  );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const { toast } = useToast();
@@ -85,7 +332,7 @@ export default function ProfilePage() {
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 md:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">My Profile</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
           <p className="text-sm text-muted-foreground">
             Manage your personal details and account settings.
           </p>
@@ -201,6 +448,8 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      <MyDocumentsCard />
 
       <EditProfileDialog
         open={editOpen}

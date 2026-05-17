@@ -5,10 +5,8 @@ import {
   Building2,
   CalendarClock,
   CalendarDays,
-  CalendarRange,
   ChevronDown,
   ClipboardCheck,
-  ClipboardList,
   Clock,
   LayoutDashboard,
   LogOut,
@@ -49,10 +47,8 @@ const NAV: NavItem[] = [
   { to: "/payroll", label: "Payroll", icon: Wallet, roles: ["ADMIN"], group: "manage" },
   { to: "/reports", label: "Reports", icon: BarChart3, roles: ["ADMIN", "MANAGER"], group: "manage" },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["ADMIN"], group: "system" },
-  { to: "/my-schedule", label: "My Schedule", icon: CalendarRange, roles: ["MANAGER"], group: "personal" },
-  { to: "/my-attendance", label: "My Attendance", icon: ClipboardList, roles: ["MANAGER"], group: "personal" },
-  { to: "/my-payslips", label: "My Payslips", icon: Receipt, roles: ["MANAGER"], group: "personal" },
-  { to: "/profile", label: "My Profile", icon: User, roles: ["MANAGER"], group: "personal" },
+  { to: "/payslips", label: "Payslips", icon: Receipt, roles: ["MANAGER"], group: "personal" },
+  { to: "/profile", label: "Profile", icon: User, roles: ["MANAGER"], group: "personal" },
 ];
 
 const GROUP_LABELS: Record<string, string> = {

@@ -14,8 +14,6 @@ import PayrollPage from "@/features/payroll/payroll-page";
 import PayrollRunDetailPage from "@/features/payroll/payroll-run-detail-page";
 import MyPayslipsPage from "@/features/payroll/my-payslips-page";
 import ProfilePage from "@/features/portal/profile-page";
-import MySchedulePage from "@/features/portal/my-schedule-page";
-import MyAttendancePage from "@/features/portal/my-attendance-page";
 import SettingsPage from "@/features/settings/settings-page";
 import AuditLogsPage from "@/features/audit-logs/audit-logs-page";
 import OvertimePage from "@/features/overtime/overtime-page";
@@ -140,23 +138,7 @@ export default function AppRoutes() {
           }
         />
         <Route
-          path="/my-schedule"
-          element={
-            <ProtectedRoute allowed={["MANAGER"]}>
-              <MySchedulePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/my-attendance"
-          element={
-            <ProtectedRoute allowed={["MANAGER"]}>
-              <MyAttendancePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/my-payslips"
+          path="/payslips"
           element={
             <ProtectedRoute allowed={["MANAGER"]}>
               <MyPayslipsPage />
