@@ -7,7 +7,6 @@ import { useToast } from "@/components/ui/toast";
 import { extractErrorMessage } from "@/lib/api";
 import { listBranches } from "@/features/branches/branches.api";
 import { listEmployees } from "@/features/employees/employees.api";
-import { useAuthStore } from "@/features/auth/auth.store";
 import {
   deleteShift,
   formatShiftTime,
@@ -42,10 +41,6 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function SchedulingPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const user = useAuthStore((s) => s.user);
-  const isManager = user?.role === "MANAGER";
-  const managerBranchId = isManager ? (user?.employee?.branchId ?? undefined) : undefined;
-
   const [view, setView] = useState<"weekly" | "monthly">("weekly");
   const [calendarWeek, setCalendarWeek] = useState<Date>(new Date());
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
@@ -211,10 +206,10 @@ export default function SchedulingPage() {
   return (
     <div className="mx-auto max-w-full px-4 py-8 md:px-8">
       {/* Header */}
-      <div className="mb-6 animate-fade-up relative z-50">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-6 animate-fade-up relative z-30">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <h1 className="font-heading text-3xl font-bold text-gray-900">Schedule</h1>
-        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
             <button
               onClick={() => setView("weekly")}
@@ -251,7 +246,7 @@ export default function SchedulingPage() {
                 <ChevronDown className="h-4 w-4 text-gray-400" />
               </button>
               {branchDropdownOpen && (
-                <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-gray-200 bg-white shadow-lg">
+                <div className="absolute left-0 sm:right-0 sm:left-auto top-full z-50 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white shadow-lg max-h-64 overflow-y-auto">
                   <div className="p-1 bg-white rounded-lg">
                     <label className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-50">
                       <input
@@ -301,7 +296,7 @@ export default function SchedulingPage() {
               <ChevronDown className="h-4 w-4 text-gray-400" />
             </button>
             {employeeDropdownOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
+              <div className="absolute left-0 sm:right-0 sm:left-auto top-full z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white shadow-lg max-h-64 overflow-y-auto">
                 <div className="p-1 bg-white rounded-lg">
                   <div className="px-2 py-2">
                     <input
@@ -365,9 +360,9 @@ export default function SchedulingPage() {
           >
             + Add Shift
           </button>
+          </div>
+          </div>
         </div>
-        </div>
-      </div>
 
       {/* Navigator */}
       <div className="mb-5 flex items-center justify-between rounded-2xl bg-white px-5 py-3 shadow-sm">
