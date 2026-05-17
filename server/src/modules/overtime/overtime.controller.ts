@@ -26,19 +26,12 @@ export async function list(req: Request, res: Response, next: NextFunction) {
   try {
     const query = listOvertimeQuerySchema.parse(req.query);
     let scopedEmployeeId: string | undefined;
-    let scopedBranchId: string | undefined;
 
     if (req.user?.role === "EMPLOYEE") {
       scopedEmployeeId = await resolveEmployeeId(req.user.userId);
-    } else if (req.user?.role === "MANAGER") {
-      const emp = await prisma.employee.findUnique({
-        where: { userId: req.user.userId },
-        select: { branchId: true },
-      });
-      if (emp) scopedBranchId = emp.branchId;
     }
 
-    const data = await overtimeService.listRequests(query, scopedEmployeeId, scopedBranchId);
+    const data = await overtimeService.listRequests(query, scopedEmployeeId, undefined);
     res.json({ data });
   } catch (err) { next(err); }
 }
@@ -80,15 +73,7 @@ export async function update(req: Request<{ id: string }>, res: Response, next: 
 export async function listSchedules(req: Request, res: Response, next: NextFunction) {
   try {
     const query = listSchedulesQuerySchema.parse(req.query);
-    let scopedBranchId: string | undefined;
-    if (req.user?.role === "MANAGER") {
-      const emp = await prisma.employee.findUnique({
-        where: { userId: req.user.userId },
-        select: { branchId: true },
-      });
-      if (emp) scopedBranchId = emp.branchId;
-    }
-    const data = await overtimeService.listSchedules(query, scopedBranchId);
+    const data = await overtimeService.listSchedules(query, undefined);
     res.json({ data });
   } catch (err) { next(err); }
 }
@@ -120,21 +105,10 @@ export async function deleteSchedule(req: Request<{ id: string }>, res: Response
 export async function attendanceOt(req: Request, res: Response, next: NextFunction) {
   try {
     const { startDate, endDate, employeeId } = req.query as Record<string, string | undefined>;
-    let scopedEmployeeId = employeeId;
-    let scopedBranchId: string | undefined;
-
-    if (req.user?.role === "MANAGER") {
-      const emp = await prisma.employee.findUnique({
-        where: { userId: req.user.userId },
-        select: { branchId: true },
-      });
-      if (emp) scopedBranchId = emp.branchId;
-    }
-
     const data = await overtimeService.getAttendanceOvertime({
       startDate, endDate,
-      employeeId: scopedEmployeeId,
-      branchId: scopedBranchId,
+      employeeId,
+      branchId: undefined,
     });
     res.json({ data });
   } catch (err) { next(err); }

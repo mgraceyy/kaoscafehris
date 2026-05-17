@@ -89,7 +89,7 @@ export const listEmployeeQuerySchema = z.object({
   search: z.string().trim().optional(),
   branchId: z.string().uuid().optional(),
   status: employmentStatusEnum.optional(),
-  role: roleEnum.optional(),
+  role: z.enum(["ADMIN", "MANAGER", "EMPLOYEE"]).optional(),
 });
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;

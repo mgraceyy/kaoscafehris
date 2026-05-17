@@ -267,7 +267,7 @@ export default function HolidaysPage() {
       </Dialog>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100">

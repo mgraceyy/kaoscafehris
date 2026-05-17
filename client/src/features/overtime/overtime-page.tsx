@@ -603,7 +603,7 @@ export default function OvertimePage() {
       </div>
 
       {/* Table */}
-      <div className="animate-fade-up overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="animate-fade-up overflow-x-auto rounded-2xl bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead style={{ background: "#FDFAFA" }}>
             <tr style={{ borderBottom: "1px solid #F5EDED" }}>

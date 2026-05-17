@@ -14,13 +14,6 @@ type IdParams = { id: string };
 export async function list(req: Request, res: Response, next: NextFunction) {
   try {
     const query = listEmployeeQuerySchema.parse(req.query);
-    if (req.user?.role === "MANAGER") {
-      const emp = await prisma.employee.findUnique({
-        where: { userId: req.user.userId },
-        select: { branchId: true },
-      });
-      if (emp?.branchId) query.branchId = emp.branchId;
-    }
     const data = await employeeService.listEmployees(query);
     res.json({ data });
   } catch (err) {

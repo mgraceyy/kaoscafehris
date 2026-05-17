@@ -308,6 +308,7 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-400">No clock-ins today yet.</p>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr style={{ borderBottom: "1px solid #F5EDED", backgroundColor: "#FDFAFA" }}>
@@ -363,6 +364,7 @@ export default function DashboardPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

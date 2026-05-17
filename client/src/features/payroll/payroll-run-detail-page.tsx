@@ -325,7 +325,7 @@ export default function PayrollRunDetailPage() {
       </div>
 
       {/* Payslips table */}
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

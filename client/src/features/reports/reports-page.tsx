@@ -425,7 +425,7 @@ function AttendanceSection({
           <option value="lateMins">Late Mins</option>
         </select>
       </div>
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
@@ -465,7 +465,7 @@ function AttendanceSection({
       </div>
 
       <SectionDivider title="By Employee" />
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
@@ -575,7 +575,7 @@ function PayrollSection({
       </div>
 
       <SectionDivider title="By Branch" />
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
@@ -604,7 +604,7 @@ function PayrollSection({
       </div>
 
       <SectionDivider title="Runs" />
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
@@ -635,7 +635,7 @@ function PayrollSection({
       </div>
 
       <SectionDivider title="By Employee" />
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
@@ -693,7 +693,7 @@ function HeadcountSection({
       </div>
 
       <SectionDivider title="By Branch" />
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">
@@ -724,7 +724,7 @@ function HeadcountSection({
       </div>
 
       <SectionDivider title="By Position" />
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-b border-gray-100 bg-gray-50/60">

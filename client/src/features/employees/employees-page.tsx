@@ -280,8 +280,12 @@ export default function EmployeesPage() {
   });
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", search, branchId],
-    queryFn: () => listEmployees({ search: search || undefined, branchId: branchId || undefined }),
+    queryKey: ["employees", search, branchId, role],
+    queryFn: () => listEmployees({
+      search: search || undefined,
+      branchId: branchId || undefined,
+      role: (role as "ADMIN" | "MANAGER" | "EMPLOYEE") || undefined,
+    }),
   });
 
 
@@ -312,12 +316,10 @@ export default function EmployeesPage() {
     },
   });
 
-  // Filter by role client-side since API may not support it; exclude Administrator position
-  const filtered = (employeesQuery.data ?? []).filter((e) => {
-    if (e.position === "Administrator") return false;
-    if (role && e.user.role !== role) return false;
-    return true;
-  });
+  // Exclude the system administrator account from the employee list
+  const filtered = (employeesQuery.data ?? []).filter(
+    (e) => e.position !== "Administrator"
+  );
 
   const hasBranches = (branchesQuery.data?.length ?? 0) > 0;
 
@@ -380,7 +382,7 @@ export default function EmployeesPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="mb-6 grid grid-cols-4 gap-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div className="animate-fade-up stagger-1 relative overflow-hidden rounded-xl bg-white p-4 shadow-sm card-hover" style={{ borderLeft: `4px solid ${BRAND}` }}>
           <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Total</p>
           <p className="font-heading text-4xl leading-none" style={{ color: BRAND }}>{stats.total}</p>
@@ -440,7 +442,7 @@ export default function EmployeesPage() {
       </div>
 
       {/* Table */}
-      <div className="animate-fade-up stagger-5 overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="animate-fade-up stagger-5 overflow-x-auto rounded-2xl bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ borderBottom: "1px solid #F5EDED", backgroundColor: "#FDFAFA" }}>
@@ -555,7 +557,7 @@ export default function EmployeesPage() {
                 {/* ACCOUNT */}
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: BRAND }}>Account</h3>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Employee ID *</label>
                       <input {...register("employeeId")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
@@ -597,7 +599,7 @@ export default function EmployeesPage() {
                 {/* IDENTITY */}
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: BRAND }}>Identity</h3>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">First Name *</label>
                       <input {...register("firstName")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
@@ -626,7 +628,7 @@ export default function EmployeesPage() {
                 {/* EMPLOYMENT */}
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: BRAND }}>Employment</h3>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="col-span-2">
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Branch *</label>
                       <select {...register("branchId")} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400 bg-white">
@@ -673,7 +675,7 @@ export default function EmployeesPage() {
                 {/* GOVERNMENT IDs */}
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: BRAND }}>Government IDs</h3>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">SSS Number</label>
                       <input {...register("sssNumber")} placeholder="XX-XXXXXXX-X" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
