@@ -26,6 +26,16 @@ function formatDate(iso: string, tz: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: tz });
 }
 
+function formatClockIn(r: AttendanceRecord, tz: string): string {
+  if (r.status === "ABSENT" && r.source === "MANUAL") {
+    const local = new Date(r.clockIn).toLocaleTimeString("en-US", {
+      hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz,
+    });
+    if (local === "00:00") return "00:00 AM";
+  }
+  return formatClockTime(r.clockIn, tz);
+}
+
 
 function StatusBadge({ status, hasClockOut }: { status: AttendanceStatus; hasClockOut: boolean }) {
   if (!hasClockOut && (status === "PRESENT" || status === "LATE")) {
@@ -293,7 +303,7 @@ const apiStatus = (statusFilter === "LATE" ? "LATE" : statusFilter === "ABSENT" 
                   <td className="px-5 py-4 text-gray-600">{r.shiftName ?? "—"}</td>
                   <td className="px-5 py-4 text-gray-600">{formatDate(r.date.slice(0, 10) + "T12:00:00Z", tz)}</td>
                   <td className="px-5 py-4 tabular-nums font-medium text-gray-800">
-                    <span>{formatClockTime(r.clockIn, tz)}</span>
+                    <span>{formatClockIn(r, tz)}</span>
                     {r.clockInNote && (
                       <span className="ml-1.5 text-[10px] text-amber-600 cursor-help" title={r.clockInNote}>📝</span>
                     )}
