@@ -128,8 +128,10 @@ router.get("/status/:employeeId", async (req, res, next) => {
         isFromPrevDay = true;
       } else {
         // All shifts done today — return most recent completed record for display.
+        // Exclude ABSENT records: an auto-absent placeholder is not a real clock-in
+        // and must not be surfaced as "Timed In" on the kiosk.
         attendance = await prisma.attendance.findFirst({
-          where: { employeeId: emp.id, date: dateKey },
+          where: { employeeId: emp.id, date: dateKey, status: { notIn: ["ABSENT"] } },
           orderBy: { clockIn: "desc" },
         });
       }

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
   BarChart3,
@@ -77,6 +77,11 @@ export default function AppShell() {
   const [dropOpen, setDropOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
 
   const visible = NAV.filter(
     (item) => !item.roles || (user && item.roles.includes(user.role))
@@ -180,94 +185,101 @@ export default function AppShell() {
       </header>
 
       {/* ── Mobile drawer ──────────────────────────────── */}
-      {mobileOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40 bg-black/40 md:hidden"
-            onClick={() => setMobileOpen(false)}
-          />
-          {/* Drawer panel */}
-          <div className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-white shadow-xl md:hidden">
-            {/* Drawer header */}
-            <div
-              className="flex h-16 shrink-0 items-center justify-between px-4"
-              style={{ background: `linear-gradient(135deg, #6B0F0F 0%, ${BRAND} 50%, #9E1A1A 100%)` }}
-            >
-              <div className="flex items-center gap-3">
-                <img src="/kaos-logo.svg" alt="KAOS" className="h-8 w-auto brightness-0 invert" />
-                <div className="border-l border-white/20 pl-3">
-                  <p className="font-heading text-sm leading-none text-white/90 italic">Human Resources</p>
-                  <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/60 mt-0.5">Information System</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMobileOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-white hover:bg-white/10"
-                aria-label="Close menu"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Nav groups */}
-            <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-              {groupOrder.filter(g => groups[g]?.length).map((group) => (
-                <div key={group}>
-                  <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-300">
-                    {GROUP_LABELS[group] ?? group}
-                  </p>
-                  <div className="space-y-0.5">
-                    {groups[group].map(({ to, label, icon: Icon }) => (
-                      <NavLink
-                        key={to}
-                        to={to}
-                        end={to === "/"}
-                        onClick={() => setMobileOpen(false)}
-                      >
-                        {({ isActive }) => (
-                          <span
-                            className={cn(
-                              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
-                              isActive
-                                ? "text-[#8C1515] bg-[#FAF0F0]"
-                                : "text-gray-500 hover:bg-[#FAF0F0]/70 hover:text-[#8C1515]"
-                            )}
-                          >
-                            <Icon className={cn(
-                              "h-[17px] w-[17px] shrink-0 transition-colors",
-                              isActive ? "text-[#8C1515]" : "text-gray-400"
-                            )} />
-                            {label}
-                          </span>
-                        )}
-                      </NavLink>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </nav>
-
-            {/* Drawer footer */}
-            <div
-              className="border-t px-4 py-3 flex items-center gap-3"
-              style={{ borderColor: "#F0E5E5" }}
-            >
-              <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                style={{ backgroundColor: "#F3E4E4", color: BRAND }}
-              >
-                {userInitials}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-gray-700">{displayName}</p>
-                <p className="truncate text-[10px] text-gray-400 capitalize">{user?.role?.toLowerCase()}</p>
-              </div>
+      {/* Backdrop */}
+      <div
+        className={cn(
+          "fixed inset-0 z-40 md:hidden transition-opacity duration-300",
+          mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        )}
+        style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden
+      />
+      {/* Drawer panel */}
+      <div
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-white shadow-2xl md:hidden",
+          "transition-transform duration-300 ease-in-out",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Drawer header */}
+        <div
+          className="flex h-16 shrink-0 items-center justify-between px-4"
+          style={{ background: `linear-gradient(135deg, #6B0F0F 0%, ${BRAND} 50%, #9E1A1A 100%)` }}
+        >
+          <div className="flex items-center gap-3">
+            <img src="/kaos-logo.svg" alt="KAOS" className="h-8 w-auto brightness-0 invert" />
+            <div className="border-l border-white/20 pl-3">
+              <p className="font-heading text-sm leading-none text-white/90 italic">Human Resources</p>
+              <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/60 mt-0.5">Information System</p>
             </div>
           </div>
-        </>
-      )}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-white hover:bg-white/10"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Nav groups */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+          {groupOrder.filter(g => groups[g]?.length).map((group) => (
+            <div key={group}>
+              <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-300">
+                {GROUP_LABELS[group] ?? group}
+              </p>
+              <div className="space-y-0.5">
+                {groups[group].map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={to === "/"}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    {({ isActive }) => (
+                      <span
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                          isActive
+                            ? "text-[#8C1515] bg-[#FAF0F0]"
+                            : "text-gray-500 hover:bg-[#FAF0F0]/70 hover:text-[#8C1515]"
+                        )}
+                      >
+                        <Icon className={cn(
+                          "h-[17px] w-[17px] shrink-0 transition-colors",
+                          isActive ? "text-[#8C1515]" : "text-gray-400"
+                        )} />
+                        {label}
+                      </span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* Drawer footer */}
+        <div
+          className="border-t px-4 py-3 flex items-center gap-3"
+          style={{ borderColor: "#F0E5E5" }}
+        >
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+            style={{ backgroundColor: "#F3E4E4", color: BRAND }}
+          >
+            {userInitials}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold text-gray-700">{displayName}</p>
+            <p className="truncate text-[10px] text-gray-400 capitalize">{user?.role?.toLowerCase()}</p>
+          </div>
+        </div>
+      </div>
 
       {/* ── Below header: sidebar + content ────────────── */}
       <div className="flex flex-1 overflow-hidden">

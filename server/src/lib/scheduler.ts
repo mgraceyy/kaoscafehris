@@ -364,27 +364,34 @@ export async function checkAbsentEmployees() {
 
       for (const assignment of shift.assignments) {
         const eid = assignment.employeeId;
+        const processedKey = `${eid}:${dateKey}`;
 
         if (assignment.employee.employmentStatus === "TERMINATED") continue;
         if (assignment.employee.payType !== "HOURLY") continue;
-        if (processed.has(eid)) continue;
+        if (processed.has(processedKey)) continue;
         if (recordKeys.has(`${eid}:${dateKey}`)) continue;
 
         const branchId = assignment.assignedBranchId ?? assignment.employee.branchId;
+
+        // clockIn is set to midnight PHT (00:00 local) so the UI displays 12:00 AM.
+        // shift.date is midnight UTC; the ISO date string always equals the local date
+        // since Asia/Manila is UTC+8 (ahead of UTC, never behind).
+        const shiftDateStr = shift.date.toISOString().slice(0, 10);
+        const midnightPht = new Date(`${shiftDateStr}T00:00:00.000+08:00`);
 
         await prisma.attendance.create({
           data: {
             employeeId: eid,
             branchId,
             date: shift.date,
-            clockIn: shift.date,
+            clockIn: midnightPht,
             status: "ABSENT",
             source: "MANUAL",
             syncStatus: "SYNCED",
           },
         });
 
-        processed.add(eid);
+        processed.add(processedKey);
         created++;
         console.log(`[scheduler] Auto-marked absent: ${eid} (shift: ${shift.name}, date: ${dateKey})`);
       }

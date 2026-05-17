@@ -358,17 +358,20 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
   const graceMinutes = await getSetting<number>("attendance.late_threshold", 0);
   const thresholdHours = await getSetting<number>("attendance.absent_if_no_clockin", 4);
 
-  // If the scheduler already created an auto-absent placeholder (clockIn at
-  // midnight of the shift date), we'll update it in-place instead of blocking
-  // the clock-in.  An admin-set ABSENT record has a real clockIn time and is
-  // intentionally skipped here — those stay as-is and block re-clock-in.
+  // If the scheduler already created an auto-absent placeholder, update it
+  // in-place instead of blocking the clock-in.  The scheduler stores clockIn
+  // as midnight PHT (Asia/Manila = UTC+8) so the UI shows 12:00 AM local time.
+  // Admin-set ABSENT records have a different clockIn and are intentionally
+  // skipped here — those stay as-is and block re-clock-in.
+  const effectiveDateStr = effectiveDateKey.toISOString().slice(0, 10);
+  const midnightPht = new Date(`${effectiveDateStr}T00:00:00.000+08:00`);
   const autoAbsent = await prisma.attendance.findFirst({
     where: {
       employeeId: input.employeeId,
       date: effectiveDateKey,
       status: "ABSENT",
       source: "MANUAL",
-      clockIn: effectiveDateKey,
+      clockIn: midnightPht,
     },
   });
 
@@ -443,7 +446,9 @@ export async function clockIn(input: ClockInInput, options?: { skipOpenRecordGua
       lateMinutes = delta;
       if (delta >= thresholdHours * 60) {
         status = "ABSENT";
-        remarks = "4+ hrs late";
+        const hrs = Math.floor(delta / 60);
+        const mins = delta % 60;
+        remarks = mins > 0 ? `${hrs} hrs ${mins} mins late` : `${hrs} hrs late`;
       } else {
         status = "LATE";
       }
