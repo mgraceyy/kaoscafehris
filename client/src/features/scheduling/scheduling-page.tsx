@@ -76,18 +76,16 @@ export default function SchedulingPage() {
   });
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", managerBranchId ?? "all"],
-    queryFn: () => listEmployees(managerBranchId ? { branchId: managerBranchId } : {}),
+    queryKey: ["employees", "all"],
+    queryFn: () => listEmployees({}),
   });
 
-  // Auto-select branch: lock to manager's branch, or auto-select when only one branch exists
+  // Auto-select when only one branch exists
   useEffect(() => {
-    if (managerBranchId) {
-      setBranchIds([managerBranchId]);
-    } else if (branchesQuery.data?.length === 1 && branchIds.length === 0) {
+    if (branchesQuery.data?.length === 1 && branchIds.length === 0) {
       setBranchIds([branchesQuery.data[0].id]);
     }
-  }, [branchesQuery.data, managerBranchId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [branchesQuery.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdowns when clicking outside
   useEffect(() => {
