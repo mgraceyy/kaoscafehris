@@ -103,7 +103,7 @@ export default function AppShell() {
     <div className="flex min-h-screen flex-col">
       {/* ── Top header ─────────────────────────────────── */}
       <header
-        className="z-30 flex h-16 shrink-0 items-center justify-between px-6 shadow-sm"
+        className="relative z-[51] flex h-16 shrink-0 items-center justify-between px-6 shadow-sm"
         style={{
           background: `linear-gradient(135deg, #6B0F0F 0%, ${BRAND} 50%, #9E1A1A 100%)`,
         }}
